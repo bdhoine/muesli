@@ -1,0 +1,4 @@
+.build/
+MeetingScribe.app/
+*.bin
+.DS_Store
