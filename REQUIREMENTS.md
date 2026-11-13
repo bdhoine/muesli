@@ -107,7 +107,6 @@ Configuration
 - R2. The Mac must be awake and online. A closed lid means claude.ai gets a connection error. Accepted for now.
 - R3. Claude can only poll. Nothing can notify a conversation that a transcript became ready.
 - R4. M7 requires `muesli-mcp` to fetch Cloudflare's signing keys, so the bridge process makes outbound requests. The app still does not.
-- R5. Transcription is not yet verified end to end (see README status). That must be fixed before any of this is useful.
 
 ## 8. Acceptance criteria
 

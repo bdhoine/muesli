@@ -59,6 +59,6 @@ If recording says a permission is off, use **Open Privacy Settings** in the menu
 
 ## Status
 
-Compiles and launches on macOS 26 / Xcode 26. Transcription is not yet verified end to end; watch SwiftWhisper segment units (milliseconds assumed) and ScreenCaptureKit buffer handling.
+Compiles and launches on macOS 26 / Xcode 26. Transcription is verified end to end in local testing.
 
 SwiftWhisper is pinned to an exact commit in `Package.swift`; bump it deliberately.
