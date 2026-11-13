@@ -1,0 +1,13 @@
+{
+  "pins" : [
+    {
+      "identity" : "swiftwhisper",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/exPHAT/SwiftWhisper.git",
+      "state" : {
+        "revision" : "c340197966ebd264f3135d3955874b40f8ed58bc"
+      }
+    }
+  ],
+  "version" : 2
+}

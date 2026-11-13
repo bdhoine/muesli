@@ -66,7 +66,7 @@ final class AudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         cfg.minimumFrameInterval = CMTime(value: 1, timescale: 1)
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let s = SCStream(filter: filter, configuration: cfg, delegate: self)
-        let q = DispatchQueue(label: "scribe.sysaudio")
+        let q = DispatchQueue(label: "muesli.sysaudio")
         try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: q)
         try s.addStreamOutput(self, type: .screen, sampleHandlerQueue: q)
         try await s.startCapture()

@@ -4,7 +4,7 @@ import UserNotifications
 
 @MainActor @Observable
 final class AppState: NSObject, UNUserNotificationCenterDelegate {
-    enum Status: Equatable { case idle, recording(String), saving, error(String) }
+    enum Status: Equatable { case idle, recording(String), saving, error(String), permissionMissing(Permission) }
 
     var status: Status = .idle
     var recent: [URL] = Store.recent()
@@ -48,6 +48,9 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
     // MARK: Record
     func start(_ d: DetectedMeeting) async {
         guard status == .idle else { return }
+        if let missing = await Permissions.missingForRecording() {
+            status = .permissionMissing(missing); return
+        }
         guard let transcriber = Transcriber() else {
             status = .error("Whisper model missing: \(Paths.model.lastPathComponent)"); return
         }
@@ -82,10 +85,31 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         current = nil
         status = .idle
     }
+
+    // MARK: Settings
+    func chooseTranscriptsFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose where Muesli saves transcripts"
+        panel.prompt = "Use this folder"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = Paths.transcripts
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Paths.setTranscripts(url)
+        recent = Store.recent()
+    }
+
+    func resetTranscriptsFolder() {
+        Paths.setTranscripts(nil)
+        recent = Store.recent()
+    }
 }
 
 @main
-struct MeetingScribeApp: App {
+struct MuesliApp: App {
     @State private var state = AppState()
 
     var body: some Scene {
@@ -97,7 +121,13 @@ struct MeetingScribeApp: App {
                 Text("Recording: \(t)")
                 Button("Stop and save transcript") { Task { await state.stop() } }
             case .saving: Text("Finishing transcript...")
-            case .error(let e): Text(e)
+            case .error(let e):
+                Text(e)
+                Button("Dismiss") { state.status = .idle }
+            case .permissionMissing(let p):
+                Text(p.message)
+                Button("Open Privacy Settings") { p.openSettings() }
+                Button("Try again") { state.status = .idle }
             }
             Divider()
             ForEach(state.recent, id: \.self) { url in
@@ -105,11 +135,30 @@ struct MeetingScribeApp: App {
             }
             Divider()
             Button("Open transcripts folder") { NSWorkspace.shared.open(Paths.transcripts) }
+            if Paths.transcriptsOverriddenByEnvironment {
+                Text("Folder set by TRANSCRIPT_DIR")
+            } else {
+                Button("Choose transcripts folder…") { state.chooseTranscriptsFolder() }
+                if UserDefaults.standard.string(forKey: Paths.transcriptDirKey) != nil {
+                    Button("Reset to default folder") { state.resetTranscriptsFolder() }
+                }
+            }
             Button("Quit") { NSApplication.shared.terminate(nil) }
         } label: {
-            Image(systemName: { if case .recording = state.status { return "record.circle.fill" } else { return "waveform" } }())
+            if case .recording = state.status {
+                Image(systemName: "record.circle.fill")
+            } else {
+                Image(nsImage: Self.menuBarIcon)
+            }
         }
     }
+
+    private static let menuBarIcon: NSImage = {
+        let image = NSImage(named: "muesliTemplate") ?? NSImage(systemSymbolName: "waveform", accessibilityDescription: "Muesli")!
+        image.isTemplate = true
+        image.size = NSSize(width: 18, height: 18)
+        return image
+    }()
 
     init() { DispatchQueue.main.async { [state] in state.boot() } }
 }
