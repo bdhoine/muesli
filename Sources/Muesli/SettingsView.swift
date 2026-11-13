@@ -20,7 +20,7 @@ enum SettingsWindow {
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
             w.toolbarStyle = .unified
             w.isReleasedWhenClosed = false
-            w.setContentSize(NSSize(width: 780, height: 560))
+            w.setContentSize(NSSize(width: 840, height: 560))
             if !w.setFrameUsingName(frameName) { w.center() }
             w.setFrameAutosaveName(frameName)
             window = w
@@ -88,7 +88,7 @@ struct SettingsView: View {
                 }
                 .tag(page)
             }
-            .navigationSplitViewColumnWidth(220)
+            .navigationSplitViewColumnWidth(260)
             .toolbar(removing: .sidebarToggle)
         } detail: {
             let page = navigation.page ?? .general
@@ -103,7 +103,7 @@ struct SettingsView: View {
             .navigationTitle(page.title)
         }
         .tint(.muesliAccent)
-        .frame(minWidth: 680, minHeight: 460)
+        .frame(minWidth: 740, minHeight: 460)
         .onChange(of: draft.autoStop) { state.update(draft) }
         .onChange(of: draft.endDelaySeconds) { state.update(draft) }
         .onChange(of: draft.recentLimit) { state.update(draft) }
