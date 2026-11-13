@@ -97,7 +97,7 @@ There is no download yet, so for now you build Muesli yourself. You need macOS 1
 git clone https://github.com/bdhoine/muesli.git
 cd muesli
 
-# The speech model (about 470 MB), downloaded once
+# The speech model (just under 500 MB), downloaded once
 mkdir -p ~/Library/Application\ Support/Muesli
 curl -L -o ~/Library/Application\ Support/Muesli/ggml-small.bin \
   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
