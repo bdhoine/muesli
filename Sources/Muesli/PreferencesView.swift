@@ -54,6 +54,36 @@ struct PreferencesView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
 
+            Section("Transcription") {
+                let chosen = draft.effectiveLanguages
+                ForEach(chosen, id: \.self) { code in
+                    HStack {
+                        Text(Languages.displayName(code))
+                        Spacer()
+                        Button("Remove") { draft.languages = chosen.filter { $0 != code } }
+                            .disabled(chosen.count == 1)
+                    }
+                }
+                Picker("Add language", selection: Binding<String>(
+                    get: { "" },
+                    set: { code in if !code.isEmpty { draft.languages = chosen + [code] } }
+                )) {
+                    Text("Choose…").tag("")
+                    ForEach(Languages.supported.filter { !chosen.contains($0) }
+                        .sorted { Languages.displayName($0) < Languages.displayName($1) }, id: \.self) { code in
+                        Text(Languages.displayName(code)).tag(code)
+                    }
+                }
+                HStack {
+                    Button("Use system default") { draft.languages = nil }
+                        .disabled(draft.languages == nil)
+                    Text("System default: \(Languages.defaults().map { Languages.displayName($0) }.joined(separator: ", "))")
+                        .foregroundStyle(.secondary)
+                }
+                Text("Muesli detects which of these is spoken; fewer languages means fewer mistakes. Changes apply from the next recording.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+
             Section("Claude") {
                 Toggle("Let Claude read Muesli's status and transcripts (MCP)", isOn: $draft.mcpEnabled)
                 Picker("Connection", selection: $draft.mcpMode) {
@@ -76,6 +106,7 @@ struct PreferencesView: View {
         .formStyle(.grouped)
         .frame(width: 540, height: 640)
         .onChange(of: draft.autoStop) { state.update(draft) }
+        .onChange(of: draft.languages) { state.update(draft) }
         .onChange(of: draft.mcpEnabled) { state.update(draft) }
         .onChange(of: draft.mcpMode) { state.update(draft) }
     }

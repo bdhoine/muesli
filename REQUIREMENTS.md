@@ -55,7 +55,7 @@ Storage
 
 Bridge control
 
-- A9. A Preferences window sets the transcripts folder, switches the Claude integration on or off (off by default) and selects Local or Remote. Remote starts and stops `muesli-mcp` in HTTP mode and shows whether it is running; the menu shows the same. Settings persist across launches in `config.json`.
+- A9. A Preferences window sets the transcripts folder, chooses the transcription languages (default: the OS language plus English; Whisper picks the most likely of these per chunk), switches the Claude integration on or off (off by default) and selects Local or Remote. Remote starts and stops `muesli-mcp` in HTTP mode and shows whether it is running; the menu shows the same. Settings persist across launches in `config.json`.
 - A10. The app itself opens no sockets and makes no network requests.
 
 ## 4. MCP server requirements (muesli-mcp)

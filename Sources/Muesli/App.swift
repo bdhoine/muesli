@@ -130,7 +130,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         if let missing = await Permissions.missingForRecording() {
             setStatus(.permissionMissing(missing)); return
         }
-        guard let transcriber = Transcriber() else {
+        guard let transcriber = Transcriber(languages: settings.effectiveLanguages) else {
             setStatus(.error("Whisper model missing: \(Paths.model.lastPathComponent)")); return
         }
         guard status == .idle else { return }                      // something else started while we were waiting

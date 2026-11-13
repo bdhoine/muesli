@@ -19,6 +19,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var allowedEmail = ""
     public var autoStop = false
     public var endDelaySeconds = 60
+    public var languages: [String]? = nil
 
     public init() {}
 
@@ -34,6 +35,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         allowedEmail = try c.decodeIfPresent(String.self, forKey: .allowedEmail) ?? d.allowedEmail
         autoStop = try c.decodeIfPresent(Bool.self, forKey: .autoStop) ?? d.autoStop
         endDelaySeconds = try c.decodeIfPresent(Int.self, forKey: .endDelaySeconds) ?? d.endDelaySeconds
+        languages = try c.decodeIfPresent([String].self, forKey: .languages)
     }
 
     public static func load() -> Preferences {
@@ -51,6 +53,11 @@ public struct Preferences: Codable, Equatable, Sendable {
         var t = Preferences.bareHost(teamDomain)
         if !t.isEmpty && !t.contains(".") { t += ".cloudflareaccess.com" }
         return t
+    }
+
+    public var effectiveLanguages: [String] {
+        let chosen = Languages.unique((languages ?? []).map(Languages.baseCode).filter(Languages.isSupported))
+        return chosen.isEmpty ? Languages.defaults() : chosen
     }
 
     public var normalizedHostname: String { Preferences.bareHost(publicHostname) }

@@ -22,7 +22,7 @@ open Muesli.app
 swift test
 ```
 
-The tests cover everything in `MuesliCore`: audio chunking, Whisper segment mapping, transcript files, detection rules, the meeting store, crash recovery and importing older transcripts, preferences, Claude Desktop registration and the MCP server over both transports. They need no microphone, calendar or network, and each test gets its own temporary data folders.
+The tests cover everything in `MuesliCore`: audio chunking, Whisper segment mapping, language selection, transcript files, detection rules, the meeting store, crash recovery and importing older transcripts, preferences, Claude Desktop registration and the MCP server over both transports. They need no microphone, calendar or network, and each test gets its own temporary data folders.
 
 `MuesliCore` and `muesli-mcp` use only Foundation, so `swift build` and `swift test` also work on Linux. `Package.swift` adds the app target and its whisper.cpp dependency on macOS only.
 
@@ -93,11 +93,11 @@ Environment variables: `TRANSCRIPT_DIR` overrides the transcripts folder; `MUESL
 | `Sources/Muesli/App.swift` | Menu bar UI, notifications, record/stop flow, `state.json` heartbeat |
 | `Sources/Muesli/MeetingDetector.swift` | Samples calendar, Teams and microphone use; feeds `DetectionLogic` |
 | `Sources/Muesli/AudioCapture.swift` | Mic and system audio capture, resampled to 16 kHz mono |
-| `Sources/Muesli/Transcriber.swift` | whisper.cpp via SwiftWhisper |
-| `Sources/Muesli/PreferencesView.swift` | Preferences window: folder, auto-stop, Claude connection |
+| `Sources/Muesli/Transcriber.swift` | whisper.cpp through its C API (the `whisper_cpp` module of SwiftWhisper): language detection limited to the configured languages, then transcription |
+| `Sources/Muesli/PreferencesView.swift` | Preferences window: folder, languages, auto-stop, Claude connection |
 | `Sources/Muesli/Bridge.swift` | Registers `muesli-mcp` with Claude Desktop (local) or runs it (remote) |
 | `Sources/Muesli/Permissions.swift` | Microphone and Screen Recording checks before recording |
-| `Sources/MuesliCore/` | Shared, Foundation-only: data types, paths, transcript files, meeting store, preferences, audio chunking, detection rules, Claude Desktop registration |
+| `Sources/MuesliCore/` | Shared, Foundation-only: data types, paths, transcript files, meeting store, preferences, transcription languages, audio chunking, detection rules, Claude Desktop registration |
 | `Sources/MuesliCore/MCP/` | The MCP server: tools, stdio and HTTP transports, Cloudflare Access token check, `doctor` |
 | `Sources/muesli-mcp/` | Entry point of the `muesli-mcp` executable |
 | `Tests/MuesliCoreTests/` | Unit tests |

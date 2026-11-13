@@ -16,7 +16,7 @@ Muesli sits in your menu bar, notices when a call or meeting starts, and offers 
 ## What it does
 
 - **Notices meetings.** Muesli watches your calendar and your microphone. When a meeting starts or a call is under way, it asks whether to transcribe.
-- **Transcribes on your Mac.** Speech is turned into text by Whisper running locally. It handles mixed languages, so a meeting that drifts between Dutch, English and French is fine.
+- **Transcribes on your Mac.** Speech is turned into text by Whisper running locally. Every 30 seconds it picks the language being spoken from the languages you chose, so a meeting that drifts between Dutch, English and French is fine.
 - **Captures both sides without a bot.** Your microphone is labelled "You" and the call audio is labelled "Others". Nobody sees a recorder join.
 - **Writes a file and steps aside.** Each meeting becomes a readable Markdown file and a JSON file with the same content. What you do with them is up to you.
 - **Knows when the call ends.** Muesli asks whether to stop, or stops by itself if you prefer.
@@ -68,7 +68,9 @@ Muesli lives in the menu bar and starts when you log in.
 2. The menu bar icon changes while Muesli records. You can also start and stop from the menu at any time.
 3. Stop, and the transcript appears in your folder and in the menu's recent list.
 
-**Preferences…** in the menu lets you choose the transcripts folder, decide whether Muesli stops automatically when a call ends, and set up the Claude connection.
+**Preferences…** in the menu lets you choose the transcripts folder, the languages your meetings are in, whether Muesli stops automatically when a call ends, and the Claude connection.
+
+By default Muesli listens for your Mac's language plus English. Add the other languages your meetings use under **Preferences… → Transcription**. Keep the list short: the fewer languages, the fewer mistakes.
 
 ## Muesli and Claude
 

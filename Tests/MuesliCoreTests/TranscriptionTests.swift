@@ -146,4 +146,39 @@ final class TranscriptionTests: IsolatedTestCase {
         var isDir: ObjCBool = false
         XCTAssertTrue(FileManager.default.fileExists(atPath: transcriptsDir.path, isDirectory: &isDir) && isDir.boolValue)   // created on demand
     }
+
+    // MARK: Languages
+
+    func testDefaultLanguagesAreOSLanguagePlusEnglish() {
+        XCTAssertEqual(Languages.defaults(preferred: ["en-US"]), ["en"])
+        XCTAssertEqual(Languages.defaults(preferred: ["nl-BE", "en-US"]), ["nl", "en"])
+        XCTAssertEqual(Languages.defaults(preferred: ["fr"]), ["fr", "en"])
+        XCTAssertEqual(Languages.defaults(preferred: ["xx-YY"]), ["en"])
+        XCTAssertEqual(Languages.defaults(preferred: []), ["en"])
+    }
+
+    func testBestLanguageIgnoresLanguagesOutsideTheSet() {
+        let probs: [String: Float] = ["fi": 0.6, "nl": 0.3, "en": 0.1]
+        XCTAssertEqual(Languages.best(probabilities: probs, allowed: ["en", "nl"]), "nl")
+        XCTAssertNil(Languages.best(probabilities: probs, allowed: []))
+    }
+
+    func testLanguagesMissingFromOldConfigUseTheDefault() throws {
+        let p = try JSONDecoder().decode(Preferences.self, from: Data(#"{"mcpEnabled": true}"#.utf8))
+        XCTAssertNil(p.languages)
+        XCTAssertEqual(p.effectiveLanguages, Languages.defaults())
+    }
+
+    func testChosenLanguagesRoundTripAndAreValidated() throws {
+        var p = Preferences()
+        p.languages = ["en", "nl"]
+        p.save()
+        XCTAssertEqual(Preferences.load().languages, ["en", "nl"])
+        XCTAssertEqual(Preferences.load().effectiveLanguages, ["en", "nl"])
+
+        p.languages = ["nl-BE", "xx", "nl"]
+        XCTAssertEqual(p.effectiveLanguages, ["nl"])
+        p.languages = ["xx"]
+        XCTAssertEqual(p.effectiveLanguages, Languages.defaults())
+    }
 }
