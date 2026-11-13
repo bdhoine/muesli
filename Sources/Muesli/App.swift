@@ -8,8 +8,8 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
     enum Status: Equatable { case idle, recording(String), saving, error(String), permissionMissing(Permission) }
 
     private(set) var status: Status = .idle
-    private(set) var recent: [URL] = Store.recent()
     private(set) var settings = Preferences.load()
+    private(set) var recent: [RecentTranscript] = []
     let bridge = BridgeController()
 
     private var pending: DetectedMeeting?
@@ -25,7 +25,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         try? SMAppService.mainApp.register()                       // always run: start at login
         MeetingStore.recoverInterrupted()                          // keep what an interrupted recording transcribed
         MeetingStore.importTranscripts()
-        recent = Store.recent()
+        refreshRecent()
         lastReady = MeetingStore.latestReady().map { .init(id: $0.id, title: $0.title, endedAt: $0.endedAt) }
 
         let center = UNUserNotificationCenter.current()
@@ -49,10 +49,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
 
         // state.json is the heartbeat other processes read; keep it fresh.
         heartbeat = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.publish() }
-        }
-        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.bridge.shutdown() }
+            Task { @MainActor in self?.syncWithStore() }
         }
         publish()
         bridge.apply(settings)
@@ -68,6 +65,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
     /// Writes state.json: what the app is doing right now.
     private func publish() {
         var out = AppStatus(appState: "idle", lastReady: lastReady)
+        out.transcriptsFolder = Paths.transcripts.path
         switch status {
         case .idle: break
         case .recording: out.appState = "recording"
@@ -189,7 +187,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         MeetingStore.save(m)
         Store.save(m)
         lastReady = .init(id: m.id, title: m.title, endedAt: m.endedAt)
-        recent = Store.recent()
+        refreshRecent()
         current = nil
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["ended"])
         setStatus(.idle)
@@ -201,13 +199,24 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
 
     func update(_ new: Preferences) {
         guard new != settings else { return }
-        let bridgeChanged = new.mcpEnabled != settings.mcpEnabled || new.mcpMode != settings.mcpMode
-            || new.httpPort != settings.httpPort || new.teamDomain != settings.teamDomain
-            || new.audience != settings.audience || new.allowedEmail != settings.allowedEmail
+        let bridgeChanged = new.mcpEnabled != settings.mcpEnabled || new.claudeDesktopConfigEntry != settings.claudeDesktopConfigEntry
         settings = new
         new.save()
         detector.endDelay = TimeInterval(new.endDelaySeconds)
+        refreshRecent()
         if bridgeChanged { bridge.apply(new) }
+    }
+
+    private func syncWithStore() {
+        if current == nil {
+            lastReady = MeetingStore.latestReady().map { .init(id: $0.id, title: $0.title, endedAt: $0.endedAt) }
+        }
+        refreshRecent()
+        publish()
+    }
+
+    func refreshRecent() {
+        recent = Store.recentTranscripts(limit: settings.effectiveRecentLimit)
     }
 
     func chooseTranscriptsFolder() {
@@ -222,12 +231,12 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Paths.setTranscripts(url)
-        recent = Store.recent()
+        refreshRecent()
     }
 
     func resetTranscriptsFolder() {
         Paths.setTranscripts(nil)
-        recent = Store.recent()
+        refreshRecent()
     }
 }
 
@@ -239,34 +248,62 @@ struct MuesliApp: App {
         MenuBarExtra {
             switch state.status {
             case .idle:
-                Button("Start transcribing") { Task { await state.start(.init(title: "Meeting", source: "manual")) } }
-            case .recording(let t):
-                Text("Recording: \(t)")
-                Button("Stop and save transcript") { Task { await state.stop() } }
-            case .saving: Text("Finishing transcript...")
-            case .error(let e):
-                Text(e)
-                Button("Dismiss") { state.dismiss() }
-            case .permissionMissing(let p):
-                Text(p.message)
-                Button("Open Privacy Settings") { p.openSettings() }
-                Button("Try again") { state.dismiss() }
-            }
-            Divider()
-            ForEach(state.recent, id: \.self) { url in
-                Button(url.deletingPathExtension().lastPathComponent) { NSWorkspace.shared.open(url) }
-            }
-            Divider()
-            Button("Open transcripts folder") { NSWorkspace.shared.open(Paths.transcripts) }
-            if state.settings.mcpEnabled {
-                switch state.settings.mcpMode {
-                case .local: Text("Claude: local (Claude Desktop)")
-                case .remote: Text(state.bridge.remoteRunning ? "Claude.ai bridge: running" : "Claude.ai bridge: not running")
+                Button { Task { await state.start(.init(title: "Meeting", source: "manual")) } } label: {
+                    Label("Start Transcribing", systemImage: "record.circle")
+                }
+            case .recording(let title):
+                Section("Recording · \(title)") {
+                    Button { Task { await state.stop() } } label: {
+                        Label("Stop and Save", systemImage: "stop.circle")
+                    }
+                }
+            case .saving:
+                Text("Saving Transcript…")
+            case .error(let message):
+                Section("Something Went Wrong") {
+                    Text(message)
+                    Button("Dismiss") { state.dismiss() }
+                }
+            case .permissionMissing(let permission):
+                Section("Permission Needed") {
+                    Text(permission.message)
+                    Button { permission.openSettings() } label: {
+                        Label("Open Privacy Settings…", systemImage: "lock.shield")
+                    }
+                    Button("Try Again") { state.dismiss() }
                 }
             }
-            Button("Preferences…") { PreferencesWindow.show(state) }
-                .keyboardShortcut(",")
-            Button("Quit") { NSApplication.shared.terminate(nil) }
+
+            if state.settings.effectiveRecentLimit > 0 {
+                Divider()
+                Section("Recent Transcripts") {
+                    if state.recent.isEmpty {
+                        Text("No transcripts yet")
+                    } else {
+                        ForEach(state.recent) { transcript in
+                            Button { NSWorkspace.shared.open(transcript.url) } label: {
+                                Text(transcript.title)
+                                Text(transcript.subtitle())
+                            }
+                        }
+                    }
+                }
+            }
+
+            Divider()
+            Button { NSWorkspace.shared.open(Paths.transcripts) } label: {
+                Label("Open Transcripts Folder", systemImage: "folder")
+            }
+
+            Divider()
+            Button { SettingsWindow.show(state) } label: {
+                Label("Settings…", systemImage: "gearshape")
+            }
+            .keyboardShortcut(",")
+            Button { NSApplication.shared.terminate(nil) } label: {
+                Label("Quit Muesli", systemImage: "power")
+            }
+            .keyboardShortcut("q")
         } label: {
             if case .recording = state.status {
                 Image(systemName: "record.circle.fill")

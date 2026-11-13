@@ -3,7 +3,8 @@ import Foundation
 /// Adds or removes the "muesli" entry in Claude Desktop's MCP server list.
 /// Every other key in that file is left exactly as it was.
 public enum ClaudeDesktopConfig {
-    public static let key = "muesli"
+    public static let key = "Muesli"
+    public static let legacyKeys = ["muesli"]
 
     public static var defaultDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Claude", isDirectory: true)
@@ -19,9 +20,11 @@ public enum ClaudeDesktopConfig {
         }
         guard var root = read(file) else { return "Could not read \(file.lastPathComponent); left it untouched. Add the server by hand." }
         var servers = root["mcpServers"] as? [String: Any] ?? [:]
-        if let existing = servers[key] as? [String: Any], existing["command"] as? String == helper.path {
+        let hasLegacy = legacyKeys.contains { servers[$0] != nil }
+        if !hasLegacy, let existing = servers[key] as? [String: Any], existing["command"] as? String == helper.path {
             return "Registered with Claude Desktop."
         }
+        for legacy in legacyKeys { servers[legacy] = nil }
         servers[key] = ["command": helper.path, "args": [String]()] as [String: Any]
         root["mcpServers"] = servers
         return write(root, to: file) ? "Registered with Claude Desktop. Quit and reopen Claude Desktop to load it." : "Could not write \(file.lastPathComponent)."
@@ -30,8 +33,9 @@ public enum ClaudeDesktopConfig {
     public static func unregister(directory: URL = defaultDirectory) -> String {
         let file = file(in: directory)
         guard FileManager.default.fileExists(atPath: file.path), var root = read(file),
-              var servers = root["mcpServers"] as? [String: Any], servers[key] != nil else { return "Off" }
-        servers[key] = nil
+              var servers = root["mcpServers"] as? [String: Any],
+              ([key] + legacyKeys).contains(where: { servers[$0] != nil }) else { return "Off" }
+        for name in [key] + legacyKeys { servers[name] = nil }
         root["mcpServers"] = servers
         return write(root, to: file) ? "Removed from Claude Desktop (takes effect when Claude Desktop restarts)." : "Could not write \(file.lastPathComponent)."
     }

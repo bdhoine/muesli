@@ -34,10 +34,13 @@ final class MCPTests: IsolatedTestCase {
         XCTAssertNil(rpc("notifications/initialized", id: nil))
     }
 
-    func testToolsListIsReadOnly() {
+    func testToolsListMarksWhichToolsChangeData() {
         let tools = (rpc("tools/list")!["result"] as! [String: Any])["tools"] as! [[String: Any]]
         XCTAssertEqual(Set(tools.map { $0["name"] as! String }), Tools.names)
-        for t in tools { XCTAssertEqual((t["annotations"] as! [String: Any])["readOnlyHint"] as? Bool, true) }
+        for t in tools {
+            let readOnly = (t["annotations"] as! [String: Any])["readOnlyHint"] as? Bool
+            XCTAssertEqual(readOnly, Tools.readNames.contains(t["name"] as! String))
+        }
     }
 
     func testUnknownMethodAndParseError() {
@@ -172,18 +175,16 @@ final class MCPTests: IsolatedTestCase {
     func testPreferencesRoundTripAndDefaults() throws {
         XCTAssertEqual(Preferences.load(), Preferences())
         var s = Preferences()
-        s.mcpEnabled = true; s.mcpMode = .remote; s.teamDomain = "https://MyTeam.cloudflareaccess.com/"
+        s.mcpEnabled = true; s.claudeDesktopConfigEntry = true; s.recentLimit = 3
         s.save()
         XCTAssertEqual(Preferences.load(), s)
-        XCTAssertEqual(s.normalizedTeamDomain, "myteam.cloudflareaccess.com")
-        s.teamDomain = "myteam"
-        XCTAssertEqual(s.normalizedTeamDomain, "myteam.cloudflareaccess.com")
-        XCTAssertNotNil(s.remoteProblem)
-        s.audience = "aud"; s.allowedEmail = "me@example.com"
-        XCTAssertNil(s.remoteProblem)
 
         try Data(#"{"mcpEnabled":true}"#.utf8).write(to: Paths.config)             // older file with fewer keys
-        XCTAssertEqual(Preferences.load().httpPort, Preferences().httpPort)
+        XCTAssertEqual(Preferences.load().recentLimit, Preferences().recentLimit)
+        XCTAssertTrue(Preferences.load().mcpEnabled)
+
+        let remoteEra = #"{"mcpEnabled":true,"mcpMode":"remote","httpPort":8747,"teamDomain":"t","audience":"a","allowedEmail":"e","remoteProvider":"cloudflare"}"#
+        try Data(remoteEra.utf8).write(to: Paths.config)                           // files from before remote mode was removed
         XCTAssertTrue(Preferences.load().mcpEnabled)
     }
 
@@ -191,111 +192,5 @@ final class MCPTests: IsolatedTestCase {
         let old = #"{"id":"a","title":"t","source":"manual","startedAt":"2026-11-10T14:30:00Z","attendees":[],"transcript":[]}"#
         let m = try JSONCoding.decoder().decode(Meeting.self, from: Data(old.utf8))
         XCTAssertEqual(m.state, .ready)
-    }
-
-    // MARK: HTTP parsing
-
-    private func parse(_ raw: String, chunkSize: Int = 7) -> Result<HTTPRequest, HTTPServer.ParseError> {
-        var bytes = Array(raw.utf8)
-        return HTTPServer.parse(HTTPServer.Reader {
-            let n = min(chunkSize, bytes.count)
-            defer { bytes.removeFirst(n) }
-            return Array(bytes.prefix(n))
-        })
-    }
-
-    func testParsesContentLengthAndChunkedBodies() throws {
-        let plain = try parse("POST /mcp?x=1 HTTP/1.1\r\nHost: a\r\nContent-Length: 5\r\nCf-Access-Jwt-Assertion: tok\r\n\r\nhello").get()
-        XCTAssertEqual(plain.method, "POST")
-        XCTAssertEqual(plain.path, "/mcp")
-        XCTAssertEqual(plain.headers["cf-access-jwt-assertion"], "tok")
-        XCTAssertEqual(String(decoding: plain.body, as: UTF8.self), "hello")
-
-        let chunked = try parse("POST /mcp HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nhel\r\n2;ext=1\r\nlo\r\n0\r\n\r\n").get()
-        XCTAssertEqual(String(decoding: chunked.body, as: UTF8.self), "hello")
-    }
-
-    func testRejectsOversizedAndBrokenRequests() {
-        guard case .failure(let big) = parse("POST /mcp HTTP/1.1\r\nContent-Length: 99999999\r\n\r\n") else { return XCTFail() }
-        XCTAssertEqual(big.status, 413)
-        guard case .failure(let short) = parse("POST /mcp HTTP/1.1\r\nContent-Length: 10\r\n\r\nabc") else { return XCTFail() }
-        XCTAssertEqual(short.status, 400)
-        guard case .failure = parse("garbage\r\n\r\n") else { return XCTFail() }
-    }
-
-    // MARK: Cloudflare Access token checks
-
-    private func token(_ claims: [String: Any], alg: String = "RS256", kid: String = "k1") -> String {
-        func part(_ o: [String: Any]) -> String {
-            try! JSONSerialization.data(withJSONObject: o).base64EncodedString()
-                .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-        }
-        return "\(part(["alg": alg, "kid": kid])).\(part(claims)).c2ln"
-    }
-
-    private func verifier(signatureValid: Bool = true) -> AccessVerifier {
-        AccessVerifier(teamDomain: "team.cloudflareaccess.com", audience: "aud-tag", allowedEmail: "Me@Example.com",
-                       fetchKeys: { _ in ["k1": .init(n: Data([1]), e: Data([1]))] },
-                       checkSignature: { _, _, _ in signatureValid })
-    }
-
-    private func claims(_ overrides: [String: Any] = [:]) -> [String: Any] {
-        var c: [String: Any] = ["iss": "https://team.cloudflareaccess.com", "aud": ["aud-tag"],
-                                "exp": Date().timeIntervalSince1970 + 600, "email": "me@example.com"]
-        for (k, v) in overrides { c[k] = v }
-        return c
-    }
-
-    private func reason(_ r: Result<String, AccessVerifier.Failure>) -> String? {
-        if case .failure(let f) = r { return f.reason }
-        return nil
-    }
-
-    func testAccessTokenAccepted() throws {
-        XCTAssertEqual(try verifier().verify(token(claims())).get(), "me@example.com")
-    }
-
-    func testAccessTokenRejections() {
-        XCTAssertEqual(reason(verifier(signatureValid: false).verify(token(claims()))), "bad signature")
-        XCTAssertEqual(reason(verifier().verify(token(claims(["email": "other@example.com"])))), "identity not allowed")
-        XCTAssertEqual(reason(verifier().verify(token(claims(["aud": ["someone-else"]])))), "wrong audience")
-        XCTAssertEqual(reason(verifier().verify(token(claims(["iss": "https://evil.example"])))), "wrong issuer")
-        XCTAssertEqual(reason(verifier().verify(token(claims(["exp": Date().timeIntervalSince1970 - 5])))), "expired")
-        XCTAssertEqual(reason(verifier().verify(token(claims(), alg: "none"))), "unsupported algorithm")
-        XCTAssertEqual(reason(verifier().verify(token(claims(), alg: "HS256"))), "unsupported algorithm")
-        XCTAssertEqual(reason(verifier().verify(token(claims(), kid: "unknown"))), "unknown signing key")
-        XCTAssertEqual(reason(verifier().verify("not-a-token")), "malformed token")
-    }
-
-    func testRouteRequiresTokenBeforeAnythingElse() {
-        let v = verifier()
-        let body = Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#.utf8)
-        XCTAssertEqual(MCPMain.route(HTTPRequest(method: "POST", path: "/mcp", headers: [:], body: body), verifier: v).status, 401)
-        XCTAssertEqual(MCPMain.route(HTTPRequest(method: "GET", path: "/nope", headers: [:], body: Data()), verifier: v).status, 401)
-        let bad = ["cf-access-jwt-assertion": token(claims(["email": "x@y.z"]))]
-        XCTAssertEqual(MCPMain.route(HTTPRequest(method: "POST", path: "/mcp", headers: bad, body: body), verifier: v).status, 401)
-
-        let good = ["cf-access-jwt-assertion": token(claims())]
-        XCTAssertEqual(MCPMain.route(HTTPRequest(method: "POST", path: "/mcp", headers: good, body: body), verifier: v).status, 200)
-        XCTAssertEqual(MCPMain.route(HTTPRequest(method: "GET", path: "/mcp", headers: good, body: Data()), verifier: v).status, 405)
-        XCTAssertEqual(MCPMain.route(HTTPRequest(method: "POST", path: "/other", headers: good, body: body), verifier: v).status, 404)
-        let note = Data(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.utf8)
-        XCTAssertEqual(MCPMain.route(HTTPRequest(method: "POST", path: "/mcp", headers: good, body: note), verifier: v).status, 202)
-    }
-
-    func testRemoteToolCallsAreAudited() throws {
-        MeetingStore.save(meeting("m1", state: .ready))
-        let body = Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_transcript","arguments":{"id":"m1"}}}"#.utf8)
-        let headers = ["cf-access-jwt-assertion": token(claims())]
-        XCTAssertEqual(MCPMain.route(HTTPRequest(method: "POST", path: "/mcp", headers: headers, body: body), verifier: verifier()).status, 200)
-        let log = try String(contentsOf: Paths.auditLog, encoding: .utf8)
-        XCTAssertTrue(log.contains(#""tool":"get_transcript""#))
-        XCTAssertTrue(log.contains(#""meetingId":"m1""#))
-        XCTAssertTrue(log.contains(#""email":"me@example.com""#))
-    }
-
-    func testPKCS1Encoding() {
-        let der = AccessVerifier.pkcs1(.init(n: Data([0x00, 0xC1, 0x02]), e: Data([0x01, 0x00, 0x01])))
-        XCTAssertEqual(Array(der), [0x30, 0x0A, 0x02, 0x03, 0x00, 0xC1, 0x02, 0x02, 0x03, 0x01, 0x00, 0x01])
     }
 }

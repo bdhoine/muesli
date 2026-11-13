@@ -3,23 +3,18 @@ import Foundation
 /// Preferences shared by the app (writes) and muesli-mcp (reads): config.json.
 /// The transcripts folder stays in the app's UserDefaults; muesli-mcp does not need it.
 public struct Preferences: Codable, Equatable, Sendable {
-    public enum MCPMode: String, Codable, Sendable { case local, remote }
-
     public var mcpEnabled = false
-    public var mcpMode: MCPMode = .local
-    /// Remote mode: local port cloudflared forwards to.
-    public var httpPort = 8747
-    /// Remote mode: public hostname of the tunnel, e.g. muesli.example.com (shown in the UI, used by doctor).
-    public var publicHostname = ""
-    /// Remote mode: Cloudflare Zero Trust team domain, e.g. myteam.cloudflareaccess.com.
-    public var teamDomain = ""
-    /// Remote mode: Application Audience (AUD) tag of the Access application.
-    public var audience = ""
-    /// Remote mode: the only identity allowed to call the server.
-    public var allowedEmail = ""
+    public var claudeDesktopConfigEntry = false
     public var autoStop = false
     public var endDelaySeconds = 60
     public var languages: [String]? = nil
+    public var recentLimit = 5
+
+    public static let recentLimitOptions = [0, 3, 5, 10]
+    public static let maxRecentLimit = 10
+    public static let endDelayOptions = [30, 60, 120, 300]
+
+    public var effectiveRecentLimit: Int { min(max(recentLimit, 0), Preferences.maxRecentLimit) }
 
     public init() {}
 
@@ -27,15 +22,11 @@ public struct Preferences: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Preferences()
         mcpEnabled = try c.decodeIfPresent(Bool.self, forKey: .mcpEnabled) ?? d.mcpEnabled
-        mcpMode = try c.decodeIfPresent(MCPMode.self, forKey: .mcpMode) ?? d.mcpMode
-        httpPort = try c.decodeIfPresent(Int.self, forKey: .httpPort) ?? d.httpPort
-        publicHostname = try c.decodeIfPresent(String.self, forKey: .publicHostname) ?? d.publicHostname
-        teamDomain = try c.decodeIfPresent(String.self, forKey: .teamDomain) ?? d.teamDomain
-        audience = try c.decodeIfPresent(String.self, forKey: .audience) ?? d.audience
-        allowedEmail = try c.decodeIfPresent(String.self, forKey: .allowedEmail) ?? d.allowedEmail
+        claudeDesktopConfigEntry = try c.decodeIfPresent(Bool.self, forKey: .claudeDesktopConfigEntry) ?? d.claudeDesktopConfigEntry
         autoStop = try c.decodeIfPresent(Bool.self, forKey: .autoStop) ?? d.autoStop
         endDelaySeconds = try c.decodeIfPresent(Int.self, forKey: .endDelaySeconds) ?? d.endDelaySeconds
         languages = try c.decodeIfPresent([String].self, forKey: .languages)
+        recentLimit = try c.decodeIfPresent(Int.self, forKey: .recentLimit) ?? d.recentLimit
     }
 
     public static func load() -> Preferences {
@@ -48,34 +39,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         try? JSONCoding.encoder().encode(self).write(to: Paths.config, options: .atomic)
     }
 
-    /// "myteam", "https://myteam.cloudflareaccess.com/" and "myteam.cloudflareaccess.com" all mean the same.
-    public var normalizedTeamDomain: String {
-        var t = Preferences.bareHost(teamDomain)
-        if !t.isEmpty && !t.contains(".") { t += ".cloudflareaccess.com" }
-        return t
-    }
-
     public var effectiveLanguages: [String] {
         let chosen = Languages.unique((languages ?? []).map(Languages.baseCode).filter(Languages.isSupported))
         return chosen.isEmpty ? Languages.defaults() : chosen
-    }
-
-    public var normalizedHostname: String { Preferences.bareHost(publicHostname) }
-
-    /// What is still missing before remote mode can start; nil when complete.
-    public var remoteProblem: String? {
-        if normalizedTeamDomain.isEmpty { return "Team domain is missing" }
-        if audience.trimmingCharacters(in: .whitespaces).isEmpty { return "Audience (AUD) tag is missing" }
-        if allowedEmail.trimmingCharacters(in: .whitespaces).isEmpty { return "Allowed email is missing" }
-        if !(1024...65535).contains(httpPort) { return "Port must be between 1024 and 65535" }
-        return nil
-    }
-
-    static func bareHost(_ s: String) -> String {
-        var t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        for p in ["https://", "http://"] where t.hasPrefix(p) { t.removeFirst(p.count) }
-        if let slash = t.firstIndex(of: "/") { t = String(t[..<slash]) }
-        return t
     }
 }
 
@@ -115,6 +81,7 @@ public struct AppStatus: Codable, Sendable {
     public var current: Current?
     public var lastReady: LastReady?
     public var error: String?
+    public var transcriptsFolder: String?
 
     public init(appState: String, detected: Detected? = nil, current: Current? = nil, lastReady: LastReady? = nil, error: String? = nil) {
         self.appState = appState; self.detected = detected; self.current = current; self.lastReady = lastReady; self.error = error

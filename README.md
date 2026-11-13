@@ -29,7 +29,7 @@ Muesli sits in your menu bar, notices when a call or meeting starts, and offers 
 - No account, no sign-up, no telemetry.
 - Transcripts are ordinary files in a folder you choose.
 
-The one exception is the optional Claude connection: a transcript Claude reads is sent to Anthropic, as with anything else you share with Claude.
+The one exception is the optional AI assistant connection: a transcript an assistant reads is sent to its provider (Anthropic, for Claude), as with anything else you share with it.
 
 Please tell the people you meet with that you are transcribing, and check your company's policy first.
 
@@ -66,30 +66,25 @@ Muesli lives in the menu bar and starts when you log in.
 
 1. A notification appears when a meeting starts: **Start transcribing**.
 2. The menu bar icon changes while Muesli records. You can also start and stop from the menu at any time.
-3. Stop, and the transcript appears in your folder and in the menu's recent list.
+3. Stop, and the transcript appears in your folder and under **Recent Transcripts** in the menu (5 by default; choose 0, 3, 5 or 10 in Settings → General).
 
-**Preferences…** in the menu lets you choose the transcripts folder, the languages your meetings are in, whether Muesli stops automatically when a call ends, and the Claude connection.
+**Settings…** (⌘,) in the menu has three pages: **General** (transcripts folder, how many recent transcripts the menu shows, whether Muesli stops automatically when a call ends and after how long), **Transcription** (languages) and **AI Assistants** (access for Claude and other assistants).
 
-By default Muesli listens for your Mac's language plus English. Add the other languages your meetings use under **Preferences… → Transcription**. Keep the list short: the fewer languages, the fewer mistakes.
+By default Muesli listens for your Mac's language plus English. Add the other languages your meetings use under **Settings… → Transcription**. Keep the list short: the fewer languages, the fewer mistakes.
 
-## Muesli and Claude
+## Muesli and AI assistants
 
-Switch it on under **Preferences… → Claude**, then ask Claude things like:
+Muesli speaks the Model Context Protocol (MCP), so Claude and other assistants (Claude Code, Codex, Gemini CLI, VS Code, Cursor) can read it. Switch it on under **Settings… → AI Assistants**, then ask things like:
 
 - "Is Muesli recording right now?"
 - "Is the transcript of my last meeting ready?"
 - "Summarise this morning's weekly sync and list the action items."
 
-There are two ways to connect:
+Everything stays on your Mac: the assistant starts Muesli's MCP server itself and talks to it directly, and nothing is exposed to the network. Claude Desktop gets Muesli as an extension, with its name and icon, in one click. For the other assistants, Settings shows the command or config to copy. On your phone there is no direct connection, but a Claude conversation started on your Mac syncs to the Claude app.
 
-| | Works in | How |
-|---|---|---|
-| **Local** | Claude Desktop and Claude Code on the same Mac | Nothing is exposed to the network. Muesli registers itself with Claude Desktop. |
-| **Remote** | claude.ai in the browser and on your phone | Through your own Cloudflare Tunnel, protected by Cloudflare Access. Your Mac must be awake. |
+Assistants can read transcripts and manage finished meetings: rename them, set attendees, rename speakers and delete them (deleted files go to the Trash). They cannot start or stop a recording, and they have to ask: Muesli cannot notify a conversation when a transcript is ready. What an assistant reads is sent to its provider.
 
-Claude can only read. It cannot start or stop a recording, and it has to ask: Muesli cannot notify a conversation when a transcript is ready.
-
-Setup steps for both are in [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md).
+Setup steps are in [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md).
 
 ## Install
 
@@ -129,7 +124,7 @@ If recording reports that a permission is off, choose **Open Privacy Settings** 
 
 ## Status
 
-Muesli is young. Transcription works and has been tested on real meetings. The Preferences window, end-of-call detection and the Claude connection are new and have had less testing; the remote connection to claude.ai has not yet been tried end to end. Details are in [CONTRIBUTING.md](CONTRIBUTING.md#what-is-verified).
+Muesli is young. Transcription works and has been tested on real meetings. The Settings window, end-of-call detection and the AI assistant connection are new and have had less testing. Details are in [CONTRIBUTING.md](CONTRIBUTING.md#what-is-verified).
 
 ## Contributing
 

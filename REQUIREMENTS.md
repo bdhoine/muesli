@@ -1,22 +1,24 @@
-# Muesli requirements: Claude integration
+# Muesli requirements: AI assistant integration
 
-Status: implemented, except where section 10 says otherwise. Scope: what must be built so Claude (Desktop, Claude Code, claude.ai web and mobile) can ask Muesli whether it is recording, whether a transcript is ready, and fetch that transcript.
+Status: implemented, except where section 10 says otherwise. Scope: what must be built so Claude and other MCP clients on the same Mac (Claude Desktop, Claude Code, Codex CLI, Gemini CLI, VS Code, Cursor) can ask Muesli whether it is recording, whether a transcript is ready, fetch that transcript and manage finished meetings.
+
+Change on 2026-11-13: remote access was removed in favour of local-only. Section 5 lists what went.
 
 ## 1. Goals and non-goals
 
 Goals
 
 - G1. Muesli detects calls and meetings in progress, transcribes them on-device and writes a file. No cloud or API is involved in capture, detection or transcription.
-- G2. Claude can read Muesli's state and transcripts from every Claude surface, including claude.ai in the browser and on mobile.
-- G3. The Claude integration is an optional add-on. With it switched off, Muesli behaves exactly as it does today and makes no network connections.
+- G2. Claude and other MCP clients running on the same Mac can read Muesli's state and transcripts, and manage finished meetings.
+- G3. The integration is an optional add-on, off by default. Neither the app nor `muesli-mcp` exposes anything to the network.
 
 Non-goals
 
-- Starting or stopping a recording from Claude (read-only for now).
+- Starting or stopping a recording from Claude.
 - Summaries, action items or any other processing of the transcript; Claude does that.
 - Per-person speaker diarization.
 - Storing transcripts anywhere other than the Mac.
-- Availability while the Mac is asleep or offline.
+- Access from another device or over the internet, including claude.ai in the browser and on mobile.
 
 ## 2. Architecture
 
@@ -25,11 +27,9 @@ Muesli.app                 no network; capture, detection, whisper.cpp
    │ writes state + meetings to ~/Library/Application Support/Muesli/
    │ writes .md/.json to the transcripts folder (unchanged)
    ▼
-muesli-mcp                 separate executable, read-only MCP server
-   ├─ stdio                      ─► Claude Desktop, Claude Code      (fully local)
-   └─ HTTP on 127.0.0.1:<port>   ─► cloudflared ─► Cloudflare edge (Access + OAuth)
-                                                     ─► https://muesli.<your-domain>/mcp
-                                                     ─► claude.ai custom connector
+muesli-mcp                 separate executable, MCP server over stdio
+   ▲
+   └─ started by the assistant on the same Mac (Claude Desktop, Claude Code, Codex CLI, …)
 ```
 
 Swift package layout: a `MuesliCore` library (models, store, state), the `Muesli` app target, and a `muesli-mcp` executable target that depends only on `MuesliCore`.
@@ -53,84 +53,72 @@ Storage
 - A7. The `.md` and `.json` files in the user's transcripts folder are still written when the meeting becomes `ready`. Their format does not change, apart from an added `state` field in the JSON.
 - A8. Audio is never written to disk.
 
-Bridge control
+Assistant access
 
-- A9. A Preferences window sets the transcripts folder, chooses the transcription languages (default: the OS language plus English; Whisper picks the most likely of these per chunk), switches the Claude integration on or off (off by default) and selects Local or Remote. Remote starts and stops `muesli-mcp` in HTTP mode and shows whether it is running; the menu shows the same. Settings persist across launches in `config.json`.
+- A9. A Settings window sets the transcripts folder, chooses the transcription languages (default: the OS language plus English; Whisper picks the most likely of these per chunk) and has one switch, "Let AI assistants use Muesli" (off by default). It installs the Claude Desktop extension, or adds a config-file entry instead (M9), and shows the setup command or config for other assistants with a Copy button. Settings persist across launches in `config.json`.
 - A10. The app itself opens no sockets and makes no network requests.
 
 ## 4. MCP server requirements (muesli-mcp)
 
-- M1. Reads only from `~/Library/Application Support/Muesli/`. It never touches audio and never writes meeting data.
-- M2. Supports two transports from the same binary: stdio (default) and Streamable HTTP (`--http <port>`), bound to `127.0.0.1` only.
-- M3. Tools, all read-only and annotated as such:
+- M1. Reads from `~/Library/Application Support/Muesli/`. It never touches audio. It writes meeting data only through the management tools (M3), for meetings that are no longer recording.
+- M2. Speaks MCP over stdio only. It is started by the assistant and never opens a socket.
+- M3. Tools. The first three are read-only and annotated as such; the management tools are annotated as writes, delete as destructive:
 
   | Tool | Input | Output |
   |---|---|---|
   | `get_status` | none | `appRunning` (heartbeat younger than 30 s), `appState`, `detected`, `current`, `lastReady`, `error` |
   | `list_transcripts` | `since?`, `limit?` (default 20), `state?` | id, title, source, startedAt, endedAt, state, durationMinutes, attendees |
   | `get_transcript` | `id`, `format?` (`markdown` \| `json`), `fromSeconds?`, `toSeconds?` | transcript text or segments, `state`, `partial`, `truncated`, `nextFromSeconds` |
+  | `rename_transcript` | `id`, `title` | updated meeting summary; exported files renamed |
+  | `set_attendees` | `id`, `attendees` | updated meeting summary |
+  | `rename_speaker` | `id`, `from`, `to` | updated meeting summary |
+  | `delete_transcript` | `id` | `deleted`, `title`, `movedToTrash` |
 
 - M4. `get_transcript` works on a meeting that is still `recording` and returns what exists so far with `partial: true`.
 - M5. A single response is capped (default about 60,000 characters). Longer transcripts are paged with `fromSeconds` and `nextFromSeconds`.
 - M6. If the heartbeat is stale, `get_status` reports `appRunning: false` and never reports `recording`.
-- M7. In HTTP mode every request must carry a valid Cloudflare Access JWT (`Cf-Access-Jwt-Assertion`). The server checks the signature against the team's public keys, the application audience tag and the allowed email. Requests without one are rejected with 401, including requests that reach the port directly from the local machine.
-- M8. In HTTP mode each tool call is appended to a local audit log: time, tool, meeting id, authenticated email.
-- M9. For the stdio path, selecting Local registers the bundled binary in Claude Desktop's `claude_desktop_config.json`, leaving other entries untouched, and deselecting it removes the entry. The stdio server refuses tool calls unless the integration is on and set to Local.
+- M8. Each management tool call is appended to `~/Library/Application Support/Muesli/audit.log`, one JSON line with time, tool and meeting id. Read calls are not logged.
+- M9. Claude Desktop gets the bundled Desktop Extension `Muesli.mcpb` (name and icon). For organisations that block extensions, a switch adds a `Muesli` entry to `claude_desktop_config.json` instead, leaving other entries untouched; installing the extension removes that entry. The server refuses tool calls unless access is switched on.
+- M10. `muesli-mcp doctor` checks the preferences file, whether access is switched on, whether the app is running (`state.json` heartbeat) and how many meetings it can see.
 
-## 5. Cloudflare requirements
+## 5. Remote access (removed)
 
-Prerequisites
+Until 2026-11-13 Muesli could also be reached over the internet, for claude.ai in the browser and on mobile: `muesli-mcp --http <port>` behind a Cloudflare Tunnel, guarded by Cloudflare Access and checked again with the Access JWT in `muesli-mcp`. That mode is gone, together with its preferences, the remote provider picker, the remote checks in `doctor` and the remote audit by email. The requirements that described it (the HTTP half of M2, M7, the old M8, C1 to C8, S1, S2, R1, R2, R4 and acceptance criteria 3 and 5) were removed rather than rewritten.
 
-- C1. A Cloudflare account with a domain whose DNS is on Cloudflare. Quick tunnels (`trycloudflare.com`) are not acceptable: the URL changes and Access cannot protect them.
-- C2. A Zero Trust organization (the free plan should be enough for one user).
-- C3. `cloudflared` installed on the Mac and running as a launchd service.
-
-Configuration
-
-- C4. One named tunnel with one ingress rule: `muesli.<domain>` to `http://127.0.0.1:<port>`, followed by a catch-all 404 rule.
-- C5. A self-hosted Access application on `muesli.<domain>` with a single Allow policy for the owner's identity. No bypass or service-token policies.
-- C6. Managed OAuth enabled on that Access application, so Cloudflare serves the MCP authorization endpoints (discovery, dynamic client registration, authorize, token) on the hostname. Claude's callback URLs must be allowed: `https://claude.ai/api/mcp/auth_callback` and `https://claude.com/api/mcp/auth_callback`.
-- C7. In claude.ai: a custom connector pointing at `https://muesli.<domain>/mcp`. This needs a paid Claude plan.
-- C8. A setup guide in the repo covering C1 to C7, plus a `muesli-mcp doctor` command that checks the tunnel, the Access configuration and the local server.
+Claude conversations sync across Claude apps, so work done in Claude Desktop on the Mac is visible in the Claude app on a phone.
 
 ## 6. Security and privacy
 
-- S1. Nothing is exposed until the user turns the bridge on and completes the Cloudflare setup.
-- S2. Two independent checks protect the endpoint: Cloudflare Access at the edge and JWT validation in `muesli-mcp` (M7).
-- S3. The server is read-only. No tool can start a recording, delete data or change settings.
-- S4. The setup guide and the bridge menu state plainly that transcript text fetched by Claude passes through Cloudflare and is sent to Anthropic.
+- S3. No tool can start or stop a recording or change settings. Management tools change only finished meetings; delete moves files to the Trash. Meetings that are still recording cannot be changed.
+- S4. The setup guide and Settings state plainly that transcript text an assistant reads is sent to its provider (Anthropic, for Claude).
 - S5. The existing notice stays: tell participants you are transcribing and check company policy.
 
 ## 7. Risks and open questions
 
-- R1. **Managed OAuth with claude.ai is untested.** Cloudflare documents Managed OAuth for MCP servers behind a tunnel and says the client must support RFC 8707; whether claude.ai's connector flow completes against it must be proven first. Fallbacks, in order: a small Cloudflare Worker acting as the OAuth provider in front of the tunnel, or an OAuth authorization server inside `muesli-mcp`.
-- R2. The Mac must be awake and online. A closed lid means claude.ai gets a connection error. Accepted for now.
-- R3. Claude can only poll. Nothing can notify a conversation that a transcript became ready.
-- R4. M7 requires `muesli-mcp` to fetch Cloudflare's signing keys, so the bridge process makes outbound requests. The app still does not.
+- R3. Assistants can only poll. Nothing can notify a conversation that a transcript became ready.
 
 ## 8. Acceptance criteria
 
-1. With the bridge off, a network monitor shows no connections from Muesli during detection, recording and saving.
+1. A network monitor shows no connections from Muesli or `muesli-mcp` during detection, recording, saving and tool calls, and no listening port.
 2. In Claude Desktop with the extension installed: "Is Muesli recording?" returns the true state within 10 s of a change.
-3. From claude.ai on a phone, while the Mac is awake: the same question works, and "fetch my last meeting transcript" returns the full text of a 60-minute meeting.
+3. Removed with remote access.
 4. During a recording, Claude can fetch the transcript so far.
-5. An unauthenticated request to `https://muesli.<domain>/mcp` and a direct request to `127.0.0.1:<port>` without a valid JWT are both rejected.
+5. Removed with remote access.
 6. Killing the app mid-recording, then relaunching, yields a saved partial transcript and a correct status.
 
 ## 9. Build order
 
-1. Spike R1: a stub MCP server behind the tunnel with Access and Managed OAuth, connected from claude.ai. This decides the auth design.
-2. App: lifecycle, `state.json`, canonical meeting store, continuous detection (A1 to A8).
-3. `muesli-mcp` over stdio and Claude Desktop registration (M1 to M6, M9).
-4. HTTP transport, JWT validation, audit log, bridge toggle (M2, M7, M8, A9).
-5. Setup guide and `doctor` command (C8).
+1. App: lifecycle, `state.json`, canonical meeting store, continuous detection (A1 to A8).
+2. `muesli-mcp` over stdio and Claude Desktop registration (M1 to M6, M9).
+3. Management tools, audit log, Settings switch (M3, M8, A9).
+4. Setup guide and `doctor` command (M10).
 
 ## 10. Implementation status
 
-Done and tested on Linux (`swift test`, plus the real binary over stdio and HTTP): M1 to M8, the `doctor` command, preferences, the meeting store, crash recovery (A3), the detection rules behind A4 and A5, and the Claude Desktop registration behind M9.
+Done and tested with `swift test` on macOS (101 tests): M1 to M6, M8, M10, preferences, the meeting store and management tools, crash recovery (A3), the detection rules behind A4 and A5, the Claude Desktop extension manifest and install detection, and the config-file registration behind M9. The real binary was checked over stdio (`tools/list`, `list_transcripts`).
 
-Written but not compiled or run, because it needs macOS: the app target that wires A1 to A10 together (menu, Preferences window, capture, state heartbeat), the RSA signature check in M7 (macOS Security framework; the claim checks around it are tested), and the per-process microphone check that feeds A4 and A5.
+Built and run on macOS, checked by hand: the app (menu, Settings window, recording, transcription, permissions) and packaging of `Muesli.mcpb`. Not yet verified: installing the extension in Claude Desktop (blocked by organisation policy on the test account) and the per-process microphone check that feeds A4 and A5.
 
-Not done: the R1 spike and everything in section 5, which need the owner's Cloudflare account. Acceptance criteria 1 to 6 are therefore still open.
+Open: acceptance criteria 2, 4 and 6 still need a full meeting run on a Mac.
 
 Deviations: A5 needs macOS 14.2 or later; on 14.0 and 14.1 Muesli cannot tell its own microphone use from another app's, so the end of a call is not detected. The server answers MCP protocol versions up to 2025-06-18.

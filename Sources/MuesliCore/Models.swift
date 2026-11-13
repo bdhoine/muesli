@@ -1,7 +1,7 @@
 import Foundation
 
 public enum MuesliInfo {
-    public static let version = "0.2.0"
+    public static let version = "0.3.0"
 }
 
 public enum MeetingState: String, Codable, Sendable {
@@ -109,6 +109,14 @@ public enum Paths {
 
     public static func setTranscripts(_ url: URL?) {
         UserDefaults.standard.set(url?.path, forKey: transcriptDirKey)
+    }
+
+    public static var exportFolder: URL {
+        if transcriptsOverriddenByEnvironment || transcriptsIsCustom { return transcripts }
+        if let path = AppStatus.read()?.transcriptsFolder, !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        return transcripts
     }
 
     /// Where transcripts are written. Override with TRANSCRIPT_DIR.

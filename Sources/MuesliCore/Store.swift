@@ -4,10 +4,38 @@ import Foundation
 ///   2026-11-10_1430_Weekly-sync.md    readable transcript
 ///   2026-11-10_1430_Weekly-sync.json  same data, machine-readable
 /// Other tools can pick the files up from the folder.
+public struct RecentTranscript: Identifiable, Equatable, Sendable {
+    public var url: URL
+    public var title: String
+    public var startedAt: Date
+    public var endedAt: Date?
+    public var id: URL { url }
+
+    public var durationMinutes: Int? {
+        endedAt.map { max(Int($0.timeIntervalSince(startedAt) / 60), 0) }
+    }
+
+    public func subtitle(now: Date = Date(), calendar: Calendar = .current, locale: Locale = .current) -> String {
+        let time = startedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(locale))
+        let day: String
+        if calendar.isDate(startedAt, inSameDayAs: now) {
+            day = "Today"
+        } else if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(startedAt, inSameDayAs: yesterday) {
+            day = "Yesterday"
+        } else {
+            day = startedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted).locale(locale))
+        }
+        var parts = ["\(day) \(time)"]
+        if let minutes = durationMinutes { parts.append(minutes < 1 ? "<1 min" : "\(minutes) min") }
+        return parts.joined(separator: " · ")
+    }
+}
+
 public enum Store {
     @discardableResult
-    public static func save(_ m: Meeting) -> URL {
-        let base = Paths.transcripts.appendingPathComponent(fileStem(m))
+    public static func save(_ m: Meeting, in folder: URL = Paths.transcripts) -> URL {
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let base = folder.appendingPathComponent(fileStem(m))
         let md = base.appendingPathExtension("md")
         try? markdown(m).write(to: md, atomically: true, encoding: .utf8)
         try? JSONCoding.encoder().encode(m).write(to: base.appendingPathExtension("json"), options: .atomic)
@@ -20,6 +48,16 @@ public enum Store {
         return files.filter { $0.pathExtension == "md" }
             .sorted { (mod($0)) > (mod($1)) }
             .prefix(limit).map { $0 }
+    }
+
+    public static func recentTranscripts(limit: Int) -> [RecentTranscript] {
+        guard limit > 0 else { return [] }
+        return recent(limit: limit).map { md in
+            let json = md.deletingPathExtension().appendingPathExtension("json")
+            let meeting = (try? Data(contentsOf: json)).flatMap { try? JSONCoding.decoder().decode(Meeting.self, from: $0) }
+            return RecentTranscript(url: md, title: meeting?.title ?? md.deletingPathExtension().lastPathComponent,
+                                    startedAt: meeting?.startedAt ?? mod(md), endedAt: meeting?.endedAt)
+        }
     }
 
     private static func mod(_ u: URL) -> Date {

@@ -143,7 +143,6 @@ final class IntegrationTests: IsolatedTestCase {
     func testPreferencesDefaultsAreSafe() {
         let p = Preferences()
         XCTAssertFalse(p.mcpEnabled)                               // nothing is exposed until switched on
-        XCTAssertEqual(p.mcpMode, .local)
         XCTAssertFalse(p.autoStop)
         XCTAssertEqual(p.endDelaySeconds, 60)
     }
@@ -153,29 +152,7 @@ final class IntegrationTests: IsolatedTestCase {
         XCTAssertEqual(Preferences.load(), Preferences())
     }
 
-    func testRemoteProblemNamesTheFirstMissingField() {
-        var p = Preferences()
-        XCTAssertEqual(p.remoteProblem, "Team domain is missing")
-        p.teamDomain = "team"
-        XCTAssertEqual(p.remoteProblem, "Audience (AUD) tag is missing")
-        p.audience = "aud"
-        XCTAssertEqual(p.remoteProblem, "Allowed email is missing")
-        p.allowedEmail = "  "
-        XCTAssertEqual(p.remoteProblem, "Allowed email is missing")
-        p.allowedEmail = "me@example.com"
-        XCTAssertNil(p.remoteProblem)
-        p.httpPort = 80
-        XCTAssertEqual(p.remoteProblem, "Port must be between 1024 and 65535")
-    }
-
-    func testHostnameNormalization() {
-        var p = Preferences()
-        p.publicHostname = "  HTTPS://Muesli.Example.com/mcp "
-        XCTAssertEqual(p.normalizedHostname, "muesli.example.com")
-        XCTAssertEqual(Preferences().normalizedTeamDomain, "")
-    }
-
-    // MARK: Claude Desktop registration (local mode)
+    // MARK: Claude Desktop registration
 
     private var claudeDir: URL { dir.appendingPathComponent("Claude") }
     private var claudeFile: URL { claudeDir.appendingPathComponent("claude_desktop_config.json") }
@@ -193,7 +170,7 @@ final class IntegrationTests: IsolatedTestCase {
     func testRegisterCreatesTheFileWhenMissing() throws {
         try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
         XCTAssertTrue(ClaudeDesktopConfig.register(helper, directory: claudeDir).hasPrefix("Registered"))
-        let entry = try XCTUnwrap((claudeConfig()["mcpServers"] as? [String: Any])?["muesli"] as? [String: Any])
+        let entry = try XCTUnwrap((claudeConfig()["mcpServers"] as? [String: Any])?["Muesli"] as? [String: Any])
         XCTAssertEqual(entry["command"] as? String, helper.path)
         XCTAssertEqual((entry["args"] as? [Any])?.count, 0)
     }
@@ -206,7 +183,7 @@ final class IntegrationTests: IsolatedTestCase {
 
         _ = ClaudeDesktopConfig.register(helper, directory: claudeDir)
         var servers = try XCTUnwrap(claudeConfig()["mcpServers"] as? [String: Any])
-        XCTAssertEqual(Set(servers.keys), ["filesystem", "muesli"])
+        XCTAssertEqual(Set(servers.keys), ["filesystem", "Muesli"])
         XCTAssertEqual(try claudeConfig()["globalShortcut"] as? String, "Alt+Space")
         XCTAssertEqual(ClaudeDesktopConfig.register(helper, directory: claudeDir), "Registered with Claude Desktop.")   // already there
 
@@ -221,8 +198,19 @@ final class IntegrationTests: IsolatedTestCase {
         try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
         _ = ClaudeDesktopConfig.register(URL(fileURLWithPath: "/old/muesli-mcp"), directory: claudeDir)
         XCTAssertTrue(ClaudeDesktopConfig.register(helper, directory: claudeDir).contains("Quit and reopen"))
-        let entry = try XCTUnwrap((claudeConfig()["mcpServers"] as? [String: Any])?["muesli"] as? [String: Any])
+        let entry = try XCTUnwrap((claudeConfig()["mcpServers"] as? [String: Any])?["Muesli"] as? [String: Any])
         XCTAssertEqual(entry["command"] as? String, helper.path)
+    }
+
+    func testTheOldLowercaseEntryIsReplacedAndRemoved() throws {
+        try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
+        try Data(#"{"mcpServers":{"muesli":{"command":"/old/muesli-mcp","args":[]}}}"#.utf8).write(to: claudeFile)
+        XCTAssertTrue(ClaudeDesktopConfig.register(helper, directory: claudeDir).hasPrefix("Registered"))
+        XCTAssertEqual(Set(try XCTUnwrap(claudeConfig()["mcpServers"] as? [String: Any]).keys), ["Muesli"])
+
+        try Data(#"{"mcpServers":{"muesli":{"command":"/old/muesli-mcp","args":[]}}}"#.utf8).write(to: claudeFile)
+        XCTAssertTrue(ClaudeDesktopConfig.unregister(directory: claudeDir).hasPrefix("Removed"))
+        XCTAssertEqual(try XCTUnwrap(claudeConfig()["mcpServers"] as? [String: Any]).count, 0)
     }
 
     func testUnparseableClaudeConfigIsNeverOverwritten() throws {
@@ -239,49 +227,7 @@ final class IntegrationTests: IsolatedTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: claudeDir.path))
     }
 
-    // MARK: Remote mode over a real socket
-
-    func testHTTPServerEndToEnd() throws {
-        MeetingStore.save(meeting("m1", state: .ready))
-        let verifier = AccessVerifier(teamDomain: "team.cloudflareaccess.com", audience: "aud", allowedEmail: "me@example.com",
-                                      fetchKeys: { _ in ["k1": .init(n: Data([1]), e: Data([1]))] },
-                                      checkSignature: { _, _, signature in signature == Data("good".utf8) })
-        let port = UInt16.random(in: 20_000..<60_000)
-        let server = HTTPServer(port: port) { MCPMain.route($0, verifier: verifier) }
-        Thread.detachNewThread { _ = try? server.run() }
-        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/mcp"))
-        let call = #"{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"get_transcript","arguments":{"id":"m1"}}}"#
-
-        var first: HTTPClient.Response?
-        for _ in 0..<50 where first == nil {                       // wait for the listener
-            first = HTTPClient.postJSON(url, body: call, timeout: 2)
-            if first == nil { usleep(100_000) }
-        }
-        XCTAssertEqual(first?.status, 401)                         // no token
-
-        func token(_ signature: String) -> String {
-            func b64(_ d: Data) -> String {
-                d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-            }
-            let header = try! JSONSerialization.data(withJSONObject: ["alg": "RS256", "kid": "k1"])
-            let claims = try! JSONSerialization.data(withJSONObject: ["iss": "https://team.cloudflareaccess.com", "aud": ["aud"],
-                                                                      "exp": Date().timeIntervalSince1970 + 600, "email": "me@example.com"] as [String: Any])
-            return "\(b64(header)).\(b64(claims)).\(b64(Data(signature.utf8)))"
-        }
-
-        let forged = HTTPClient.postJSON(url, body: call, headers: ["Cf-Access-Jwt-Assertion": token("forged")], timeout: 5)
-        XCTAssertEqual(forged?.status, 401)
-
-        let ok = try XCTUnwrap(HTTPClient.postJSON(url, body: call, headers: ["Cf-Access-Jwt-Assertion": token("good")], timeout: 5))
-        XCTAssertEqual(ok.status, 200)
-        let reply = try XCTUnwrap(JSONSerialization.jsonObject(with: ok.body) as? [String: Any])
-        XCTAssertEqual(reply["id"] as? Int, 7)
-        let text = try XCTUnwrap((((reply["result"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"]) as? String)
-        XCTAssertTrue(text.contains("**You**: Segment 0"))
-
-        let big = String(repeating: "x", count: HTTPServer.maxBodyBytes + 1)
-        XCTAssertEqual(HTTPClient.postJSON(url, body: big, headers: ["Cf-Access-Jwt-Assertion": token("good")], timeout: 5)?.status, 413)
-    }
+    // MARK: MCP batches and audit log
 
     func testBatchRequests() throws {
         let body = Data(#"[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","method":"notifications/initialized"},{"jsonrpc":"2.0","id":2,"method":"tools/list"}]"#.utf8)
@@ -291,8 +237,8 @@ final class IntegrationTests: IsolatedTestCase {
     }
 
     func testAuditLogAppends() throws {
-        Audit.record(tool: "get_status", meetingID: nil, email: "me@example.com")
-        Audit.record(tool: "get_transcript", meetingID: "m1", email: "me@example.com")
+        Audit.record(tool: "rename_transcript", meetingID: nil)
+        Audit.record(tool: "delete_transcript", meetingID: "m1")
         let lines = try String(contentsOf: Paths.auditLog, encoding: .utf8).split(separator: "\n")
         XCTAssertEqual(lines.count, 2)
         XCTAssertFalse(lines[0].contains("meetingId"))
