@@ -26,7 +26,7 @@ public enum Store {
         (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
     }
 
-    private static func fileStem(_ m: Meeting) -> String {
+    static func fileStem(_ m: Meeting) -> String {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd_HHmm"
         let slug = m.title.unicodeScalars
@@ -91,6 +91,28 @@ public enum MeetingStore {
         return files.filter { $0.pathExtension == "json" }
             .compactMap { try? JSONCoding.decoder().decode(Meeting.self, from: Data(contentsOf: $0)) }
             .sorted { $0.startedAt > $1.startedAt }
+    }
+
+    /// A crash or forced quit mid-recording leaves a meeting in `recording` or `finalizing`.
+    /// Keeps what was transcribed (marked partial, exported to the transcripts folder) and
+    /// marks empty ones failed. Returns the meetings it changed.
+    @discardableResult
+    public static func recoverInterrupted() -> [Meeting] {
+        var changed: [Meeting] = []
+        for var m in all() where m.state == .recording || m.state == .finalizing {
+            if m.transcript.isEmpty {
+                m.state = .failed
+            } else {
+                m.transcript.sort { $0.start < $1.start }
+                m.endedAt = m.endedAt ?? m.startedAt.addingTimeInterval(m.transcript.map(\.end).max() ?? 0)
+                m.state = .ready
+                m.partial = true
+                Store.save(m)
+            }
+            save(m)
+            changed.append(m)
+        }
+        return changed
     }
 
     public static func latestReady() -> Meeting? {

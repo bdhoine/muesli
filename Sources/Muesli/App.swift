@@ -23,7 +23,8 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
 
     func boot() {
         try? SMAppService.mainApp.register()                       // always run: start at login
-        recoverInterrupted()
+        MeetingStore.recoverInterrupted()                          // keep what an interrupted recording transcribed
+        recent = Store.recent()
         lastReady = MeetingStore.latestReady().map { .init(id: $0.id, title: $0.title, endedAt: $0.endedAt) }
 
         let center = UNUserNotificationCenter.current()
@@ -80,23 +81,6 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
             out.current = .init(id: m.id, title: m.title, source: m.source, startedAt: m.startedAt, segmentCount: m.transcript.count)
         }
         out.write()
-    }
-
-    /// A crash or forced quit mid-recording leaves a meeting in `recording`. Keep what was transcribed.
-    private func recoverInterrupted() {
-        for var m in MeetingStore.all() where m.state == .recording || m.state == .finalizing {
-            if m.transcript.isEmpty {
-                m.state = .failed
-            } else {
-                m.transcript.sort { $0.start < $1.start }
-                m.endedAt = m.endedAt ?? m.startedAt.addingTimeInterval(m.transcript.map(\.end).max() ?? 0)
-                m.state = .ready
-                m.partial = true
-                Store.save(m)
-            }
-            MeetingStore.save(m)
-        }
-        recent = Store.recent()
     }
 
     // MARK: Suggest

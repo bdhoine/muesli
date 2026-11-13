@@ -5,17 +5,13 @@ import MuesliCore
 /// Captures microphone ("You") and system audio ("Others") as 16 kHz mono Float32
 /// and emits ~30 s chunks, so no meeting-bot has to join the call.
 final class AudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
-    private let emit: (AudioChunk) -> Void
-    private let chunkSeconds: Double = 30
+    private let chunker: AudioChunker
     private let rate: Double = 16_000
 
     private let engine = AVAudioEngine()
     private var stream: SCStream?
-    private let lock = NSLock()
-    private var buffers: [String: [Float]] = ["You": [], "Others": []]
-    private var emitted: [String: Double] = ["You": 0, "Others": 0]
 
-    init(emit: @escaping (AudioChunk) -> Void) { self.emit = emit }
+    init(emit: @escaping (AudioChunk) -> Void) { chunker = AudioChunker(rate: 16_000, emit: emit) }
 
     func start() async throws {
         try startMic()
@@ -28,8 +24,7 @@ final class AudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         let s = stream
         stream = nil
         Task { try? await s?.stopCapture() }
-        lock.lock(); defer { lock.unlock() }
-        for speaker in buffers.keys { flush(speaker, force: true) }   // emit the tail
+        chunker.finish()                                              // emit the tail
     }
 
     // MARK: Microphone
@@ -48,7 +43,7 @@ final class AudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
                 fed = true; status.pointee = .haveData; return buf
             }
             if let p = out.floatChannelData?[0] {
-                self.append("You", Array(UnsafeBufferPointer(start: p, count: Int(out.frameLength))))
+                self.chunker.append("You", Array(UnsafeBufferPointer(start: p, count: Int(out.frameLength))))
             }
         }
         try engine.start()
@@ -81,27 +76,6 @@ final class AudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
             guard let buf = abl.first, let p = buf.mData?.assumingMemoryBound(to: Float.self) else { return }
             samples = Array(UnsafeBufferPointer(start: p, count: Int(buf.mDataByteSize) / MemoryLayout<Float>.size))
         }
-        if !samples.isEmpty { append("Others", samples) }
-    }
-
-    // MARK: Chunking
-    private func append(_ speaker: String, _ samples: [Float]) {
-        lock.lock(); defer { lock.unlock() }
-        buffers[speaker, default: []].append(contentsOf: samples)
-        flush(speaker, force: false)
-    }
-
-    /// Caller holds lock.
-    private func flush(_ speaker: String, force: Bool) {
-        let need = Int(chunkSeconds * rate)
-        while let buf = buffers[speaker], buf.count >= need || (force && buf.count > Int(rate)) {
-            let n = min(need, buf.count)
-            let chunk = Array(buf.prefix(n))
-            buffers[speaker] = Array(buf.dropFirst(n))
-            let offset = emitted[speaker, default: 0]
-            emitted[speaker] = offset + Double(n) / rate
-            emit(AudioChunk(speaker: speaker, offsetSeconds: offset, samples: chunk))
-            if buffers[speaker]?.isEmpty ?? true { break }
-        }
+        if !samples.isEmpty { chunker.append("Others", samples) }
     }
 }

@@ -127,9 +127,9 @@ Configuration
 
 ## 10. Implementation status
 
-Done and tested on Linux (`swift test`, plus the real binary over stdio and HTTP): M1 to M8, the `doctor` command, preferences and the meeting store.
+Done and tested on Linux (`swift test`, plus the real binary over stdio and HTTP): M1 to M8, the `doctor` command, preferences, the meeting store, crash recovery (A3), the detection rules behind A4 and A5, and the Claude Desktop registration behind M9.
 
-Written but not compiled or run, because it needs macOS: A1 to A10, M9 (Claude Desktop registration), the RSA signature check in M7 (macOS Security framework; the claim checks around it are tested), and the per-process microphone check behind A4 and A5.
+Written but not compiled or run, because it needs macOS: the app target that wires A1 to A10 together (menu, Preferences window, capture, state heartbeat), the RSA signature check in M7 (macOS Security framework; the claim checks around it are tested), and the per-process microphone check that feeds A4 and A5.
 
 Not done: the R1 spike and everything in section 5, which need the owner's Cloudflare account. Acceptance criteria 1 to 6 are therefore still open.
 

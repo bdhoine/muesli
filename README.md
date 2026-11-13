@@ -69,15 +69,15 @@ If recording says a permission is off, use **Open Privacy Settings** in the menu
 | `Sources/Muesli/PreferencesView.swift` | Preferences window: folder, auto-stop, Claude connection |
 | `Sources/Muesli/Bridge.swift` | Registers `muesli-mcp` with Claude Desktop (local) or runs it (remote) |
 | `Sources/Muesli/Permissions.swift` | Microphone and Screen Recording checks before recording |
-| `Sources/MuesliCore/` | Shared by the app and `muesli-mcp`: data types, paths, transcript files, meeting store, preferences |
+| `Sources/MuesliCore/` | Shared by the app and `muesli-mcp`, free of macOS frameworks so it is testable: data types, paths, transcript files, meeting store, preferences, audio chunking, detection rules, Claude Desktop registration |
 | `Sources/MuesliCore/MCP/` | The MCP server: tools, stdio and HTTP transports, Cloudflare Access token check, `doctor` |
 | `Sources/muesli-mcp/` | Entry point of the `muesli-mcp` executable |
-| `Tests/MuesliCoreTests/` | Tests for the MCP server and the shared code (`swift test`) |
+| `Tests/MuesliCoreTests/` | Unit tests for everything in `MuesliCore` (`swift test`) |
 | `Info.plist`, `build.sh` | App bundle metadata and build script (builds `Muesli.icns` from the iconset and bundles the menu bar icon) |
 | `assets/brand/` | Logo, app icon and menu bar icon. Follow `assets/brand/BRAND.md`; use the files as they are |
 
 ## Status
 
-Transcription is verified end to end in local testing. The Claude integration, the Preferences window and the reworked detection were written without a Mac at hand: `MuesliCore` and `muesli-mcp` are compiled and tested on Linux, but the app target has not been compiled since, and the per-process microphone check and the Cloudflare token signature check (macOS Security framework) have not been run.
+Transcription is verified end to end in local testing. The Claude integration, the Preferences window and the reworked detection were written without a Mac at hand: `MuesliCore` and `muesli-mcp` are compiled and tested on Linux (`swift test`, 79 tests), but the app target has not been compiled since, and the per-process microphone check and the Cloudflare token signature check (macOS Security framework) have not been run.
 
 SwiftWhisper is pinned to an exact commit in `Package.swift`; bump it deliberately.

@@ -139,12 +139,13 @@ enum HTTPClient {
         return send(r)
     }
 
-    static func postJSON(_ url: URL, body: String, timeout: TimeInterval = 10) -> Response? {
+    static func postJSON(_ url: URL, body: String, headers: [String: String] = [:], timeout: TimeInterval = 10) -> Response? {
         var r = URLRequest(url: url, timeoutInterval: timeout)
         r.httpMethod = "POST"
         r.httpBody = Data(body.utf8)
         r.setValue("application/json", forHTTPHeaderField: "Content-Type")
         r.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+        for (name, value) in headers { r.setValue(value, forHTTPHeaderField: name) }
         return send(r)
     }
 

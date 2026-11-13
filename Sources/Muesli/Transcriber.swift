@@ -17,11 +17,8 @@ final class Transcriber {
         let segs = try await whisper.transcribe(audioFrames: chunk.samples)
         // SwiftWhisper reports start/end in milliseconds.
         return segs.compactMap { s in
-            let text = s.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty, text != "[BLANK_AUDIO]" else { return nil }
-            return TranscriptSegment(start: chunk.offsetSeconds + Double(s.startTime) / 1000,
-                                     end: chunk.offsetSeconds + Double(s.endTime) / 1000,
-                                     speaker: chunk.speaker, text: text)
+            TranscriptSegment.fromWhisper(speaker: chunk.speaker, chunkOffsetSeconds: chunk.offsetSeconds,
+                                          startMs: Double(s.startTime), endMs: Double(s.endTime), text: s.text)
         }
     }
 }

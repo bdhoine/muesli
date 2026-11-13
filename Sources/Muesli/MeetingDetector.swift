@@ -17,23 +17,20 @@ final class MeetingDetector {
     var onCallEnded: (() -> Void)?
     var isRecording: () -> Bool = { false }
     /// How long the mic must stay released before a call counts as ended.
-    var endDelay: TimeInterval = 60
+    var endDelay: TimeInterval {
+        get { logic.endDelay }
+        set { logic.endDelay = newValue }
+    }
 
     /// The meeting or call that is going on right now, whether or not it is recorded.
-    private(set) var inProgress: (meeting: DetectedMeeting, since: Date)?
+    var inProgress: (meeting: DetectedMeeting, since: Date)? { logic.inProgress }
 
+    private var logic = DetectionLogic()            // the decisions; this class only samples the system
     private let store = EKEventStore()
     private var calendarOK = false
-    private var seenEvents = Set<String>()
-    private var micHotSince: Date?
-    private var lastAudioPrompt = Date.distantPast
-    private var callHeardWhileRecording = false
-    private var micQuietSince: Date?
-    private var endReported = false
     private var timer: Timer?
 
     private let teamsBundles = ["com.microsoft.teams2", "com.microsoft.teams"]
-    private let meetingHosts = ["teams.microsoft.com", "teams.live.com", "zoom.us", "meet.google.com", "webex.com"]
 
     func start() {
         store.requestFullAccessToEvents { [weak self] ok, _ in
@@ -45,74 +42,30 @@ final class MeetingDetector {
     private func tick() {
         let now = Date()
         let recording = isRecording()
-        let calendar = currentCalendarMeeting(now)
-        let micBusy = otherAppUsingMic(recording: recording)       // nil: cannot tell while we record ourselves
-
-        if micBusy == true {
-            if micHotSince == nil { micHotSince = now }
-        } else if micBusy == false {
-            micHotSince = nil
-        }
-        let callActive = micHotSince.map { now.timeIntervalSince($0) > 10 } ?? false
-
-        // What is going on right now. The calendar gives the better title.
-        let current: DetectedMeeting? = calendar?.meeting ?? (callActive ? audioMeeting() : nil)
-        if current != inProgress?.meeting {
-            inProgress = current.map { (meeting: $0, since: now) }
-            onChange?()
-        }
-
-        if recording {
-            trackCallEnd(micBusy: micBusy, now: now)
-            return
-        }
-        callHeardWhileRecording = false; micQuietSince = nil; endReported = false
-
-        if let calendar, !seenEvents.contains(calendar.eventID) {
-            seenEvents.insert(calendar.eventID)
-            onDetect?(calendar.meeting)
-        } else if calendar == nil, callActive, now.timeIntervalSince(lastAudioPrompt) > 600 {
-            lastAudioPrompt = now
-            onDetect?(audioMeeting())
-        }
-    }
-
-    /// Only recordings in which another app used the mic can "end"; an in-person
-    /// meeting recorded manually never triggers this.
-    private func trackCallEnd(micBusy: Bool?, now: Date) {
-        guard let micBusy else { return }
-        if micBusy {
-            callHeardWhileRecording = true
-            micQuietSince = nil
-            endReported = false
-        } else if callHeardWhileRecording {
-            if micQuietSince == nil { micQuietSince = now }
-            if !endReported, now.timeIntervalSince(micQuietSince!) >= endDelay {
-                endReported = true
-                onCallEnded?()
+        let teams = NSWorkspace.shared.runningApplications.contains { teamsBundles.contains($0.bundleIdentifier ?? "") }
+        let events = logic.tick(now: now, recording: recording, calendar: currentCalendarMeeting(now),
+                                micBusy: otherAppUsingMic(recording: recording), teamsRunning: teams)
+        for event in events {
+            switch event {
+            case .suggest(let meeting): onDetect?(meeting)
+            case .inProgressChanged: onChange?()
+            case .callEnded: onCallEnded?()
             }
         }
     }
 
-    // 1. Calendar: an event that is running now (or starts within 2 minutes) and looks like a meeting.
+    // Calendar: an event that is running now (or starts within 2 minutes) and looks like a meeting.
     private func currentCalendarMeeting(_ now: Date) -> (meeting: DetectedMeeting, eventID: String)? {
         guard calendarOK else { return nil }
         let pred = store.predicateForEvents(withStart: now.addingTimeInterval(-12 * 3600), end: now.addingTimeInterval(120), calendars: nil)
         for e in store.events(matching: pred) where !e.isAllDay && e.endDate > now {
-            let haystack = [e.location, e.notes, e.url?.absoluteString].compactMap { $0 }.joined(separator: " ").lowercased()
-            let looksOnline = meetingHosts.contains { haystack.contains($0) }
-            let hasOthers = (e.attendees?.count ?? 0) > 1
-            guard looksOnline || hasOthers, let id = e.eventIdentifier else { continue }
+            let text = [e.location, e.notes, e.url?.absoluteString].compactMap { $0 }.joined(separator: " ")
+            guard DetectionLogic.looksLikeMeeting(text: text, attendeeCount: e.attendees?.count ?? 0),
+                  let id = e.eventIdentifier else { continue }
             return (DetectedMeeting(title: e.title ?? "Meeting", source: "calendar",
                                     attendees: (e.attendees ?? []).compactMap { $0.name }), id)
         }
         return nil
-    }
-
-    // 2 + 3. Mic in use by another app for 10+ s; Teams running upgrades the label.
-    private func audioMeeting() -> DetectedMeeting {
-        let teams = NSWorkspace.shared.runningApplications.contains { teamsBundles.contains($0.bundleIdentifier ?? "") }
-        return DetectedMeeting(title: teams ? "Teams call" : "Call", source: teams ? "teams" : "audio")
     }
 
     // MARK: Microphone use

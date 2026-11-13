@@ -1,20 +1,7 @@
 import XCTest
 @testable import MuesliCore
 
-final class MCPTests: XCTestCase {
-    private var dir: URL!
-
-    override func setUp() {
-        dir = FileManager.default.temporaryDirectory.appendingPathComponent("muesli-tests-\(UUID().uuidString)")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        setenv("MUESLI_SUPPORT_DIR", dir.path, 1)
-    }
-
-    override func tearDown() {
-        try? FileManager.default.removeItem(at: dir)
-        unsetenv("MUESLI_SUPPORT_DIR")
-    }
-
+final class MCPTests: IsolatedTestCase {
     // MARK: helpers
 
     private func rpc(_ method: String, _ params: [String: Any] = [:], id: Any? = 1, server: MCPServer = MCPServer()) -> [String: Any]? {
@@ -32,14 +19,6 @@ final class MCPTests: XCTestCase {
 
     private func object(_ text: String) -> [String: Any] {
         try! JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
-    }
-
-    private func meeting(_ id: String, state: MeetingState, segments: Int = 2, started: Date = Date(timeIntervalSince1970: 1_800_000_000)) -> Meeting {
-        Meeting(id: id, title: "Weekly sync", source: "calendar", startedAt: started,
-                endedAt: state == .ready ? started.addingTimeInterval(1800) : nil,
-                attendees: ["Ann"],
-                transcript: (0..<segments).map { TranscriptSegment(start: Double($0) * 5, end: Double($0) * 5 + 4, speaker: $0 % 2 == 0 ? "You" : "Others", text: "Segment \($0)") },
-                state: state)
     }
 
     // MARK: protocol
