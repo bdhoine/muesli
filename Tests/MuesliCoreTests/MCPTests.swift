@@ -135,7 +135,11 @@ final class MCPTests: IsolatedTestCase {
     func testLongTranscriptPagesWithoutLoss() {
         var m = meeting("long", state: .ready, segments: 0)
         let filler = String(repeating: "word ", count: 200)                       // ~1000 characters per segment
-        m.transcript = (0..<300).map { TranscriptSegment(start: Double($0 / 2) * 10, end: Double($0 / 2) * 10 + 9, speaker: $0 % 2 == 0 ? "You" : "Others", text: "\($0) \(filler)") }
+        m.transcript = (0..<300).map { (i: Int) -> TranscriptSegment in
+            let start = Double(i / 2) * 10
+            let speaker = i % 2 == 0 ? "You" : "Others"
+            return TranscriptSegment(start: start, end: start + 9, speaker: speaker, text: "\(i) \(filler)")
+        }
         MeetingStore.save(m)
 
         var seen: [String] = []

@@ -22,7 +22,7 @@ open Muesli.app
 swift test
 ```
 
-The tests cover everything in `MuesliCore`: audio chunking, Whisper segment mapping, transcript files, detection rules, the meeting store and crash recovery, preferences, Claude Desktop registration and the MCP server over both transports. They need no microphone, calendar or network, and each test gets its own temporary data folders.
+The tests cover everything in `MuesliCore`: audio chunking, Whisper segment mapping, transcript files, detection rules, the meeting store, crash recovery and importing older transcripts, preferences, Claude Desktop registration and the MCP server over both transports. They need no microphone, calendar or network, and each test gets its own temporary data folders.
 
 `MuesliCore` and `muesli-mcp` use only Foundation, so `swift build` and `swift test` also work on Linux. `Package.swift` adds the app target and its whisper.cpp dependency on macOS only.
 
@@ -69,7 +69,7 @@ The app never opens a socket. Everything Claude-related runs in `muesli-mcp`, wh
 
 ### Meeting lifecycle
 
-`recording → finalizing → ready`, or `failed`. The meeting is saved to the store when recording starts and again after every transcribed chunk, so a crash loses at most the audio not yet transcribed. On launch, `MeetingStore.recoverInterrupted()` turns leftovers into `ready` with `partial: true`, or `failed` when nothing was transcribed.
+`recording → finalizing → ready`, or `failed`. The meeting is saved to the store when recording starts and again after every transcribed chunk, so a crash loses at most the audio not yet transcribed. On launch, `MeetingStore.recoverInterrupted()` turns leftovers into `ready` with `partial: true`, or `failed` when nothing was transcribed. It then runs `MeetingStore.importTranscripts()`, which copies any `.json` in the transcripts folder whose id is not in the store yet (meetings recorded before the store existed), so `list_transcripts` sees them; it never overwrites a stored meeting.
 
 ## Files on disk
 

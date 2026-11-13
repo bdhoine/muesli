@@ -24,6 +24,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
     func boot() {
         try? SMAppService.mainApp.register()                       // always run: start at login
         MeetingStore.recoverInterrupted()                          // keep what an interrupted recording transcribed
+        MeetingStore.importTranscripts()
         recent = Store.recent()
         lastReady = MeetingStore.latestReady().map { .init(id: $0.id, title: $0.title, endedAt: $0.endedAt) }
 

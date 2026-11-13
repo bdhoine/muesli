@@ -115,6 +115,21 @@ public enum MeetingStore {
         return changed
     }
 
+    @discardableResult
+    public static func importTranscripts(from folder: URL = Paths.transcripts) -> [Meeting] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        var imported: [Meeting] = []
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let m = try? JSONCoding.decoder().decode(Meeting.self, from: data),
+                  let target = url(m.id),
+                  !FileManager.default.fileExists(atPath: target.path) else { continue }
+            save(m)
+            imported.append(m)
+        }
+        return imported
+    }
+
     public static func latestReady() -> Meeting? {
         all().filter { $0.state == .ready }.max { ($0.endedAt ?? $0.startedAt) < ($1.endedAt ?? $1.startedAt) }
     }

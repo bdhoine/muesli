@@ -75,9 +75,10 @@ final class HTTPServer {
 
         let reader = Reader(fd: fd)
         let response: HTTPResponse
+        var rejected = false
         switch HTTPServer.parse(reader) {
         case .success(let request): response = handler(request)
-        case .failure(let e): response = .text(e.status, e.message)
+        case .failure(let e): response = .text(e.status, e.message); rejected = true
         }
         var head = "HTTP/1.1 \(response.status) \(HTTPServer.reason(response.status))\r\n"
         var headers = response.headers
@@ -86,6 +87,22 @@ final class HTTPServer {
         for (k, v) in headers.sorted(by: { $0.key < $1.key }) { head += "\(k): \(v)\r\n" }
         head += "\r\n"
         HTTPServer.writeAll(fd, Array(head.utf8) + Array(response.body))
+        if rejected { HTTPServer.drainUnreadRequest(fd) }
+    }
+
+    static let maxDrainBytes = 4 * maxBodyBytes
+
+    static func drainUnreadRequest(_ fd: Int32) {
+        shutdown(fd, Int32(SHUT_WR))
+        var timeout = timeval(tv_sec: 2, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        var chunk = [UInt8](repeating: 0, count: 16 * 1024)
+        var drained = 0
+        while drained < maxDrainBytes {
+            let n = recv(fd, &chunk, chunk.count, 0)
+            if n <= 0 { break }
+            drained += n
+        }
     }
 
     // MARK: Parsing

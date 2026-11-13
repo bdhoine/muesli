@@ -45,6 +45,33 @@ final class IntegrationTests: IsolatedTestCase {
         XCTAssertEqual(MeetingStore.latestReady()?.id, "b")
     }
 
+    func testTranscriptsWrittenBeforeTheStoreExistedAreImported() throws {
+        try FileManager.default.createDirectory(at: transcriptsDir, withIntermediateDirectories: true)
+        let legacy = """
+        {"id":"FBD41FE0-CBBD-47C9-A89B-69F86F42FB55","title":"Meeting","source":"manual",
+         "startedAt":"2026-11-13T15:32:30Z","endedAt":"2026-11-13T15:32:56Z","attendees":[],
+         "transcript":[{"start":0,"end":2,"speaker":"You","text":"Hello"}]}
+        """
+        try Data(legacy.utf8).write(to: transcriptsDir.appendingPathComponent("2026-11-13_1532_Meeting.json"))
+        try Data("not json".utf8).write(to: transcriptsDir.appendingPathComponent("broken.json"))
+        try Data("# Meeting".utf8).write(to: transcriptsDir.appendingPathComponent("2026-11-13_1532_Meeting.md"))
+
+        XCTAssertEqual(MeetingStore.importTranscripts().map(\.id), ["FBD41FE0-CBBD-47C9-A89B-69F86F42FB55"])
+        let m = try XCTUnwrap(MeetingStore.load("FBD41FE0-CBBD-47C9-A89B-69F86F42FB55"))
+        XCTAssertEqual(m.state, .ready)
+        XCTAssertEqual(m.transcript.count, 1)
+        XCTAssertEqual(MeetingStore.all().count, 1)
+    }
+
+    func testImportNeverOverwritesTheStore() throws {
+        var stored = meeting("same", state: .ready, segments: 3)
+        MeetingStore.save(stored)
+        stored.transcript = []
+        Store.save(stored)
+        XCTAssertTrue(MeetingStore.importTranscripts().isEmpty)
+        XCTAssertEqual(MeetingStore.load("same")?.transcript.count, 3)
+    }
+
     // MARK: Crash recovery
 
     func testInterruptedRecordingIsSavedAsPartial() throws {
