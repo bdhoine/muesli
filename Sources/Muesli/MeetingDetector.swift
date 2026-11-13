@@ -1,73 +1,168 @@
 import AppKit
 import CoreAudio
 import EventKit
+import MuesliCore
 
 /// Combines three signals: calendar (EventKit, covers Outlook/Google accounts synced
 /// into macOS Calendar), Teams process, and mic-in-use (CoreAudio).
+///
+/// It keeps running during a recording, so it always knows whether a meeting is in
+/// progress (`inProgress`) and can tell when a call has ended.
 final class MeetingDetector {
+    /// A meeting just started and is not being recorded: time to suggest transcribing.
     var onDetect: ((DetectedMeeting) -> Void)?
+    /// `inProgress` changed.
+    var onChange: (() -> Void)?
+    /// The call being recorded seems to be over (other apps released the mic).
+    var onCallEnded: (() -> Void)?
     var isRecording: () -> Bool = { false }
+    /// How long the mic must stay released before a call counts as ended.
+    var endDelay: TimeInterval = 60
+
+    /// The meeting or call that is going on right now, whether or not it is recorded.
+    private(set) var inProgress: (meeting: DetectedMeeting, since: Date)?
 
     private let store = EKEventStore()
     private var calendarOK = false
     private var seenEvents = Set<String>()
     private var micHotSince: Date?
     private var lastAudioPrompt = Date.distantPast
+    private var callHeardWhileRecording = false
+    private var micQuietSince: Date?
+    private var endReported = false
     private var timer: Timer?
 
     private let teamsBundles = ["com.microsoft.teams2", "com.microsoft.teams"]
     private let meetingHosts = ["teams.microsoft.com", "teams.live.com", "zoom.us", "meet.google.com", "webex.com"]
 
     func start() {
-        store.requestFullAccessToEvents { [weak self] ok, _ in self?.calendarOK = ok }
+        store.requestFullAccessToEvents { [weak self] ok, _ in
+            DispatchQueue.main.async { self?.calendarOK = ok }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.tick() }
     }
 
     private func tick() {
-        guard !isRecording() else { micHotSince = nil; return }
-        if let m = checkCalendar() { onDetect?(m); return }
-        if let m = checkAudio() { onDetect?(m) }
+        let now = Date()
+        let recording = isRecording()
+        let calendar = currentCalendarMeeting(now)
+        let micBusy = otherAppUsingMic(recording: recording)       // nil: cannot tell while we record ourselves
+
+        if micBusy == true {
+            if micHotSince == nil { micHotSince = now }
+        } else if micBusy == false {
+            micHotSince = nil
+        }
+        let callActive = micHotSince.map { now.timeIntervalSince($0) > 10 } ?? false
+
+        // What is going on right now. The calendar gives the better title.
+        let current: DetectedMeeting? = calendar?.meeting ?? (callActive ? audioMeeting() : nil)
+        if current != inProgress?.meeting {
+            inProgress = current.map { (meeting: $0, since: now) }
+            onChange?()
+        }
+
+        if recording {
+            trackCallEnd(micBusy: micBusy, now: now)
+            return
+        }
+        callHeardWhileRecording = false; micQuietSince = nil; endReported = false
+
+        if let calendar, !seenEvents.contains(calendar.eventID) {
+            seenEvents.insert(calendar.eventID)
+            onDetect?(calendar.meeting)
+        } else if calendar == nil, callActive, now.timeIntervalSince(lastAudioPrompt) > 600 {
+            lastAudioPrompt = now
+            onDetect?(audioMeeting())
+        }
     }
 
-    // 1. Calendar: events starting within +/- 2 minutes that look like meetings.
-    private func checkCalendar() -> DetectedMeeting? {
+    /// Only recordings in which another app used the mic can "end"; an in-person
+    /// meeting recorded manually never triggers this.
+    private func trackCallEnd(micBusy: Bool?, now: Date) {
+        guard let micBusy else { return }
+        if micBusy {
+            callHeardWhileRecording = true
+            micQuietSince = nil
+            endReported = false
+        } else if callHeardWhileRecording {
+            if micQuietSince == nil { micQuietSince = now }
+            if !endReported, now.timeIntervalSince(micQuietSince!) >= endDelay {
+                endReported = true
+                onCallEnded?()
+            }
+        }
+    }
+
+    // 1. Calendar: an event that is running now (or starts within 2 minutes) and looks like a meeting.
+    private func currentCalendarMeeting(_ now: Date) -> (meeting: DetectedMeeting, eventID: String)? {
         guard calendarOK else { return nil }
-        let now = Date()
-        let pred = store.predicateForEvents(withStart: now.addingTimeInterval(-120), end: now.addingTimeInterval(120), calendars: nil)
-        for e in store.events(matching: pred) where !e.isAllDay && !seenEvents.contains(e.eventIdentifier) {
+        let pred = store.predicateForEvents(withStart: now.addingTimeInterval(-12 * 3600), end: now.addingTimeInterval(120), calendars: nil)
+        for e in store.events(matching: pred) where !e.isAllDay && e.endDate > now {
             let haystack = [e.location, e.notes, e.url?.absoluteString].compactMap { $0 }.joined(separator: " ").lowercased()
             let looksOnline = meetingHosts.contains { haystack.contains($0) }
             let hasOthers = (e.attendees?.count ?? 0) > 1
-            guard looksOnline || hasOthers else { continue }
-            seenEvents.insert(e.eventIdentifier)
-            return DetectedMeeting(title: e.title ?? "Meeting", source: "calendar",
-                                   attendees: (e.attendees ?? []).compactMap { $0.name })
+            guard looksOnline || hasOthers, let id = e.eventIdentifier else { continue }
+            return (DetectedMeeting(title: e.title ?? "Meeting", source: "calendar",
+                                    attendees: (e.attendees ?? []).compactMap { $0.name }), id)
         }
         return nil
     }
 
-    // 2 + 3. Mic in use for 10+ s while not recording; Teams running upgrades the label.
-    private func checkAudio() -> DetectedMeeting? {
-        guard micInUse() else { micHotSince = nil; return nil }
-        if micHotSince == nil { micHotSince = Date() }
-        guard Date().timeIntervalSince(micHotSince!) > 10,
-              Date().timeIntervalSince(lastAudioPrompt) > 600 else { return nil }
-        lastAudioPrompt = Date()
+    // 2 + 3. Mic in use by another app for 10+ s; Teams running upgrades the label.
+    private func audioMeeting() -> DetectedMeeting {
         let teams = NSWorkspace.shared.runningApplications.contains { teamsBundles.contains($0.bundleIdentifier ?? "") }
         return DetectedMeeting(title: teams ? "Teams call" : "Call", source: teams ? "teams" : "audio")
     }
 
-    private func micInUse() -> Bool {
-        var dev = AudioObjectID(0)
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice,
+    // MARK: Microphone use
+
+    /// Whether an app other than Muesli is capturing from a microphone.
+    /// Returns nil when that cannot be told apart from Muesli's own capture.
+    private func otherAppUsingMic(recording: Bool) -> Bool? {
+        if #available(macOS 14.2, *), let pids = pidsCapturingInput() {
+            let me = ProcessInfo.processInfo.processIdentifier
+            return pids.contains { $0 != me }
+        }
+        return recording ? nil : defaultInputDeviceRunning()
+    }
+
+    /// Per-process view: every process that currently has an input stream running.
+    @available(macOS 14.2, *)
+    private func pidsCapturingInput() -> [pid_t]? {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        var addr = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyProcessObjectList,
                                               mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, &size, &dev) == noErr else { return false }
-        var running: UInt32 = 0
-        size = UInt32(MemoryLayout<UInt32>.size)
-        addr = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
-                                          mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
-        guard AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &running) == noErr else { return false }
-        return running != 0
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(system, &addr, 0, nil, &size) == noErr else { return nil }
+        let count = Int(size) / MemoryLayout<AudioObjectID>.size
+        guard count > 0 else { return [] }
+        var processes = [AudioObjectID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(system, &addr, 0, nil, &size, &processes) == noErr else { return nil }
+        let live = processes.prefix(Int(size) / MemoryLayout<AudioObjectID>.size)
+        return live.compactMap { process -> pid_t? in
+            guard uint32(process, kAudioProcessPropertyIsRunningInput) == 1 else { return nil }
+            return int32(process, kAudioProcessPropertyPID)
+        }
+    }
+
+    /// Device-wide view (older systems): true while anything, including Muesli, uses the default mic.
+    private func defaultInputDeviceRunning() -> Bool {
+        guard let dev = uint32(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice) else { return false }
+        return uint32(dev, kAudioDevicePropertyDeviceIsRunningSomewhere).map { $0 != 0 } ?? false
+    }
+
+    private func uint32(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> UInt32? {
+        var value: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        return AudioObjectGetPropertyData(object, &addr, 0, nil, &size, &value) == noErr ? value : nil
+    }
+
+    private func int32(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) -> Int32? {
+        var value: Int32 = 0
+        var size = UInt32(MemoryLayout<Int32>.size)
+        var addr = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        return AudioObjectGetPropertyData(object, &addr, 0, nil, &size, &value) == noErr ? value : nil
     }
 }

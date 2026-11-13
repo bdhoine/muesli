@@ -1,5 +1,6 @@
 import AVFoundation
 import ScreenCaptureKit
+import MuesliCore
 
 /// Captures microphone ("You") and system audio ("Others") as 16 kHz mono Float32
 /// and emits ~30 s chunks, so no meeting-bot has to join the call.

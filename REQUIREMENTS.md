@@ -1,6 +1,6 @@
 # Muesli requirements: Claude integration
 
-Status: draft. Scope: what must be built so Claude (Desktop, Claude Code, claude.ai web and mobile) can ask Muesli whether it is recording, whether a transcript is ready, and fetch that transcript.
+Status: implemented, except where section 10 says otherwise. Scope: what must be built so Claude (Desktop, Claude Code, claude.ai web and mobile) can ask Muesli whether it is recording, whether a transcript is ready, and fetch that transcript.
 
 ## 1. Goals and non-goals
 
@@ -55,7 +55,7 @@ Storage
 
 Bridge control
 
-- A9. A menu item "Claude.ai bridge" (off by default) starts and stops `muesli-mcp` in HTTP mode and shows whether it is running. The setting persists across launches.
+- A9. A Preferences window sets the transcripts folder, switches the Claude integration on or off (off by default) and selects Local or Remote. Remote starts and stops `muesli-mcp` in HTTP mode and shows whether it is running; the menu shows the same. Settings persist across launches in `config.json`.
 - A10. The app itself opens no sockets and makes no network requests.
 
 ## 4. MCP server requirements (muesli-mcp)
@@ -75,7 +75,7 @@ Bridge control
 - M6. If the heartbeat is stale, `get_status` reports `appRunning: false` and never reports `recording`.
 - M7. In HTTP mode every request must carry a valid Cloudflare Access JWT (`Cf-Access-Jwt-Assertion`). The server checks the signature against the team's public keys, the application audience tag and the allowed email. Requests without one are rejected with 401, including requests that reach the port directly from the local machine.
 - M8. In HTTP mode each tool call is appended to a local audit log: time, tool, meeting id, authenticated email.
-- M9. Ships as a Claude Desktop extension (`.mcpb`) for the stdio path.
+- M9. For the stdio path, selecting Local registers the bundled binary in Claude Desktop's `claude_desktop_config.json`, leaving other entries untouched, and deselecting it removes the entry. The stdio server refuses tool calls unless the integration is on and set to Local.
 
 ## 5. Cloudflare requirements
 
@@ -121,6 +121,16 @@ Configuration
 
 1. Spike R1: a stub MCP server behind the tunnel with Access and Managed OAuth, connected from claude.ai. This decides the auth design.
 2. App: lifecycle, `state.json`, canonical meeting store, continuous detection (A1 to A8).
-3. `muesli-mcp` over stdio and the `.mcpb` package (M1 to M6, M9).
+3. `muesli-mcp` over stdio and Claude Desktop registration (M1 to M6, M9).
 4. HTTP transport, JWT validation, audit log, bridge toggle (M2, M7, M8, A9).
 5. Setup guide and `doctor` command (C8).
+
+## 10. Implementation status
+
+Done and tested on Linux (`swift test`, plus the real binary over stdio and HTTP): M1 to M8, the `doctor` command, preferences and the meeting store.
+
+Written but not compiled or run, because it needs macOS: A1 to A10, M9 (Claude Desktop registration), the RSA signature check in M7 (macOS Security framework; the claim checks around it are tested), and the per-process microphone check behind A4 and A5.
+
+Not done: the R1 spike and everything in section 5, which need the owner's Cloudflare account. Acceptance criteria 1 to 6 are therefore still open.
+
+Deviations: A5 needs macOS 14.2 or later; on 14.0 and 14.1 Muesli cannot tell its own microphone use from another app's, so the end of a call is not detected. The server answers MCP protocol versions up to 2025-06-18.

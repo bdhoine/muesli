@@ -1,6 +1,6 @@
 # Muesli
 
-**Muesli: Granola's raw, unbaked cousin.** A macOS menu bar app that detects meetings, suggests transcribing, and writes the transcript to a folder. That is all it does. It has no network calls, no accounts and no dependency on any dashboard or other tool; anything downstream reads the files.
+**Muesli: Granola's raw, unbaked cousin.** A macOS menu bar app that detects meetings, suggests transcribing, and writes the transcript to a folder. It has no network calls, no accounts and no dependency on any dashboard or other tool; anything downstream reads the files. Optionally, Claude can read its status and transcripts through a bundled read-only MCP server.
 
 ## How it works
 
@@ -18,14 +18,29 @@
 
 ## Output
 
-One pair of files per meeting in `~/Documents/MeetingTranscripts/` by default. Pick another folder with **Choose transcripts folder…** in the menu bar (saved in the app's preferences; **Reset to default folder** undoes it). The `TRANSCRIPT_DIR` environment variable overrides both:
+One pair of files per meeting in `~/Documents/MeetingTranscripts/` by default. Pick another folder in **Preferences…** (**Reset to default** undoes it). The `TRANSCRIPT_DIR` environment variable overrides both:
 
 ```
 2026-11-10_1430_Weekly-sync.md     readable transcript
 2026-11-10_1430_Weekly-sync.json   same data, machine-readable
 ```
 
-JSON fields: id, title, source (calendar | teams | audio | manual), startedAt, endedAt, attendees, transcript[] (start, end, speaker, text).
+JSON fields: id, title, source (calendar | teams | audio | manual), startedAt, endedAt, attendees, state, transcript[] (start, end, speaker, text).
+
+While a meeting is being recorded its transcript is also kept in `~/Library/Application Support/Muesli/meetings/`, updated every 30 seconds. If Muesli is quit or crashes mid-recording, the next launch saves what was transcribed and marks it partial.
+
+## Detection
+
+Muesli suggests transcribing when a calendar meeting starts or when another app has used the microphone for 10 seconds. It keeps watching during a recording: when the other apps release the microphone for a minute, it asks whether to stop, or stops by itself if you enable that in Preferences. Telling Muesli's own microphone use apart from other apps' needs macOS 14.2 or later; on 14.0 and 14.1 the end of a call is not detected.
+
+## Claude
+
+Off by default. **Preferences… → Claude** switches it on and selects the connection:
+
+- **Local**: Claude Desktop and Claude Code on this Mac start the bundled `muesli-mcp` over stdio. Nothing is exposed to the network.
+- **Remote**: for claude.ai in the browser and on mobile. Muesli runs `muesli-mcp` on `127.0.0.1` for a Cloudflare Tunnel to forward to, guarded by Cloudflare Access. Not yet tested end to end against claude.ai.
+
+Claude gets three read-only tools: `get_status`, `list_transcripts` and `get_transcript`. Transcripts Claude reads are sent to Anthropic. Setup steps are in [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md); the requirements behind the design are in [REQUIREMENTS.md](REQUIREMENTS.md).
 
 ## Build
 
@@ -47,18 +62,22 @@ If recording says a permission is off, use **Open Privacy Settings** in the menu
 
 | Path | Purpose |
 | --- | --- |
-| `Sources/Muesli/App.swift` | Menu bar UI, notifications, record/stop flow |
-| `Sources/Muesli/MeetingDetector.swift` | Calendar, Teams and mic-activity detection |
+| `Sources/Muesli/App.swift` | Menu bar UI, notifications, record/stop flow, `state.json` heartbeat |
+| `Sources/Muesli/MeetingDetector.swift` | Calendar, Teams and mic-activity detection; end-of-call detection |
 | `Sources/Muesli/AudioCapture.swift` | Mic and system audio capture, 30 s chunking |
 | `Sources/Muesli/Transcriber.swift` | whisper.cpp via SwiftWhisper |
-| `Sources/Muesli/Store.swift` | Writes the .md and .json transcript files |
-| `Sources/Muesli/Models.swift` | Data types and folder paths |
+| `Sources/Muesli/PreferencesView.swift` | Preferences window: folder, auto-stop, Claude connection |
+| `Sources/Muesli/Bridge.swift` | Registers `muesli-mcp` with Claude Desktop (local) or runs it (remote) |
 | `Sources/Muesli/Permissions.swift` | Microphone and Screen Recording checks before recording |
+| `Sources/MuesliCore/` | Shared by the app and `muesli-mcp`: data types, paths, transcript files, meeting store, preferences |
+| `Sources/MuesliCore/MCP/` | The MCP server: tools, stdio and HTTP transports, Cloudflare Access token check, `doctor` |
+| `Sources/muesli-mcp/` | Entry point of the `muesli-mcp` executable |
+| `Tests/MuesliCoreTests/` | Tests for the MCP server and the shared code (`swift test`) |
 | `Info.plist`, `build.sh` | App bundle metadata and build script (builds `Muesli.icns` from the iconset and bundles the menu bar icon) |
 | `assets/brand/` | Logo, app icon and menu bar icon. Follow `assets/brand/BRAND.md`; use the files as they are |
 
 ## Status
 
-Compiles and launches on macOS 26 / Xcode 26. Transcription is verified end to end in local testing.
+Transcription is verified end to end in local testing. The Claude integration, the Preferences window and the reworked detection were written without a Mac at hand: `MuesliCore` and `muesli-mcp` are compiled and tested on Linux, but the app target has not been compiled since, and the per-process microphone check and the Cloudflare token signature check (macOS Security framework) have not been run.
 
 SwiftWhisper is pinned to an exact commit in `Package.swift`; bump it deliberately.

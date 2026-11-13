@@ -2,3 +2,4 @@
 Muesli.app/
 *.bin
 .DS_Store
+.swiftpm/

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftWhisper
+import MuesliCore
 
 /// On-device transcription with whisper.cpp. Chunks are consumed one at a time
 /// by AppState, so the single Whisper instance is never used concurrently.
