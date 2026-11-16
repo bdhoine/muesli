@@ -6,4 +6,6 @@
 
 uniffi::setup_scaffolding!();
 
+mod assistants;
 mod languages;
+mod whisper_model;

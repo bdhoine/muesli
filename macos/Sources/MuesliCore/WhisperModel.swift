@@ -1,4 +1,5 @@
 import Foundation
+import MuesliFFI
 
 /// The Whisper models Muesli can download. All come from whisper.cpp's ggml releases.
 public enum WhisperModel: String, Codable, CaseIterable, Sendable, Identifiable {
@@ -6,44 +7,25 @@ public enum WhisperModel: String, Codable, CaseIterable, Sendable, Identifiable 
 
     public var id: String { rawValue }
 
-    public var title: String {
+    /// Static facts about the model; they come from the shared Rust core.
+    private var info: ModelInfo { modelInfo(model: kind) }
+
+    var kind: ModelKind {
         switch self {
-        case .small: "Small"
-        case .medium: "Medium"
-        case .large: "Large"
+        case .small: .small
+        case .medium: .medium
+        case .large: .large
         }
     }
 
-    public var fileName: String {
-        switch self {
-        case .small: "ggml-small.bin"
-        case .medium: "ggml-medium.bin"
-        case .large: "ggml-large-v3.bin"
-        }
-    }
-
-    public var downloadURL: URL {
-        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(fileName)")!
-    }
+    public var title: String { info.title }
+    public var fileName: String { info.fileName }
+    public var downloadURL: URL { URL(string: info.downloadUrl)! }
 
     /// Size of the published file. Downloads smaller than 90% of this are rejected.
-    public var approximateBytes: Int64 {
-        switch self {
-        case .small: 487_601_967
-        case .medium: 1_533_763_059
-        case .large: 3_095_033_483
-        }
-    }
-
-    public var minimumValidBytes: Int64 { approximateBytes / 10 * 9 }
-
-    public var summary: String {
-        switch self {
-        case .small: "Good balance of speed and accuracy"
-        case .medium: "More accurate, slower"
-        case .large: "Most accurate, slowest, needs plenty of memory"
-        }
-    }
+    public var approximateBytes: Int64 { Int64(info.approximateBytes) }
+    public var minimumValidBytes: Int64 { Int64(info.minimumValidBytes) }
+    public var summary: String { info.summary }
 
     public var url: URL { Paths.support.appendingPathComponent(fileName) }
 
@@ -52,8 +34,7 @@ public enum WhisperModel: String, Codable, CaseIterable, Sendable, Identifiable 
 
     /// Whether `url` exists and holds at least `minimum` bytes (and at least one).
     public static func file(_ url: URL, isAtLeast minimum: Int64) -> Bool {
-        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value ?? 0
-        return size >= max(minimum, 1)
+        modelFileIsAtLeast(path: url.path, minimum: UInt64(max(minimum, 0)))
     }
 }
 
@@ -71,9 +52,13 @@ public enum ModelSwitch: Equatable, Sendable {
 
     public static func decide(active: WhisperModel, wanted: WhisperModel, installed: Set<WhisperModel>,
                               downloading: WhisperModel?) -> ModelSwitch {
-        if wanted == active { return .nothing }
-        if installed.contains(wanted) { return .switchNow }
-        return downloading == wanted ? .wait : .download
+        switch modelSwitchDecide(active: active.kind, wanted: wanted.kind,
+                                 installed: installed.map(\.kind), downloading: downloading?.kind) {
+        case .nothing: .nothing
+        case .switchNow: .switchNow
+        case .download: .download
+        case .wait: .wait
+        }
     }
 }
 
