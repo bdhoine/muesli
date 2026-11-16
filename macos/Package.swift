@@ -1,12 +1,11 @@
 // swift-tools-version:5.9
 import PackageDescription
 
-// MuesliCore and muesli-mcp are plain Foundation and also build on Linux (for tests).
+// MuesliCore is plain Foundation and also builds on Linux (for tests). muesli-mcp is the Rust binary in ../windows/crates/mcp.
 // The menu bar app and its whisper.cpp dependency are macOS only.
 var dependencies: [Package.Dependency] = []
 var targets: [Target] = [
     .target(name: "MuesliCore", path: "Sources/MuesliCore"),
-    .executableTarget(name: "muesli-mcp", dependencies: ["MuesliCore"], path: "Sources/muesli-mcp"),
     .testTarget(name: "MuesliCoreTests", dependencies: ["MuesliCore"], path: "Tests/MuesliCoreTests"),
 ]
 

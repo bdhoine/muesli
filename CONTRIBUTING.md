@@ -28,7 +28,7 @@ open macos/Muesli.app
 
 On first launch Muesli downloads the Small model into `~/Library/Application Support/Muesli/`. Set `MUESLI_SUPPORT_DIR` to keep a test copy elsewhere.
 
-`build.sh` runs `swift build -c release`, assembles `Muesli.app`, copies `muesli-mcp` next to the main executable, builds `Muesli.icns` from the iconset, packs the Claude Desktop extension `Muesli.mcpb` (manifest from `muesli-mcp --mcpb-manifest`, the 512 px icon and a signed copy of `muesli-mcp`) into `Contents/Resources`, and signs the bundle. Muesli needs a real bundle for notifications and permissions, so run the app, not the bare executable.
+`build.sh` runs `swift build -c release` and `cargo build --release -p muesli-mcp --target aarch64-apple-darwin` (the MCP server is the Rust binary from `windows/crates/mcp`, shared with the Windows app, so a Rust toolchain is required), assembles `Muesli.app`, copies `muesli-mcp` next to the main executable, builds `Muesli.icns` from the iconset, packs the Claude Desktop extension `Muesli.mcpb` (manifest from `muesli-mcp --mcpb-manifest`, the 512 px icon and a signed copy of `muesli-mcp`) into `Contents/Resources`, and signs the bundle. Muesli needs a real bundle for notifications and permissions, so run the app, not the bare executable.
 
 ## Test
 
@@ -37,16 +37,16 @@ cd macos
 swift test
 ```
 
-The tests cover everything in `MuesliCore`: audio chunking, Whisper segment mapping, language selection, transcript files, detection rules, the meeting store, crash recovery and importing older transcripts, preferences, Claude Desktop registration, MCP client setup snippets, the management tools and the MCP server over stdio. They need no microphone, calendar or network, and each test gets its own temporary data folders.
+The tests cover everything in `MuesliCore`: audio chunking, Whisper segment mapping, language selection, transcript files, detection rules, the meeting store, crash recovery and importing older transcripts, preferences, Claude Desktop registration, MCP client setup snippets and the meeting editor. The MCP server itself is tested in `windows/crates/mcp` (`cargo test -p muesli-mcp`). They need no microphone, calendar or network, and each test gets its own temporary data folders.
 
-`MuesliCore` and `muesli-mcp` use only Foundation, so `swift build` and `swift test` also work on Linux. `Package.swift` adds the app target and its whisper.cpp dependency on macOS only.
+`MuesliCore` uses only Foundation, so `swift build` and `swift test` also work on Linux. `Package.swift` adds the app target and its whisper.cpp dependency on macOS only.
 
 When you add logic, put it in `MuesliCore` if it can live without AppKit, AVFoundation, EventKit or CoreAudio, and test it there. The app target should stay a thin shell.
 
 ### What is verified
 
 - Transcription end to end, in local testing on macOS.
-- `MuesliCore` and `muesli-mcp`: compiled and tested on Linux, including the real binary over stdio.
+- `MuesliCore`: compiled and tested on Linux. `muesli-mcp` (Rust): tested with `cargo test`, including the real binary over stdio.
 - Not yet compiled or run on macOS since they were written: the Settings window, the `state.json` heartbeat, the Claude Desktop bridge, and the per-process microphone check in `MeetingDetector`.
 
 If you build on a Mac and something in the third group fails to compile or misbehaves, that is a useful bug report.
@@ -114,8 +114,7 @@ Environment variables: `TRANSCRIPT_DIR` overrides the transcripts folder; `MUESL
 | `macos/Sources/Muesli/OnboardingView.swift` | First-launch setup window (model, languages, assistants, permissions) |
 | `macos/Sources/Muesli/Permissions.swift` | Microphone and System Audio Recording checks before recording |
 | `macos/Sources/MuesliCore/` | Shared, Foundation-only: data types, paths, transcript files, meeting store, preferences, transcription languages, audio chunking, detection rules, Claude Desktop extension manifest and install detection (`ClaudeDesktopExtension.swift`), MCP client setup snippets (`AssistantSetup.swift`), rename/attendees/speaker/delete (`MeetingEditor.swift`) |
-| `macos/Sources/MuesliCore/MCP/` | The MCP server: tools, stdio transport, audit log, `doctor` |
-| `macos/Sources/muesli-mcp/` | Entry point of the `muesli-mcp` executable |
+| `windows/crates/mcp/` | The MCP server and the `muesli-mcp` executable (Rust, shared by both apps): tools, stdio transport, audit log, `doctor` |
 | `macos/Tests/MuesliCoreTests/` | Unit tests |
 | `macos/Info.plist`, `macos/build.sh` | App bundle metadata and build script |
 | `assets/brand/` | Logo, app icon and menu bar icon |
@@ -125,16 +124,16 @@ Environment variables: `TRANSCRIPT_DIR` overrides the transcripts folder; `MUESL
 ## The MCP server
 
 ```bash
-.build/debug/muesli-mcp                 # stdio
-.build/debug/muesli-mcp doctor          # checks preferences, access switch, app heartbeat and meetings
+windows/target/release/muesli-mcp       # stdio (cd windows && cargo build --release -p muesli-mcp)
+windows/target/release/muesli-mcp doctor          # checks preferences, access switch, app heartbeat and meetings
 ```
 
-It is a hand-written JSON-RPC server with no dependencies, speaking MCP protocol versions up to 2025-06-18. To try it by hand:
+It is a hand-written JSON-RPC server, speaking MCP protocol versions up to 2025-06-18. To try it by hand:
 
 ```bash
 export MUESLI_SUPPORT_DIR=/tmp/muesli-dev
 mkdir -p $MUESLI_SUPPORT_DIR && echo '{"mcpEnabled":true}' > $MUESLI_SUPPORT_DIR/config.json
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_status","arguments":{}}}' | .build/debug/muesli-mcp
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_status","arguments":{}}}' | windows/target/release/muesli-mcp
 ```
 
 Rules to keep:
@@ -167,7 +166,7 @@ cargo run -p muesli-app            # the app (on a Mac: for development only; it
 
 Install Rust with `brew install rustup && rustup default stable` (macOS) or from rustup.rs (Windows, plus the Visual Studio C++ build tools and CMake).
 
-- **Formats stay compatible.** `fixtures/` at the repo root is the contract between the two apps: `fixtures/core` holds files written by the Swift encoders, which `crates/core/tests/golden.rs` loads; `fixtures/mcp` holds 33 requests and what the Swift `muesli-mcp` answered, which `crates/mcp/tests/contract.rs` replays. When a format or tool changes on purpose, run `scripts/regenerate-fixtures.sh` and make the Rust tests pass again.
+- **Formats stay compatible.** `fixtures/` at the repo root is the contract between the two apps: `fixtures/core` holds files written by the Swift encoders, which `crates/core/tests/golden.rs` loads; `fixtures/mcp` holds 33 requests and the frozen replies (recorded from the former Swift server), which `crates/mcp/tests/contract.rs` replays. The MCP server is one Rust implementation for both apps, so a tool change is made once, in `crates/mcp`; update `fixtures/mcp/expected.jsonl` by hand when a reply changes on purpose. When a file format changes on purpose, run `scripts/regenerate-fixtures.sh` (regenerates `fixtures/core`) and make the Rust tests pass again.
 - **Icons have one source.** `windows/src-tauri/icons/` is generated from `assets/brand` by `scripts/sync-icons.py`; CI fails if it is out of date. Never edit it by hand.
 - **One version.** The Windows app's version is the workspace version in `windows/Cargo.toml`; the Swift app's is `MuesliInfo.version`. Keep them equal.
 - **Paths are passed around** as a `Paths` value instead of read from the environment, so tests run in parallel. On Windows, models live in `%LOCALAPPDATA%\Muesli`, everything else in `%APPDATA%\Muesli`.

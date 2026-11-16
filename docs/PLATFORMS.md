@@ -39,7 +39,7 @@ Closed since this page was first written: a broken audio stream is now handled o
 | Area | Implementation | Verified |
 |---|---|---|
 | Files: `config.json`, `state.json`, `meetings/`, transcripts | Shared formats | Golden tests against files written by the Swift app |
-| MCP server (7 tools) | Same tools and wording (Trash / Recycle Bin differ) | 33 recorded requests match the Swift replies |
+| MCP server (7 tools) | The same Rust binary (`windows/crates/mcp`) on both platforms; Trash / Recycle Bin wording differs | 33 recorded requests (from the former Swift server) match the Rust replies; the macOS app now bundles the Rust binary |
 | Whisper transcription | SwiftWhisper / whisper-rs, same models | Real speech on macOS in both; recording tested on Windows by the maintainer (2026-11-16) |
 | Model download, sizes, custom file | Same | Tests with a local server; real download on macOS |
 | Microphone | AVAudioEngine / cpal (WASAPI), resampled with rubato | macOS; recording tested on Windows by the maintainer (2026-11-16) |

@@ -104,27 +104,6 @@ final class MeetingEditorTests: IsolatedTestCase {
         _ = try MeetingEditor.delete("a", folder: transcriptsDir).get()
         XCTAssertEqual(exported().count, 2)
     }
-
-    func testToolsReachTheEditor() throws {
-        _ = ready("a")
-        setenv("TRANSCRIPT_DIR", transcriptsDir.path, 1)
-        guard case .success(let renamed) = Tools.call("rename_transcript", ["id": "a", "title": "Retro"]) else { return XCTFail() }
-        XCTAssertTrue(renamed.contains("\"title\" : \"Retro\""))
-        guard case .success = Tools.call("rename_speaker", ["id": "a", "from": "Others", "to": "Ann"]) else { return XCTFail() }
-        guard case .success = Tools.call("set_attendees", ["id": "a", "attendees": ["Ann"]]) else { return XCTFail() }
-        guard case .failure = Tools.call("set_attendees", ["id": "a", "attendees": [1, 2]]) else { return XCTFail() }
-        guard case .success(let deleted) = Tools.call("delete_transcript", ["id": "a"]) else { return XCTFail() }
-        XCTAssertTrue(deleted.contains("\"movedToTrash\" : true"))
-        guard case .failure = Tools.call("delete_transcript", ["id": "a"]) else { return XCTFail() }
-    }
-
-    func testToolAnnotationsTellClientsWhatChangesData() {
-        let byName = Dictionary(uniqueKeysWithValues: Tools.definitions.map { ($0["name"] as! String, $0["annotations"] as! [String: Any]) })
-        XCTAssertEqual(Set(byName.keys), Tools.names)
-        for name in Tools.readNames { XCTAssertEqual(byName[name]?["readOnlyHint"] as? Bool, true, name) }
-        for name in Tools.manageNames { XCTAssertEqual(byName[name]?["readOnlyHint"] as? Bool, false, name) }
-        XCTAssertEqual(byName["delete_transcript"]?["destructiveHint"] as? Bool, true)
-    }
 }
 
 private extension Result {

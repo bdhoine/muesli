@@ -49,7 +49,7 @@ final class ClaudeDesktopExtensionTests: IsolatedTestCase {
         let config = try XCTUnwrap(server["mcp_config"] as? [String: Any])
         XCTAssertEqual(config["command"] as? String, "${__dirname}/server/muesli-mcp")
         let tools = try XCTUnwrap(m["tools"] as? [[String: String]]).compactMap { $0["name"] }
-        XCTAssertEqual(Set(tools), Tools.names)
+        XCTAssertEqual(Set(tools), ["get_status", "list_transcripts", "get_transcript", "rename_transcript", "set_attendees", "rename_speaker", "delete_transcript"])
         XCTAssertFalse(String(decoding: data, as: UTF8.self).contains(#"\/"#))
     }
 }

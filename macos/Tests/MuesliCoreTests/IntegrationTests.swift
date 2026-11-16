@@ -135,7 +135,6 @@ final class IntegrationTests: IsolatedTestCase {
     func testCorruptStatusFileReadsAsNotRunning() throws {
         try Data("{".utf8).write(to: Paths.state)
         XCTAssertNil(AppStatus.read())
-        XCTAssertFalse(Tools.status().appRunning)
     }
 
     // MARK: Preferences
@@ -225,25 +224,5 @@ final class IntegrationTests: IsolatedTestCase {
     func testUnregisterWithoutClaudeDesktopDoesNothing() {
         XCTAssertEqual(ClaudeDesktopConfig.unregister(directory: claudeDir), "Off")
         XCTAssertFalse(FileManager.default.fileExists(atPath: claudeDir.path))
-    }
-
-    // MARK: MCP batches and audit log
-
-    func testBatchRequests() throws {
-        let body = Data(#"[{"jsonrpc":"2.0","id":1,"method":"ping"},{"jsonrpc":"2.0","method":"notifications/initialized"},{"jsonrpc":"2.0","id":2,"method":"tools/list"}]"#.utf8)
-        let replies = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(MCPServer().handle(body))) as? [[String: Any]])
-        XCTAssertEqual(replies.compactMap { $0["id"] as? Int }.sorted(), [1, 2])
-        XCTAssertNil(MCPServer().handle(Data(#"[{"jsonrpc":"2.0","method":"notifications/initialized"}]"#.utf8)))
-    }
-
-    func testAuditLogAppends() throws {
-        Audit.record(tool: "rename_transcript", meetingID: nil)
-        Audit.record(tool: "delete_transcript", meetingID: "m1")
-        let lines = try String(contentsOf: Paths.auditLog, encoding: .utf8).split(separator: "\n")
-        XCTAssertEqual(lines.count, 2)
-        XCTAssertFalse(lines[0].contains("meetingId"))
-        let second = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(lines[1].utf8)) as? [String: Any])
-        XCTAssertEqual(second["meetingId"] as? String, "m1")
-        XCTAssertNotNil(second["time"])
     }
 }

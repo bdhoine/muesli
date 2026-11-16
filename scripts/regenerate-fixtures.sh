@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
-# Regenerates fixtures/ from the Swift app, the reference for the file formats and the MCP replies.
-# Run this only when a format or an MCP tool changes on purpose, then make the Windows app's
-# tests (windows/: cargo test) pass against the new files.
+# Regenerates fixtures/core from the Swift app's encoders (the reference for the file formats
+# until the Swift core is replaced by the shared Rust library).
+# Run this only when a format changes on purpose, then make the Rust tests (windows/: cargo test) pass.
 #
-#   fixtures/core/           written by MuesliCore's encoders (FixtureGenerator.swift)
-#   fixtures/mcp/support/    hand-written input data          (not touched)
-#   fixtures/mcp/requests.jsonl  hand-written requests        (not touched)
-#   fixtures/mcp/expected.jsonl  what the Swift muesli-mcp answers to those requests
+#   fixtures/core/               written by MuesliCore's encoders (FixtureGenerator.swift)
+#   fixtures/mcp/support/        hand-written input data          (not touched)
+#   fixtures/mcp/requests.jsonl  hand-written requests            (not touched)
+#   fixtures/mcp/expected.jsonl  not generated: muesli-mcp is Rust on both platforms, so the replies
+#                                are the frozen contract. When a tool changes on purpose, update
+#                                this file by hand and keep crates/mcp/tests/contract.rs passing.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/macos"
 
 FIXTURE_OUT="$ROOT/fixtures/core" swift test --filter FixtureGenerator >/dev/null
 echo "Wrote fixtures/core"
-
-swift build --product muesli-mcp >/dev/null
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
-cp -R "$ROOT/fixtures/mcp/support" "$WORK/support"       # the requests rename and delete meetings
-MUESLI_SUPPORT_DIR="$WORK/support" TRANSCRIPT_DIR="$WORK/transcripts" \
-  .build/debug/muesli-mcp < "$ROOT/fixtures/mcp/requests.jsonl" > "$ROOT/fixtures/mcp/expected.jsonl"
-echo "Wrote fixtures/mcp/expected.jsonl"
