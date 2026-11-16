@@ -32,25 +32,8 @@ extension Meeting: Identifiable {
     }
 }
 
-public struct DetectedMeeting: Equatable, Sendable {
-    public var title: String
-    public var source: String
-    public var attendees: [String]
-
-    public init(title: String, source: String, attendees: [String] = []) {
-        self.title = title; self.source = source; self.attendees = attendees
-    }
-}
-
-/// Audio chunk (16 kHz mono Float32) from one stream.
-public struct AudioChunk: Sendable {
-    public var speaker: String
-    public var offsetSeconds: Double
-    public var samples: [Float]
-
-    public init(speaker: String, offsetSeconds: Double, samples: [Float]) {
-        self.speaker = speaker; self.offsetSeconds = offsetSeconds; self.samples = samples
-    }
+extension DetectedMeeting {
+    public init(title: String, source: String) { self.init(title: title, source: source, attendees: []) }
 }
 
 /// Where Muesli keeps its data. The rules (environment overrides, the folder chosen in

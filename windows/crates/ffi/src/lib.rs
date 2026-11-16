@@ -7,6 +7,9 @@
 uniffi::setup_scaffolding!();
 
 mod assistants;
+mod chunker;
+mod claude_desktop;
+mod detection;
 mod languages;
 mod models;
 mod paths;

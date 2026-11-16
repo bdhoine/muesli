@@ -4,7 +4,7 @@
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
-use muesli_core::models::{Meeting, MeetingState, TranscriptSegment};
+use muesli_core::models::{AudioChunk, DetectedMeeting, Meeting, MeetingState, TranscriptSegment};
 
 type UtcDateTime = DateTime<Utc>;
 
@@ -42,6 +42,34 @@ pub struct Meeting {
     pub transcript: Vec<TranscriptSegment>,
     pub state: MeetingState,
     pub partial: Option<bool>,
+}
+
+#[uniffi::remote(Record)]
+pub struct DetectedMeeting {
+    pub title: String,
+    pub source: String,
+    pub attendees: Vec<String>,
+}
+
+/// Audio chunk (16 kHz mono f32) from one stream.
+#[uniffi::remote(Record)]
+pub struct AudioChunk {
+    pub speaker: String,
+    pub offset_seconds: f64,
+    pub samples: Vec<f32>,
+}
+
+/// Maps one Whisper segment (times in milliseconds, relative to its chunk) onto the meeting
+/// timeline. `None` for silence markers and empty text.
+#[uniffi::export]
+pub fn transcript_segment_from_whisper(
+    speaker: String,
+    chunk_offset_seconds: f64,
+    start_ms: f64,
+    end_ms: f64,
+    text: String,
+) -> Option<TranscriptSegment> {
+    TranscriptSegment::from_whisper(&speaker, chunk_offset_seconds, start_ms, end_ms, &text)
 }
 
 /// A fresh meeting that is recording now, with a new id.

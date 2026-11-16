@@ -39,9 +39,9 @@ swift test
 
 The Swift tests cover `MuesliCore` and double as a check that the bindings behave: audio chunking, Whisper segment mapping, detection rules, Claude Desktop registration, and through the Rust core the transcript files, meeting store, crash recovery, preferences, `state.json`, paths and the transcripts-folder migration. The Rust logic itself is tested in `windows/crates/core`, `crates/mcp` and `crates/ffi` (`cargo test`). They need no microphone, calendar or network, and each test gets its own temporary data folders.
 
-`MuesliCore` is Foundation plus the shared Rust core, so `swift build` and `swift test` need macOS and a one-time `scripts/build-ffi.sh` (run by `build.sh` too). That script builds `windows/crates/ffi` into the git-ignored `macos/Frameworks/MuesliFFI.xcframework` and the generated `macos/Sources/MuesliFFI/muesli_ffi.swift` (UniFFI). Logic moves from `MuesliCore` into `windows/crates/core` module by module; Done so far: `Languages`, `WhisperModel`, `AssistantClient`, `Meeting` and `TranscriptSegment`, `Paths`, `Preferences`, `AppStatus`, `Store` and `MeetingStore` (the meeting editor now exists only in Rust, used by `muesli-mcp`). `Meeting`, `Preferences`, `AppStatus` and `WhisperModel` are the generated types themselves; the other Swift types are thin wrappers, so the app code barely changed. Not moved yet: detection rules, audio chunking, the Claude Desktop config and extension. `Package.swift` adds the app target and its whisper.cpp dependency on macOS only.
+`MuesliCore` is Foundation plus the shared Rust core, so `swift build` and `swift test` need macOS and a one-time `scripts/build-ffi.sh` (run by `build.sh` too). That script builds `windows/crates/ffi` into the git-ignored `macos/Frameworks/MuesliFFI.xcframework` and the generated `macos/Sources/MuesliFFI/muesli_ffi.swift` (UniFFI). Logic moves from `MuesliCore` into `windows/crates/core` module by module; Done so far: `Languages`, `WhisperModel`, `AssistantClient`, `Meeting` and `TranscriptSegment`, `Paths`, `Preferences`, `AppStatus`, `Store` and `MeetingStore` (the meeting editor now exists only in Rust, used by `muesli-mcp`). `Meeting`, `Preferences`, `AppStatus` and `WhisperModel` are the generated types themselves; the other Swift types are thin wrappers, so the app code barely changed. Also shared: `DetectionLogic` (a `Detector` object), `AudioChunker` (a `Chunker` with a callback sink), `ClaudeDesktopConfig` and the extension state. Left in Swift on purpose: locale-dependent text (`Languages.displayName`, `RecentTranscript.subtitle`) and `WhisperModel.unused`. `Package.swift` adds the app target and its whisper.cpp dependency on macOS only.
 
-When you add logic, put it in `MuesliCore` if it can live without AppKit, AVFoundation, EventKit or CoreAudio, and test it there. The app target should stay a thin shell.
+When you add logic, put it in `windows/crates/core` (and a wrapper in `windows/crates/ffi`) if it can live without AppKit, AVFoundation, EventKit or CoreAudio, and test it there with `cargo test`. `MuesliCore` and the app target stay thin shells.
 
 ### What is verified
 
@@ -74,7 +74,7 @@ The app never opens a socket and nothing is exposed to the network. Everything a
 
 ### Detection
 
-`DetectionLogic` (in `MuesliCore`) holds the rules; `MeetingDetector` samples the system every 5 seconds and feeds it.
+`DetectionLogic` (Rust, `crates/core/src/detection.rs`) holds the rules; `MeetingDetector` samples the system every 5 seconds and feeds it.
 
 - A calendar event counts as a meeting when it has more than one attendee or mentions a known meeting host. It is suggested once per event.
 - Mic activity counts as a call once another app has used a microphone for more than 10 seconds. Audio-only suggestions are at most 10 minutes apart.
