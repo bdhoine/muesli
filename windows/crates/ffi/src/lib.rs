@@ -18,6 +18,8 @@ mod status;
 mod store;
 
 mod whisper_model;
+#[cfg(feature = "whisper")]
+mod transcriber;
 
 /// The app version, shared by both apps (the workspace version).
 #[uniffi::export]

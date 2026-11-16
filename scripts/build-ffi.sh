@@ -10,7 +10,7 @@ command -v cargo >/dev/null || { echo "cargo not found: install Rust (https://ru
 TARGET=aarch64-apple-darwin
 cd "$ROOT/windows"
 
-cargo build --release -p muesli-ffi --target "$TARGET"
+cargo build --release -p muesli-ffi --features whisper --target "$TARGET"
 LIB="target/$TARGET/release/libmuesli_ffi.a"
 
 WORK="$(mktemp -d)"
