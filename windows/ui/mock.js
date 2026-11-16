@@ -4,13 +4,16 @@
   if (!new URLSearchParams(location.search).has("mock")) return;
   const listeners = [];
   const state = {
-    version: "0.3.0", platform: "windows", status: { kind: "idle" },
+    version: "0.0.1", platform: "windows", status: { kind: "idle" },
     prefs: { mcpEnabled: false, claudeDesktopConfigEntry: false, autoStop: false, endDelaySeconds: 60, recentLimit: 5, model: "small", onboardingDone: false },
     effectiveLanguages: ["nl", "en"], systemLanguages: ["nl", "en"],
     supportedLanguages: ["en", "nl", "fr", "de", "es", "it", "pt", "ja", "zh"].map((code) => ({ code, name: code })),
-    model: { kind: "missing", model: "small" },
+    model: { kind: "ready", path: "C:\\Users\\me\\AppData\\Local\\Muesli\\ggml-small.bin" },
+    wantedModel: null, download: null, downloadError: null,
+    modelsFolder: "C:\\Users\\me\\AppData\\Local\\Muesli", unusedModels: 1, unusedBytes: 1533763059,
+    system: { microphone: "allowed", notifications: "denied", systemAudioNeedsPermission: false, startAtLogin: true },
     models: [
-      { id: "small", title: "Small", summary: "Good balance of speed and accuracy", bytes: 487601967, installed: false },
+      { id: "small", title: "Small", summary: "Good balance of speed and accuracy", bytes: 487601967, installed: true },
       { id: "medium", title: "Medium", summary: "More accurate, slower", bytes: 1533763059, installed: false },
       { id: "large", title: "Large", summary: "Most accurate, slowest, needs plenty of memory", bytes: 3095033483, installed: false },
     ],
@@ -37,7 +40,30 @@
     get_prompt: () => ({ kind: "start", title: "Looks like a meeting: Weekly sync", body: "Detected via calendar. Start transcribing?" }),
     update_prefs: ({ prefs }) => { state.prefs = prefs; state.effectiveLanguages = prefs.languages || state.systemLanguages; state.transcriptsFolderIsCustom = !!prefs.transcriptsFolder; state.transcriptsFolder = prefs.transcriptsFolder || "C:\\Users\\me\\Documents\\MeetingTranscripts"; setTimeout(emit); },
     download_model: ({ model }) => download(model),
-    cancel_download: () => { clearInterval(timer); state.model = { kind: "missing", model: state.prefs.model }; emit(); },
+    select_model: ({ model }) => {
+      if (model === state.prefs.model) { state.wantedModel = null; clearInterval(timer); state.download = null; return emit(); }
+      state.wantedModel = model; emit();
+      setTimeout(() => {
+        if (state.wantedModel !== model) return;
+        const m = state.models.find((x) => x.id === model);
+        state.download = { model, received: 0, total: m.bytes };
+        clearInterval(timer);
+        timer = setInterval(() => {
+          state.download.received += 40_000_000;
+          if (state.download.received >= m.bytes) { clearInterval(timer); m.installed = true; state.prefs.model = model; state.wantedModel = null; state.download = null; }
+          emit();
+        }, 150);
+        emit();
+      }, 1500);
+    },
+    use_system_languages: ({ on }) => {
+      if (on) { state.prefs.savedLanguages = state.prefs.languages; state.prefs.languages = null; }
+      else state.prefs.languages = state.prefs.savedLanguages || state.systemLanguages;
+      state.effectiveLanguages = state.prefs.languages || state.systemLanguages; emit();
+    },
+    set_start_at_login: ({ on }) => { state.system.startAtLogin = on; emit(); },
+    remove_unused_models: () => { state.unusedModels = 0; state.unusedBytes = 0; emit(); },
+    cancel_download: () => { clearInterval(timer); state.download = null; state.wantedModel = null; if (state.model.kind !== "ready") state.model = { kind: "missing", model: state.prefs.model }; emit(); },
     request_permission: () => new Promise((ok) => setTimeout(ok, 400)),
     choose_model_file: () => "C:\\models\\mine.bin",
     choose_transcripts_folder: () => "D:\\Transcripts",

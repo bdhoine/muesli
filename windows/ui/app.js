@@ -4,7 +4,7 @@
   const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
 
   let S = null; // the last state from the backend
-  const ui = { page: "general", step: 0, chosen: { model: false, autoStop: false, assistants: false }, access: {}, client: 0, prompt: null };
+  const ui = { page: "general", step: 0, chosen: { model: false, autoStop: false, assistants: false }, access: {}, client: 0, prompt: null, info: null, ownModel: null };
 
   // ---- tiny DOM helper -------------------------------------------------------------------
   function h(tag, attrs, ...kids) {
@@ -43,6 +43,19 @@
   const group = (...rows) => h("div", { class: "group" }, rows);
   const foot = (text) => h("p", { class: "footer" }, text);
   const dot = (kind) => h("span", { class: `status-dot ${kind}` });
+  const status = (kind, text) => h("span", { class: "status" }, dot(kind), text);
+
+  // A small ⓘ button that reveals extra explanation and actions. Which one is open is kept in
+  // `ui.info`, so it survives the re-render that every state change causes.
+  function info(id, ...content) {
+    const open = ui.info === id;
+    const side = id.startsWith("label:") ? " left" : ""; // after a row's title: open towards the right
+    return h("span", { class: "info" + side + (open ? " open" : "") },
+      h("button", { class: "info-btn", title: "More information", "aria-expanded": String(open),
+        onclick: (e) => { e.stopPropagation(); ui.info = open ? null : id; render(); } }, "ⓘ"),
+      open ? h("div", { class: "info-panel", onclick: (e) => e.stopPropagation() }, content) : null);
+  }
+  document.addEventListener("click", () => { if (ui.info) { ui.info = null; render(); } });
 
   // ---- shared pieces -----------------------------------------------------------------------
   function modelProgress() {
@@ -58,27 +71,39 @@
     return null;
   }
 
-  function languageChips() {
+  // Settings: a switch for the computer's languages; the own list only shows while it is in use.
+  function languageSettings() {
+    const system = !S.prefs.languages;
+    return [
+      group(row("Use my computer's languages", system ? S.systemLanguages.map(langName).join(", ") : null,
+        toggle(system, (v) => invoke("use_system_languages", { on: v })))),
+      system ? null : languageChips(false)];
+  }
+
+  function languageChips(withLinks = true) {
     const chosen = S.effectiveLanguages;
     const custom = !!S.prefs.languages;
     const available = S.supportedLanguages.filter((l) => !chosen.includes(l.code)).sort((a, b) => langName(a.code).localeCompare(langName(b.code)));
+    // Editing the list makes it the user's own; the system list stays one click away, and back.
+    const own = (languages) => setPrefs({ languages });
     return h("div", { style: "display:flex;flex-direction:column;gap:14px" },
       h("div", { class: "chips" }, chosen.map((code) =>
         h("span", { class: "chip" }, langName(code),
-          chosen.length > 1 ? h("button", { title: "Remove", onclick: () => setPrefs({ languages: chosen.filter((c) => c !== code) }) }, "✕") : null))),
+          chosen.length > 1 ? h("button", { title: "Remove", onclick: () => own(chosen.filter((c) => c !== code)) }, "✕") : null))),
       h("div", { style: "display:flex;gap:12px;align-items:center" },
-        h("select", { onchange: (e) => { if (e.target.value) setPrefs({ languages: [...chosen, e.target.value] }); } },
+        h("select", { onchange: (e) => { if (e.target.value) own([...chosen, e.target.value]); } },
           h("option", { value: "" }, "+ Add a language"),
           available.map((l) => h("option", { value: l.code }, langName(l.code)))),
-        custom ? h("button", { class: "link", onclick: () => setPrefs({ languages: null }) }, "Back to my computer's languages") : null),
-      custom ? null : h("span", { class: "sub small" }, "Taken from your computer's settings."));
+        !withLinks ? null : custom ? h("button", { class: "link", onclick: () => invoke("use_system_languages", { on: true }) }, "Use my computer's languages")
+          : S.prefs.savedLanguages ? h("button", { class: "link", onclick: () => invoke("use_system_languages", { on: false }) }, "Use my own list again") : null),
+      custom || !withLinks ? null : h("span", { class: "sub small" }, "Taken from your computer's settings."));
   }
 
   // ---- Settings window ---------------------------------------------------------------------
-  const PAGES = [["general", "General", "⚙", "#6b5a4b"], ["transcription", "Transcription", "🎙", "#5b7a3a"], ["assistants", "AI Assistants", "✦", "#3b2a1e"]];
+  const PAGES = [["general", "General", "⚙", "#6b5a4b"], ["transcription", "Transcription", "🎙", "#5b7a3a"], ["assistants", "AI Assistants", "✦", "#3b2a1e"], ["permissions", "Permissions", "🛡", "#6b5a4b"]];
 
   function settings() {
-    const page = { general: generalPage, transcription: transcriptionPage, assistants: assistantsPage }[ui.page]();
+    const page = { general: generalPage, transcription: transcriptionPage, assistants: assistantsPage, permissions: permissionsPage }[ui.page]();
     return h("div", { class: "settings" },
       h("nav", { class: "sidebar" }, PAGES.map(([id, title, icon, color]) =>
         h("button", { class: "nav" + (ui.page === id ? " on" : ""), onclick: () => { ui.page = id; render(); } },
@@ -88,7 +113,7 @@
 
   function generalPage() {
     const p = S.prefs;
-    return h("div", { style: "display:flex;flex-direction:column;gap:18px" },
+    return h("div", { style: "display:flex;flex-direction:column;gap:18px;flex:1" },
       group(
         row("Save transcripts to", S.transcriptsFolderLocked ? "Set by the TRANSCRIPT_DIR environment variable" : S.transcriptsFolder, [
           h("button", { disabled: S.transcriptsFolderLocked, onclick: async () => { const f = await invoke("choose_transcripts_folder"); if (f) setPrefs({ transcriptsFolder: f }); } }, "Choose…"),
@@ -102,36 +127,59 @@
         p.autoStop ? row("Call has ended after", "How long other apps must leave the microphone free",
           h("select", { onchange: (e) => setPrefs({ endDelaySeconds: +e.target.value }) },
             [30, 60, 120, 300].map((s) => h("option", { value: s, selected: p.endDelaySeconds === s }, s < 120 ? `${s} seconds` : `${s / 60} minutes`)))) : null),
-      foot(`Muesli ${S.version}`));
+      h("p", { class: "footer about" }, `Muesli ${S.version} · `, h("button", { class: "link", onclick: () => invoke("open_repository") }, "GitHub")));
+  }
+
+  // What is in use and what is happening, in one line next to the picker.
+  function modelStatus() {
+    const p = S.prefs;
+    const active = p.customModelPath ? "your own file" : S.models.find((x) => x.id === p.model).title;
+    if (S.wantedModel) {
+      const pick = S.models.find((x) => x.id === S.wantedModel).title;
+      return S.download && S.download.model === S.wantedModel
+        ? status("warn", `Downloading ${pick}. Using ${active} until it is ready.`)
+        : status("warn", `${pick} will be downloaded in a moment. Using ${active}.`);
+    }
+    const m = S.model;
+    if (m.kind === "ready") return status("ok", "Ready");
+    if (m.kind === "downloading") return status("warn", "Downloading. Transcribing is off until it is ready.");
+    if (m.kind === "failed") return status("err", m.message);
+    return status("warn", "Not downloaded. Transcribing is off.");
   }
 
   function transcriptionPage() {
     const p = S.prefs;
-    const custom = !!p.customModelPath;
-    const m = S.model;
-    const installed = S.models.find((x) => x.id === p.model)?.installed;
-    const statusRow = m.kind === "ready" ? row("Transcriber", m.path, [dot("ok"), "Ready"])
-      : m.kind === "failed" ? row("Transcriber", m.message, [dot("err"), "Problem"])
-      : m.kind === "downloading" ? null
-      : row("Transcriber", "Not downloaded yet. Transcribing is off until it is.", [dot("warn"), "Missing"]);
+    if (ui.ownModel === null) ui.ownModel = !!p.customModelPath;
+    const shown = S.wantedModel || p.model;
+    const d = S.download;
+    const frac = d && d.total > 0 ? Math.min(d.received / d.total, 1) : null;
     return h("div", { style: "display:flex;flex-direction:column;gap:18px" },
       group(
-        custom ? null : row("Model", S.models.find((x) => x.id === p.model).summary,
-          h("select", { onchange: (e) => setPrefs({ model: e.target.value }) },
-            S.models.map((x) => h("option", { value: x.id, selected: p.model === x.id }, `${x.title} · ${size(x.bytes)}${x.installed ? " · installed" : ""}`)))),
-        statusRow,
-        m.kind === "downloading" ? h("div", { class: "row" }, modelProgress()) : null,
-        h("div", { class: "row", style: "justify-content:flex-end" },
-          m.kind === "downloading" ? h("button", { onclick: () => invoke("cancel_download") }, "Cancel download")
-            : custom ? null
-            : installed ? h("button", { class: "danger", onclick: () => invoke("delete_model", { model: p.model }) }, "Delete")
-            : h("button", { class: "primary", onclick: () => invoke("download_model", { model: p.model }) }, `Download ${p.model}`)),
-        row("Your own model", custom ? p.customModelPath : "Optional: use any whisper.cpp .bin file",
-          [h("button", { onclick: async () => { const f = await invoke("choose_model_file"); if (f) setPrefs({ customModelPath: f }); } }, custom ? "Change…" : "Choose File…"),
-           custom ? h("button", { class: "link", onclick: () => setPrefs({ customModelPath: null }) }, "Use downloaded model") : null])),
-      foot("Runs on this computer. Muesli only goes online to download a model you pick here. Changes apply from the next recording."),
+        h("div", { class: "row" },
+          h("div", { class: "label" }, h("span", null, "Model"), h("span", { class: "sub small" }, modelStatus())),
+          h("div", { class: "ctl" },
+            ui.ownModel ? h("span", { class: "sub" }, "Own file")
+              : h("select", { onchange: (e) => invoke("select_model", { model: e.target.value }) },
+                  S.models.map((x) => h("option", { value: x.id, selected: shown === x.id }, `${x.title} · ${size(x.bytes)}`))),
+            info("model",
+              h("p", null, "Transcription runs on this computer. Muesli only goes online to download a model you pick here. A new model is used from the next recording."),
+              S.downloadError ? h("p", { class: "err-text" }, S.downloadError) : null,
+              h("p", { class: "sub" }, "Models are stored in"),
+              h("pre", { class: "snippet" }, S.modelsFolder),
+              h("div", { class: "info-actions" },
+                h("button", { onclick: () => invoke("open_models_folder") }, `Show in ${platformName()}`),
+                h("button", { disabled: S.unusedModels === 0, onclick: () => invoke("remove_unused_models") },
+                  S.unusedModels === 0 ? "No unused models" : `Remove unused models (${size(S.unusedBytes)})`))))),
+        d ? h("div", { class: "row", style: "flex-direction:column;align-items:stretch;gap:6px" },
+          h("div", { class: "bar" + (frac == null ? " indeterminate" : "") }, h("i", { style: `width:${(frac || 0) * 100}%` })),
+          h("div", { style: "display:flex;justify-content:space-between;align-items:center" },
+            h("span", { class: "sub small mono-digits" }, `Downloading ${d.model} · ${mb(d.received)} of ${mb(d.total)}`),
+            h("button", { onclick: () => invoke("cancel_download") }, "Cancel download"))) : null,
+        row("Use my own model file", null, toggle(ui.ownModel, (v) => { ui.ownModel = v; if (!v && p.customModelPath) setPrefs({ customModelPath: null }); render(); })),
+        ui.ownModel ? row("Model file", p.customModelPath || "Any whisper.cpp .bin file. None chosen yet.",
+          h("button", { onclick: async () => { const f = await invoke("choose_model_file"); if (f) setPrefs({ customModelPath: f }); } }, p.customModelPath ? "Change…" : "Choose File…")) : null),
       h("h2", { style: "font-size:15px" }, "Languages"),
-      languageChips(),
+      languageSettings(),
       foot("Muesli recognises which of these is spoken. Fewer languages means fewer mistakes."));
   }
 
@@ -139,18 +187,38 @@
     const p = S.prefs;
     const a = S.assistants;
     const ext = a.extension;
+    const claudeInstalled = ext.state !== "claudeMissing";
     const extInstalled = ext.state === "installed" || ext.state === "outdated";
     const client = a.clients[ui.client] || a.clients[0];
+    const trash = S.platform === "windows" ? "Recycle Bin" : "Trash";
+    const extStatus = ext.state === "installed" ? status("ok", "Installed") : ext.state === "outdated" ? status("warn", "Update available")
+      : status("warn", p.claudeDesktopConfigEntry ? "Using the config file" : "Not installed");
     return h("div", { style: "display:flex;flex-direction:column;gap:18px" },
-      group(row("Let AI assistants use Muesli", "They can read and manage finished transcripts, never start or stop a recording.", toggle(p.mcpEnabled, (v) => setPrefs({ mcpEnabled: v })))),
+      group(h("div", { class: "row" },
+        h("div", { class: "label title" }, "Let AI assistants use Muesli",
+          info("label:mcp",
+            h("p", null, `Assistants can read Muesli's status and transcripts, rename meetings, set attendees and speakers, and delete finished meetings (deleted files go to the ${trash}). They cannot start or stop a recording.`),
+            h("p", null, "An assistant on this computer starts Muesli's small MCP server itself; nothing is exposed to the network. What an assistant reads is sent to its provider, for example Anthropic for Claude."))),
+        h("div", { class: "ctl" }, toggle(p.mcpEnabled, (v) => setPrefs({ mcpEnabled: v }))))),
       p.mcpEnabled ? [
-        group(
-          row("Muesli extension",
-            ext.state === "claudeMissing" ? "Claude Desktop is not installed on this computer" : ext.state === "notInstalled" ? "Not installed yet" : `Version ${ext.version} installed`,
-            ext.state !== "claudeMissing" && ext.bundled ? h("button", { onclick: () => invoke("install_extension") }, ext.state === "notInstalled" ? "Install in Claude Desktop…" : "Reinstall…") : null),
-          !extInstalled && ext.state !== "claudeMissing" ? row("Add to Claude Desktop's config file instead", "For accounts that don't allow extensions. Quit and reopen Claude Desktop after changing this.", toggle(p.claudeDesktopConfigEntry, (v) => setPrefs({ claudeDesktopConfigEntry: v }))) : null),
-        p.claudeDesktopConfigEntry && a.configStatus ? foot(a.configStatus) : null,
-        h("h2", { style: "font-size:15px" }, "Set up another assistant"),
+        claudeInstalled ? [
+          h("h2", { style: "font-size:15px" }, "Claude Desktop"),
+          group(
+            h("div", { class: "row" },
+              h("div", { class: "label title" }, "Muesli extension",
+                info("label:claude",
+                  h("p", null, "The extension lists Muesli in Claude Desktop with its name and icon. Claude Desktop asks you to confirm when you install it."),
+                  ext.version ? h("p", { class: "sub" }, `Version ${ext.version} is installed.`) : null,
+                  extInstalled ? null : [
+                    h("p", null, "If Claude Desktop says the extension cannot be installed, your organisation blocks extensions. Muesli can add itself to Claude Desktop's config file instead: it is then listed as “Muesli” without an icon. Quit and reopen Claude Desktop afterwards. Installing the extension later removes the entry."),
+                    h("div", { class: "info-actions" }, h("button", { onclick: () => setPrefs({ claudeDesktopConfigEntry: !p.claudeDesktopConfigEntry }) },
+                      p.claudeDesktopConfigEntry ? "Remove from config file" : "Add to config file"))])),
+              h("div", { class: "ctl" }, extStatus,
+                ext.bundled && !extInstalled ? h("button", { class: "primary", onclick: () => invoke("install_extension") }, "Install…")
+                  : ext.bundled && ext.state === "outdated" ? h("button", { onclick: () => invoke("install_extension") }, "Update…") : null)),
+            p.claudeDesktopConfigEntry && !extInstalled ? row("Config file entry", a.configStatus || null,
+              h("button", { onclick: () => setPrefs({ claudeDesktopConfigEntry: false }) }, "Remove")) : null)] : null,
+        h("h2", { style: "font-size:15px" }, claudeInstalled ? "Other assistants" : "Set up an assistant"),
         client && client.snippet ? group(
           row("Assistant", null, h("select", { onchange: (e) => { ui.client = +e.target.value; render(); } }, a.clients.map((c, i) => h("option", { value: i, selected: i === ui.client }, c.name)))),
           h("div", { class: "row", style: "flex-direction:column;align-items:stretch;gap:8px" },
@@ -159,6 +227,25 @@
             h("div", { style: "text-align:right" }, h("button", { onclick: (e) => { navigator.clipboard?.writeText(client.snippet); e.target.textContent = "Copied"; } }, "Copy"))))
           : group(row("muesli-mcp", "Missing next to the app. Reinstall Muesli.", [dot("err")])),
       ] : null);
+  }
+
+  // How Muesli stands with the operating system: one row per thing it needs from it.
+  function permissionsPage() {
+    const y = S.system;
+    // The status is always at the right edge; a button to fix it sits beneath.
+    const access = (value, settingsKind) => h("div", { class: "stack" },
+      value === "allowed" ? status("ok", "Allowed") : value === "denied" ? status("err", "Not allowed") : status("off", "Unknown"),
+      value === "allowed" ? null : h("button", { onclick: () => invoke("open_privacy_settings", { kind: settingsKind }) }, "Open settings…"));
+    return h("div", { style: "display:flex;flex-direction:column;gap:18px" },
+      group(
+        row("Microphone", "To transcribe your side of the conversation", access(y.microphone, "microphone")),
+        // Where the system asks nothing for this (Windows), there is nothing to show.
+        y.systemAudioNeedsPermission ? row("System audio", "To transcribe the other side of a call. Muesli never records your screen.",
+          h("div", { class: "stack" }, status("off", "Asked when you record"),
+            h("button", { onclick: () => invoke("open_privacy_settings", { kind: "systemAudio" }) }, "Open settings…"))) : null,
+        row("Notifications", "To ask whether to transcribe when a meeting starts", access(y.notifications, "notifications"))),
+      group(row("Start at login", "So Muesli is there when a meeting starts", toggle(y.startAtLogin, (v) => invoke("set_start_at_login", { on: v })))),
+      foot("Changes you make in your system settings show here when you come back to this window."));
   }
 
   // ---- onboarding assistant ----------------------------------------------------------------
@@ -274,4 +361,5 @@
 
   refresh();
   tauri.event.listen("state-changed", refresh);
+  window.addEventListener("focus", refresh); // system settings may have changed meanwhile
 })();

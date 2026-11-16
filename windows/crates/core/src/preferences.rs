@@ -35,6 +35,9 @@ pub struct Preferences {
     /// here; the macOS app keeps it in its own defaults and never writes this key.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcripts_folder: Option<String>,
+    /// The user's own language list, kept while "use my computer's languages" is on, so it comes back.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saved_languages: Option<Vec<String>>,
 }
 
 fn done_when_missing() -> bool {
@@ -59,6 +62,7 @@ impl Default for Preferences {
             custom_model_path: None,
             onboarding_done: false,
             transcripts_folder: None,
+            saved_languages: None,
         }
     }
 }
@@ -66,6 +70,22 @@ impl Default for Preferences {
 impl Preferences {
     pub fn effective_recent_limit(&self) -> i32 {
         self.recent_limit.clamp(0, MAX_RECENT_LIMIT)
+    }
+
+    /// Whether the languages follow the system (`languages` is unset).
+    pub fn uses_system_languages(&self) -> bool {
+        self.languages.is_none()
+    }
+
+    /// Switches between the system's languages and the user's own list without losing that list.
+    pub fn set_uses_system_languages(&mut self, on: bool, system_defaults: &[String]) {
+        if on {
+            if let Some(own) = self.languages.take() {
+                self.saved_languages = Some(own);
+            }
+        } else if self.languages.is_none() {
+            self.languages = Some(self.saved_languages.clone().unwrap_or_else(|| system_defaults.to_vec()));
+        }
     }
 
     /// The languages Whisper may pick from: the chosen ones, else the system defaults.

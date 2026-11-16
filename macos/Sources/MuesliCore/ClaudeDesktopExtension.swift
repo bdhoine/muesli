@@ -16,8 +16,11 @@ public enum ClaudeDesktopExtension {
         claude.appendingPathComponent("Claude Extensions", isDirectory: true)
     }
 
-    public static func state(bundledVersion: String = MuesliInfo.version, claude: URL = claudeDirectory) -> State {
-        guard FileManager.default.fileExists(atPath: claude.path) else { return .claudeMissing }
+    /// `appInstalled`: whether the Claude app itself is installed, when the caller can tell.
+    /// Without it, Claude counts as present when its data folder exists.
+    public static func state(bundledVersion: String = MuesliInfo.version, claude: URL = claudeDirectory,
+                             appInstalled: Bool? = nil) -> State {
+        guard appInstalled ?? FileManager.default.fileExists(atPath: claude.path) else { return .claudeMissing }
         guard let installed = installedVersion(claude: claude) else { return .notInstalled }
         return isOlder(installed, than: bundledVersion) ? .outdated(installed: installed, bundled: bundledVersion) : .installed(version: installed)
     }

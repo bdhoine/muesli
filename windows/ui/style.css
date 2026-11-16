@@ -12,6 +12,7 @@
   --danger: #b3382c;
   --ok: #3d8b3d;
   font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light dark; /* native controls follow the theme */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -29,6 +30,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); -webkit-user-select: none; user-select: none; }
 button, select, input { font: inherit; color: inherit; }
+select { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
 h1, h2, h3, p { margin: 0; }
 .sub { color: var(--sub); }
 .small { font-size: 12.5px; }
@@ -106,3 +108,25 @@ pre.snippet { margin: 0; padding: 10px; background: var(--bg); border-radius: 8p
 .prompt { padding: 16px; height: 100vh; display: flex; flex-direction: column; justify-content: space-between; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
 .prompt h3 { font-size: 15px; margin-bottom: 4px; }
 .prompt .actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* status text and info popovers */
+.status { display: inline-flex; align-items: center; white-space: nowrap; }
+.label .status { white-space: normal; align-items: baseline; }
+.status-dot.off { background: var(--sub); }
+.info { position: relative; display: inline-flex; }
+.info-btn { border: 0; background: none; padding: 2px 4px; font-size: 16px; color: var(--sub); border-radius: 50%; }
+.info.open .info-btn, .info-btn:hover { color: var(--accent); }
+.info-panel {
+  position: absolute; right: 0; top: 28px; z-index: 10; width: 340px; padding: 14px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); display: flex; flex-direction: column; gap: 10px;
+  font-size: 13px; text-align: left; -webkit-user-select: text; user-select: text;
+}
+.info-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* a row title with an info button after it; info panels that open towards the right */
+.label.title { flex-direction: row; align-items: center; gap: 4px; }
+.info.left .info-panel { left: 0; right: auto; }
+/* status at the right edge with its button beneath */
+.stack { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.footer.about { text-align: right; margin-top: auto; }

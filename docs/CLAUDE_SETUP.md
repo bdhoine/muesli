@@ -10,11 +10,11 @@ Settings… → AI Assistants → switch on **Let AI assistants use Muesli**. It
 
 ## Claude Desktop
 
-Under **Claude Desktop**, click **Install in Claude Desktop…**. Claude Desktop opens its install dialog for the Muesli extension (`Muesli.mcpb`, bundled in the app); confirm it. Muesli then shows up as **Muesli** with its icon under Claude Desktop → Settings → Extensions.
+The **Claude Desktop** section appears when the Claude app is installed. Click **Install…**. Claude Desktop opens its install dialog for the Muesli extension (`Muesli.mcpb`, bundled in the app); confirm it. Muesli then shows up as **Muesli** with its icon under Claude Desktop → Settings → Extensions.
 
-If Claude Desktop greys out **Install** with *"This extension cannot be installed. Contact your organization owner"*, your Claude organisation blocks extensions it has not approved. Switch on **Add to Claude Desktop's config file instead**: Muesli adds a `Muesli` entry to `claude_desktop_config.json` (other entries are left alone). Quit and reopen Claude Desktop; it lists Muesli under its local developer servers, without an icon. Installing the extension later removes that entry.
+If Claude Desktop greys out **Install** with *"This extension cannot be installed. Contact your organization owner"*, your Claude organisation blocks extensions it has not approved. Click the ⓘ next to **Muesli extension** and choose **Add to Config File**: Muesli adds a `Muesli` entry to `claude_desktop_config.json` (other entries are left alone). Quit and reopen Claude Desktop; it lists Muesli under its local developer servers, without an icon. Installing the extension later removes that entry.
 
-The extension carries its own copy of `muesli-mcp`. When Settings says a newer version is available, click **Update Extension…**. To remove it, use Claude Desktop → Settings → Extensions.
+The extension carries its own copy of `muesli-mcp`. When Settings says a newer version is available, click **Update…**. To remove it, use Claude Desktop → Settings → Extensions.
 
 Earlier versions added a lowercase `muesli` entry to `claude_desktop_config.json`; Muesli removes it on launch, so the server is never listed twice.
 

@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use muesli_core::DetectedMeeting;
-use muesli_notify::Question;
+use muesli_system::Question;
 
 use crate::ctx::Ctx;
 use crate::state::Prompt;
@@ -42,7 +42,7 @@ fn ask(ctx: &Ctx, kind: &str, question: Question) {
     *ctx.app.prompt.lock().unwrap() =
         Some(Prompt { id, kind: kind.into(), title: question.title.clone(), body: question.body.clone() });
     let answer_ctx = ctx.clone();
-    if muesli_notify::ask(APP_ID, &question, move |accept| answer(&answer_ctx, Some(id), accept)).is_err() {
+    if muesli_system::ask(APP_ID, &question, move |accept| answer(&answer_ctx, Some(id), accept)).is_err() {
         windows::show(&ctx.handle, "prompt"); // no notification with buttons here: our own window
     }
 }

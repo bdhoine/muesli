@@ -1,9 +1,9 @@
 name: CI
 
+# Started by hand for now (Actions tab, or `gh workflow run CI`): the macOS jobs are costly on a
+# private repository. Put `push` and `pull_request` back here to run it automatically.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   rust:
@@ -26,7 +26,7 @@ jobs:
         run: cargo test --workspace
       # Linux has no app (no WebKitGTK here) and no audio capture; test the portable crates.
       - if: matrix.os == 'ubuntu-latest'
-        run: cargo test -p muesli-core -p muesli-mcp -p muesli-detect -p muesli-audio -p muesli-notify
+        run: cargo test -p muesli-core -p muesli-mcp -p muesli-detect -p muesli-audio -p muesli-system
 
   swift:
     name: Swift (macOS)

@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 import MuesliCore
 
 /// The Settings window. A plain AppKit window, opened on demand, so nothing
@@ -36,7 +37,7 @@ final class SettingsNavigation {
 }
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, transcription, assistants
+    case general, transcription, assistants, permissions
 
     var id: Self { self }
 
@@ -45,6 +46,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "General"
         case .transcription: "Transcription"
         case .assistants: "AI Assistants"
+        case .permissions: "Permissions"
         }
     }
 
@@ -53,6 +55,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: "gearshape.fill"
         case .transcription: "waveform"
         case .assistants: "sparkles"
+        case .permissions: "lock.shield.fill"
         }
     }
 
@@ -61,6 +64,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         case .general: .muesliMuted
         case .transcription: .muesliPumpkinSeed
         case .assistants: .muesliRoast
+        case .permissions: .muesliMuted
         }
     }
 }
@@ -97,6 +101,7 @@ struct SettingsView: View {
                 case .general: GeneralSettings(state: state, draft: $draft)
                 case .transcription: TranscriptionSettings(state: state, draft: $draft)
                 case .assistants: AssistantSettings(state: state, draft: $draft)
+                case .permissions: PermissionSettings()
                 }
             }
             .formStyle(.grouped)
@@ -108,8 +113,8 @@ struct SettingsView: View {
         .onChange(of: draft.endDelaySeconds) { state.update(draft) }
         .onChange(of: draft.recentLimit) { state.update(draft) }
         .onChange(of: draft.languages) { state.update(draft) }
+        .onChange(of: draft.savedLanguages) { state.update(draft) }
         .onChange(of: state.settings) { _, new in if new != draft { draft = new } }
-        .onChange(of: draft.model) { state.update(draft) }
         .onChange(of: draft.customModelPath) { state.update(draft) }
         .onChange(of: draft.mcpEnabled) { state.update(draft) }
         .onChange(of: draft.claudeDesktopConfigEntry) { state.update(draft) }
@@ -176,6 +181,21 @@ private struct GeneralSettings: View {
                 }
             }
         }
+        .safeAreaInset(edge: .bottom) { about }
+    }
+
+    /// Bottom right of the page: which Muesli this is, and where it comes from.
+    private var about: some View {
+        HStack(spacing: 6) {
+            Spacer()
+            Text("Muesli \(MuesliInfo.version)")
+            Text("·")
+            Link("GitHub", destination: MuesliInfo.repository)
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 14)
     }
 
     private var endDelayOptions: [Int] {
@@ -242,7 +262,7 @@ struct LanguageSections: View {
     private var usesSystem: Binding<Bool> {
         Binding(
             get: { draft.languages == nil },
-            set: { on in draft.languages = on ? nil : Languages.defaults() }
+            set: { on in draft.setUsesSystemLanguages(on) }
         )
     }
 
@@ -252,16 +272,22 @@ struct LanguageSections: View {
             Section {
                 Toggle(isOn: usesSystem) {
                     Text("Use my Mac's languages")
-                    Text(Languages.defaults().map { Languages.displayName($0) }.joined(separator: ", "))
+                    if draft.usesSystemLanguages {
+                        Text(Languages.defaults().map { Languages.displayName($0) }.joined(separator: ", "))
+                    }
                 }
+            } footer: {
+                if draft.usesSystemLanguages { languagesFooter }
             }
 
+            // The own list is only shown while it is in use.
+            if !draft.usesSystemLanguages {
             Section {
                 ForEach(chosen, id: \.self) { code in
                     HStack {
                         Text(Languages.displayName(code))
                         Spacer()
-                        if draft.languages != nil && chosen.count > 1 {
+                        if chosen.count > 1 {
                             Button {
                                 draft.languages = chosen.filter { $0 != code }
                             } label: {
@@ -274,8 +300,7 @@ struct LanguageSections: View {
                         }
                     }
                 }
-                if draft.languages != nil {
-                    Menu {
+                Menu {
                         ForEach(available(excluding: chosen), id: \.self) { code in
                             Button(Languages.displayName(code)) { draft.languages = chosen + [code] }
                         }
@@ -284,13 +309,17 @@ struct LanguageSections: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
-                }
             } footer: {
-                Text("Muesli recognises which of these is spoken. Fewer languages means fewer mistakes. Changes apply from the next recording.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                languagesFooter
+            }
             }
         }
+    }
+
+    private var languagesFooter: some View {
+        Text("Muesli recognises which of these is spoken. Fewer languages means fewer mistakes. Changes apply from the next recording.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
     }
 
     private func available(excluding chosen: [String]) -> [String] {
@@ -304,68 +333,124 @@ struct ModelSection: View {
     let model: ModelController
     @Binding var draft: Preferences
     let state: AppState
+    @State private var ownModel = false
 
-    private var usesCustom: Bool { draft.customModelURL != nil }
+    private var picked: Binding<WhisperModel> {
+        Binding(get: { model.shownModel }, set: { model.select($0) })
+    }
 
     var body: some View {
         Section {
-            if !usesCustom {
-                Picker(selection: $draft.model) {
-                    ForEach(WhisperModel.allCases) { m in
-                        Text("\(m.title) · \(Self.size(m.approximateBytes))\(model.isInstalled(m) ? " · installed" : "")").tag(m)
-                    }
-                } label: {
-                    Text("Model")
-                    Text(draft.model.summary)
-                }
-            }
-
-            switch model.phase {
-            case .ready(let url):
-                StatusRow(title: "Transcriber", health: .ok, detail: "Ready · \((url.path as NSString).abbreviatingWithTildeInPath)")
-            case .missing(let m):
-                StatusRow(title: "Transcriber", health: .warning, detail: "The \(m.title) model is not downloaded yet. Transcribing is off until it is.")
-            case .failed(let message):
-                StatusRow(title: "Transcriber", health: .error, detail: message)
-            case .downloading(let m, let received, let total):
-                ModelProgressView(model: m, received: received, total: total)
-            }
-
-            HStack {
-                Spacer()
-                if model.isDownloading {
-                    Button("Cancel Download") { model.cancel() }
-                } else if !usesCustom {
-                    if model.isInstalled(draft.model) {
-                        Button("Delete", role: .destructive) { model.delete(draft.model) }
-                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([draft.model.url]) }
-                    } else {
-                        Button("Download \(draft.model.title) (\(Self.size(draft.model.approximateBytes)))") { model.download(draft.model) }
-                    }
-                }
-            }
-
             LabeledContent {
-                HStack {
-                    Button(usesCustom ? "Change…" : "Choose File…") {
-                        if let new = model.chooseCustomModel(draft) { draft = new }
+                HStack(spacing: 8) {
+                    if ownModel {
+                        Text("Own file").foregroundStyle(.secondary)
+                    } else {
+                        Picker("Model", selection: picked) {
+                            ForEach(WhisperModel.allCases) { m in
+                                Text("\(m.title) · \(Self.size(m.approximateBytes))").tag(m)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
                     }
-                    if usesCustom { Button("Use Downloaded Model") { draft.customModelPath = nil } }
+                    InfoButton { info }
                 }
             } label: {
-                Text("Your own model")
-                Text(usesCustom ? ((draft.customModelPath ?? "") as NSString).abbreviatingWithTildeInPath : "Optional: use any whisper.cpp .bin file")
-                    .truncationMode(.middle)
+                Text("Model")
+                HStack(spacing: 5) {
+                    Circle().fill(status.health.color).frame(width: 8, height: 8).accessibilityHidden(true)
+                    Text(status.text)
+                }
             }
-        } footer: {
-            Text("Runs on this Mac. Muesli only goes online to download a model you pick here. Transcribing is off while a model downloads. Changes apply from the next recording.")
-                .font(.callout).foregroundStyle(.secondary)
+
+            if let downloading = model.downloading {
+                ModelProgressView(model: downloading, received: model.received, total: model.total)
+                HStack {
+                    Spacer()
+                    Button("Cancel Download") { model.cancel() }
+                }
+            }
+
+            Toggle("Use my own model file", isOn: $ownModel)
+            if ownModel {
+                LabeledContent {
+                    Button(draft.customModelURL == nil ? "Choose File…" : "Change…") {
+                        if let new = model.chooseCustomModel(draft) { draft = new }
+                    }
+                } label: {
+                    Text("Model file")
+                    Text(draft.customModelPath.map { ($0 as NSString).abbreviatingWithTildeInPath } ?? "Any whisper.cpp .bin file. None chosen yet.")
+                        .truncationMode(.middle)
+                }
+            }
         }
+        .onAppear { ownModel = draft.customModelURL != nil }
+        .onChange(of: ownModel) { _, on in if !on { draft.customModelPath = nil } }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in model.refresh() }
+    }
+
+    /// One line that says what is in use and what is happening.
+    private var status: (health: StatusRow.Health, text: String) {
+        if let pick = model.wanted {
+            let active = draft.customModelURL == nil ? draft.model.title : "your own file"
+            return model.downloading == pick
+                ? (.warning, "Downloading \(pick.title). Using \(active) until it is ready.")
+                : (.warning, "\(pick.title) will be downloaded in a moment. Using \(active).")
+        }
+        switch model.phase {
+        case .ready: return (.ok, "Ready")
+        case .downloading(let m, _, _): return (.warning, "Downloading \(m.title). Transcribing is off until it is ready.")
+        case .missing(let m): return (.warning, "\(m.title) is not downloaded. Transcribing is off.")
+        case .failed(let message): return (.error, message)
+        }
+    }
+
+    @ViewBuilder private var info: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Transcription runs on this Mac. Muesli only goes online to download a model you pick here. A new model is used from the next recording.")
+                .fixedSize(horizontal: false, vertical: true)
+            if let error = model.lastError {
+                Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+            }
+            Divider()
+            Text("Models are stored in").foregroundStyle(.secondary)
+            Text((Paths.support.path as NSString).abbreviatingWithTildeInPath)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+            HStack {
+                Button("Show in Finder") { NSWorkspace.shared.open(Paths.support) }
+                Button(model.unused.models.isEmpty ? "No Unused Models" : "Remove Unused Models (\(Self.size(model.unused.bytes)))") {
+                    model.removeUnused()
+                }
+                .disabled(model.unused.models.isEmpty)
+            }
+        }
     }
 
     private static func size(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+/// A small ⓘ button that reveals extra explanation and actions in a popover.
+struct InfoButton<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @State private var shown = false
+
+    var body: some View {
+        Button { shown.toggle() } label: {
+            Image(systemName: "info.circle")
+        }
+        .buttonStyle(.borderless)
+        .help("More information")
+        .accessibilityLabel("More information")
+        .popover(isPresented: $shown, arrowEdge: .bottom) {
+            content()
+                .font(.callout)
+                .padding(14)
+                .frame(width: 340, alignment: .leading)
+        }
     }
 }
 
@@ -395,58 +480,88 @@ private struct AssistantSettings: View {
     @Binding var draft: Preferences
     @State private var client: AssistantClient = .claudeCode
 
+    private var claudeInstalled: Bool { state.bridge.claudeExtension != .claudeMissing }
+
     var body: some View {
         Form {
             Section {
-                Toggle(isOn: $draft.mcpEnabled) {
-                    Text("Let AI assistants use Muesli")
-                    Text("Read status and transcripts, rename meetings, set attendees and speakers, and delete meetings, through the Model Context Protocol (MCP)")
+                LabeledContent {
+                    Toggle("Let AI assistants use Muesli", isOn: $draft.mcpEnabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Let AI assistants use Muesli")
+                        InfoButton {
+                            Text("Assistants can read Muesli's status and transcripts, rename meetings, set attendees and speakers, and delete finished meetings (deleted files go to the Trash). They cannot start or stop a recording.\n\nAn assistant on this Mac starts Muesli's small MCP server itself; nothing is exposed to the network. What an assistant reads is sent to its provider, for example Anthropic for Claude.")
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
-            } footer: {
-                Label("Assistants on this Mac start Muesli's MCP server themselves; nothing is exposed to the network. They can rename and delete finished meetings (deleted files go to the Trash), but cannot start or stop a recording. What an assistant reads is sent to its provider, for example Anthropic for Claude.",
-                      systemImage: "lock.shield")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
             }
 
             if draft.mcpEnabled {
-                localSections
+                if claudeInstalled { claudeSection }
+                otherAssistants
             }
-        }
-    }
-
-    @ViewBuilder private var localSections: some View {
-        Section {
-            StatusRow(title: "Muesli extension", health: claudeDesktopHealth, detail: claudeDesktopDetail)
-            if let action = claudeDesktopAction {
-                HStack {
-                    Spacer()
-                    Button(action) { state.bridge.installExtension() }
-                        .disabled(BridgeController.extensionURL == nil)
-                }
-            }
-            if !state.bridge.extensionInstalled && state.bridge.claudeExtension != .claudeMissing {
-                Toggle(isOn: $draft.claudeDesktopConfigEntry) {
-                    Text("Add to Claude Desktop's config file instead")
-                    Text("For accounts that don't allow extensions. Listed as “Muesli”, without an icon. Quit and reopen Claude Desktop after changing this.")
-                }
-                if draft.claudeDesktopConfigEntry && !state.bridge.localStatus.isEmpty {
-                    Text(state.bridge.localStatus)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        } footer: {
-            Text("The extension shows Muesli with its name and icon; Claude Desktop asks you to confirm. If it says the extension cannot be installed, your organisation blocks extensions: use the config file instead. Installing the extension later removes the config entry.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             state.bridge.refreshExtension()
         }
         .onAppear { state.bridge.refreshExtension() }
+    }
 
-        Section {
+    /// Only shown when the Claude app is installed on this Mac.
+    private var claudeSection: some View {
+        Section("Claude Desktop") {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Circle().fill(claudeHealth.color).frame(width: 8, height: 8).accessibilityHidden(true)
+                    Text(claudeStatus)
+                    if let action = claudeAction {
+                        Button(action) { state.bridge.installExtension() }
+                            .disabled(BridgeController.extensionURL == nil)
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Muesli extension")
+                    InfoButton { claudeInfo }
+                }
+            }
+            if draft.claudeDesktopConfigEntry && !state.bridge.extensionInstalled {
+                LabeledContent {
+                    Button("Remove") { draft.claudeDesktopConfigEntry = false }
+                } label: {
+                    Text("Config file entry")
+                    if !state.bridge.localStatus.isEmpty { Text(state.bridge.localStatus) }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var claudeInfo: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("The extension lists Muesli in Claude Desktop with its name and icon. Claude Desktop asks you to confirm when you install it.")
+                .fixedSize(horizontal: false, vertical: true)
+            if case .outdated(let installed, let bundled) = state.bridge.claudeExtension {
+                Text("Version \(installed) is installed; \(bundled) is available.")
+            } else if case .installed(let version) = state.bridge.claudeExtension {
+                Text("Version \(version) is installed.")
+            }
+            if !state.bridge.extensionInstalled {
+                Divider()
+                Text("If Claude Desktop says the extension cannot be installed, your organisation blocks extensions. Muesli can add itself to Claude Desktop's config file instead: it is then listed as “Muesli” without an icon. Quit and reopen Claude Desktop afterwards. Installing the extension later removes the entry.")
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(draft.claudeDesktopConfigEntry ? "Remove from Config File" : "Add to Config File") {
+                    draft.claudeDesktopConfigEntry.toggle()
+                }
+            }
+        }
+    }
+
+    private var otherAssistants: some View {
+        Section(claudeInstalled ? "Other assistants" : "Set up an assistant") {
             if let helper = BridgeController.helperURL {
                 Picker("Assistant", selection: $client) {
                     ForEach(AssistantClient.allCases) { Text($0.name).tag($0) }
@@ -464,7 +579,7 @@ private struct AssistantSettings: View {
         }
     }
 
-    private var claudeDesktopHealth: StatusRow.Health {
+    private var claudeHealth: StatusRow.Health {
         switch state.bridge.claudeExtension {
         case .installed: .ok
         case .outdated, .notInstalled: .warning
@@ -472,22 +587,99 @@ private struct AssistantSettings: View {
         }
     }
 
-    private var claudeDesktopDetail: String {
+    private var claudeStatus: String {
         switch state.bridge.claudeExtension {
-        case .installed(let version): "Version \(version) installed"
-        case .outdated(let installed, let bundled): "Version \(installed) installed; \(bundled) is available"
-        case .notInstalled: "Not installed yet"
-        case .claudeMissing: "Claude Desktop is not installed on this Mac"
+        case .installed: "Installed"
+        case .outdated: "Update available"
+        case .notInstalled: draft.claudeDesktopConfigEntry ? "Using the config file" : "Not installed"
+        case .claudeMissing: ""
         }
     }
 
-    private var claudeDesktopAction: String? {
+    private var claudeAction: String? {
         switch state.bridge.claudeExtension {
-        case .notInstalled: "Install in Claude Desktop…"
-        case .outdated: "Update Extension…"
-        case .installed: "Reinstall…"
-        case .claudeMissing: nil
+        case .notInstalled: "Install…"
+        case .outdated: "Update…"
+        case .installed, .claudeMissing: nil
         }
+    }
+}
+
+// MARK: Permissions
+
+/// How Muesli stands with macOS: one row per thing it asks the system for.
+private struct PermissionSettings: View {
+    @State private var access: [Permission: Permission.Access] = [:]
+    @State private var loginItem = SMAppService.mainApp.status
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(Permission.allCases, id: \.self) { permission in
+                    row(permission)
+                }
+            } footer: {
+                Text("macOS asks once for each. After that you change them in System Settings; Muesli picks the change up when this window comes forward.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                LabeledContent {
+                    VStack(alignment: .trailing, spacing: 6) {
+                        indicator(loginItem == .enabled ? .ok : .warning, loginItem == .enabled ? "On" : "Off")
+                        if loginItem != .enabled {
+                            Button("Open Login Items…") { SMAppService.openSystemSettingsLoginItems() }
+                        }
+                    }
+                } label: {
+                    Text("Start at login")
+                    Text("So Muesli is there when a meeting starts")
+                }
+            }
+        }
+        .task { await refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            Task { await refresh() }
+        }
+    }
+
+    private func row(_ permission: Permission) -> some View {
+        let state = access[permission] ?? .unknown
+        return LabeledContent {
+            VStack(alignment: .trailing, spacing: 6) {
+                switch state {
+                case .granted:
+                    indicator(.ok, "Allowed")
+                case .denied:
+                    indicator(.error, "Not allowed")
+                    Button("Open System Settings…") { permission.openSettings() }
+                case .unknown:
+                    indicator(.off, "Not asked yet")
+                    Button("Allow…") {
+                        Task {
+                            await permission.request()
+                            await refresh()
+                        }
+                    }
+                }
+            }
+        } label: {
+            Text(permission.name)
+            Text(permission.purpose)
+        }
+    }
+
+    private func indicator(_ health: StatusRow.Health, _ text: String) -> some View {
+        HStack(spacing: 6) {
+            Circle().fill(health.color).frame(width: 8, height: 8).accessibilityHidden(true)
+            Text(text)
+        }
+    }
+
+    private func refresh() async {
+        for permission in Permission.allCases { access[permission] = await permission.status() }
+        loginItem = SMAppService.mainApp.status
     }
 }
 

@@ -4,7 +4,7 @@ Muesli is an on-device meeting transcriber for **macOS and Windows**. It records
 
 ## Two apps, one contract
 - **macOS ships the Swift app**: `macos/` (`Sources/Muesli` app, `Sources/MuesliCore` Foundation-only logic, `Sources/muesli-mcp`). Build with `macos/build.sh`, test with `cd macos && swift test`.
-- **Windows ships the Rust and Tauri app**: `windows/` (crates `core`, `mcp`, `whisper`, `audio`, `detect`, `notify`, plus `src-tauri` and `ui/`). Test with `cd windows && cargo test --workspace`, lint with `cargo clippy --workspace --all-targets -- -D warnings`. It also builds and runs on macOS, which is how it is developed and tested from a Mac; that is a development convenience, not a second macOS product.
+- **Windows ships the Rust and Tauri app**: `windows/` (crates `core`, `mcp`, `whisper`, `audio`, `detect`, `system`, plus `src-tauri` and `ui/`). Test with `cd windows && cargo test --workspace`, lint with `cargo clippy --workspace --all-targets -- -D warnings`. It also builds and runs on macOS, which is how it is developed and tested from a Mac; that is a development convenience, not a second macOS product.
 - **Both apps are permanent.** Neither replaces the other. A feature is done when it works in both, or when `docs/PLATFORMS.md` records why one platform differs.
 - Both read and write the same files (`config.json`, `state.json`, `meetings/*.json`, transcripts) and offer the same seven MCP tools. **A change to a file format, a preference or an MCP tool must be made in both apps and both test suites.** `fixtures/` at the repo root is that contract: files and MCP replies produced by the Swift side, which `windows/crates/core/tests/golden.rs` and `windows/crates/mcp/tests/contract.rs` check the Rust side against. Regenerate it with `scripts/regenerate-fixtures.sh` only when the contract changes on purpose.
 
@@ -20,5 +20,5 @@ Muesli is an on-device meeting transcriber for **macOS and Windows**. It records
 
 ## Verifying
 - Swift: `cd macos && swift test`, then `macos/build.sh` and run `macos/Muesli.app`.
-- Rust: `cd windows && cargo test --workspace`; from a Mac, `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-notify` type-checks most Windows code. `src-tauri` and `whisper` only compile for Windows in CI (`.github/workflows/ci.yml`); installers come from `app.yml`.
-- Say plainly what was not run on Windows. Most Windows behaviour has not been exercised on real hardware yet.
+- Rust: `cd windows && cargo test --workspace`; from a Mac, `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code. `src-tauri` and `whisper` only compile for Windows in CI (`.github/workflows/ci.yml`); installers come from `app.yml`. Both workflows are started by hand, so nothing checks a push automatically: run the tests locally before pushing.
+- Say plainly what was not run on Windows. `docs/PLATFORMS.md` section 3 records what has been verified there (so far: a recording, tested by the maintainer).

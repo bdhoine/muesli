@@ -1,9 +1,0 @@
-[package]
-name = "muesli-notify"
-description = "System notifications with answer buttons (Windows toasts) for Muesli's meeting prompts."
-version.workspace = true
-edition.workspace = true
-
-[target.'cfg(windows)'.dependencies]
-tauri-winrt-notification = "0.8"
-windows-registry = "0.6"

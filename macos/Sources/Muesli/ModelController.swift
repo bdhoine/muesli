@@ -23,6 +23,17 @@ final class ModelController {
 
     private var downloader: Downloader?
 
+    /// The model picked in Settings that is not active yet: it becomes active once it is on disk.
+    private(set) var wanted: WhisperModel?
+    /// Called when a picked model is ready to become the active one.
+    var onSwitch: ((WhisperModel) -> Void)?
+    private var selection: Task<Void, Never>?
+    /// Downloaded models that are not in use, and the space they take.
+    private(set) var unused: (models: [WhisperModel], bytes: Int64) = ([], 0)
+
+    /// What the picker shows: the pick in progress, else the active model.
+    var shownModel: WhisperModel { wanted ?? settings.model }
+
     var isReady: Bool { if case .ready = phase { true } else { false } }
     var isDownloading: Bool { downloading != nil }
 
@@ -39,6 +50,7 @@ final class ModelController {
     /// (the user may have added or removed a model file in Finder).
     func refresh() {
         installed = Set(WhisperModel.allCases.filter(\.isInstalled))
+        unused = WhisperModel.unused(active: settings.model, installed: installed)
         phase = currentPhase()
     }
 
@@ -64,6 +76,41 @@ final class ModelController {
         download(settings.model)
     }
 
+    /// A pick in Settings. The active model stays in use until the picked one is on disk; a missing
+    /// one is downloaded after `delay`, so a slip of the mouse downloads nothing.
+    func select(_ model: WhisperModel, delay: Duration = .seconds(3)) {
+        selection?.cancel()
+        switch ModelSwitch.decide(active: settings.model, wanted: model, installed: installed, downloading: downloading) {
+        case .nothing:
+            abandonPick()
+        case .switchNow:
+            abandonPick()
+            onSwitch?(model)
+        case .wait:
+            wanted = model
+        case .download:
+            wanted = model
+            lastError = nil
+            selection = Task { [weak self] in
+                try? await Task.sleep(for: delay)
+                guard let self, !Task.isCancelled, self.wanted == model else { return }
+                if self.downloading != nil { self.cancelDownload() }
+                self.download(model)
+            }
+        }
+    }
+
+    /// Drops a pick that is not active yet, and its download.
+    private func abandonPick() {
+        if let pick = wanted, downloading == pick { cancelDownload() }
+        wanted = nil
+    }
+
+    func removeUnused() {
+        for model in unused.models { try? FileManager.default.removeItem(at: model.url) }
+        refresh()
+    }
+
     func download(_ model: WhisperModel) {
         guard downloading == nil else { return }
         lastError = nil
@@ -78,7 +125,14 @@ final class ModelController {
         d.start()
     }
 
+    /// Cancels the download and any pick that was waiting for it.
     func cancel() {
+        selection?.cancel()
+        wanted = nil
+        cancelDownload()
+    }
+
+    private func cancelDownload() {
         downloader?.cancel()
         finish()
     }
@@ -114,8 +168,13 @@ final class ModelController {
             phase = currentPhase()
         case .finished:
             finish()
+            if wanted == model {                                      // the pick is on disk: switch now
+                wanted = nil
+                onSwitch?(model)
+            }
         case .failed(let message):
             lastError = message
+            if wanted == model { wanted = nil }                       // keep the active model
             finish()
         }
     }

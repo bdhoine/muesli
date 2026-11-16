@@ -40,14 +40,16 @@ Closed since this page was first written: a broken audio stream is now handled o
 |---|---|---|
 | Files: `config.json`, `state.json`, `meetings/`, transcripts | Shared formats | Golden tests against files written by the Swift app |
 | MCP server (7 tools) | Same tools and wording (Trash / Recycle Bin differ) | 33 recorded requests match the Swift replies |
-| Whisper transcription | SwiftWhisper / whisper-rs, same models | Real speech on macOS in both; not run on Windows |
+| Whisper transcription | SwiftWhisper / whisper-rs, same models | Real speech on macOS in both; recording tested on Windows by the maintainer (2026-11-16) |
 | Model download, sizes, custom file | Same | Tests with a local server; real download on macOS |
-| Microphone | AVAudioEngine / cpal (WASAPI), resampled with rubato | macOS; not run on Windows |
-| System audio | Core Audio tap / WASAPI loopback | Neither has been exercised in a full recorded call by a test; not run on Windows |
+| Microphone | AVAudioEngine / cpal (WASAPI), resampled with rubato | macOS; recording tested on Windows by the maintainer (2026-11-16) |
+| System audio | Core Audio tap / WASAPI loopback | No automated test records a call on either. Recording tested by hand on Windows (2026-11-16); which streams were checked is not recorded here |
 | Device change mid-call | Restart the stream / left to cpal, save on failure | Not exercised on either platform |
 | Call detection: microphone in use | Core Audio process list / WASAPI sessions | macOS; not run on Windows |
 | Call detection: Teams | Bundle id / process name | macOS; not run on Windows |
-| Meeting prompts ("Start transcribing?", "Stop and save?") | Notification with a button on both. Windows: a toast with two buttons (`crates/notify`), answered through the toast's in-process event, which works because Muesli is always running; a click on a toast left in the notification centre after Muesli quit does nothing. If the toast cannot be shown, a small window asks instead. | macOS; the Windows toast type-checks but has not been shown or clicked on Windows |
+| Meeting prompts ("Start transcribing?", "Stop and save?") | Notification with a button on both. Windows: a toast with two buttons (`crates/system`), answered through the toast's in-process event, which works because Muesli is always running; a click on a toast left in the notification centre after Muesli quit does nothing. If the toast cannot be shown, a small window asks instead. | macOS; the Windows toast type-checks but has not been shown or clicked on Windows |
+| Permissions page in Settings | macOS: microphone, system audio, calendar, notifications, start at login, each with Allow or Open System Settings. Windows: microphone (the privacy switches, read from the registry), notifications (the toast setting), start at login (a switch). System audio is not listed on Windows because it needs no permission there. | macOS builds, not seen on screen by the author; Windows reads type-check but have not run on Windows |
+| Claude Desktop section in Settings | Shown only when the Claude app is installed. macOS: by bundle id. Windows: the installer's folder, or Claude's data folder as a fallback because the install location differs between builds. | macOS; the Windows check is unverified |
 | Onboarding, Settings, auto-stop, Claude Desktop extension and config entry, start at login | Same behaviour | Logic tested; Windows UI only seen in a browser with a mock backend |
 
-The Windows app has not been run on real Windows hardware yet. Most of its Windows code type-checks from a Mac; `src-tauri` and `whisper` only compile for Windows in CI.
+The maintainer has run the Windows app and tested a recording on Windows (2026-11-16); the details of that test are not recorded here. Everything marked "not run on Windows" or "unverified" above is still open.

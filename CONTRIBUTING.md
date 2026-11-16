@@ -154,7 +154,7 @@ The Windows app is written in Rust with Tauri. It also builds and runs on macOS,
 | `crates/whisper` | Model download and validation, whisper.cpp transcriber (`whisper-rs`) |
 | `crates/audio` | Capture with `cpal`: microphone, WASAPI loopback (Windows), Core Audio tap (macOS). Resampling with `rubato`. |
 | `crates/detect` | Samplers: Core Audio process list (macOS), WASAPI sessions (Windows), Teams process |
-| `crates/notify` | Notifications with answer buttons: Windows toasts for the meeting prompts |
+| `crates/system` | Dealings with Windows that need no audio: toasts with answer buttons for the meeting prompts, and the permission status shown in Settings |
 | `src-tauri` | The Tauri app: tray, windows, recording session, commands. Keep it thin. |
 | `ui/` | The web UI (plain JS, no build step): Settings, onboarding, prompt |
 
@@ -174,7 +174,7 @@ Install Rust with `brew install rustup && rustup default stable` (macOS) or from
 - **Use libraries for the hard parts**: `rubato` (resampling), `cpal` (audio devices), `whisper-rs`, `uuid`, `tempfile` (atomic writes), `trash`. Do not hand-roll replacements.
 - **Try the UI without the app**: serve `windows/ui` and open `index.html?mock=1&window=onboarding` (or `settings`, `prompt`).
 - **Check capture on a real machine**: `cargo run -p muesli-audio --example probe -- 8`. Check the resampler by ear or with Whisper: `--example resample_wav -- in.wav out.wav`. Transcribe real speech: the ignored test in `crates/whisper/tests/transcribe.rs`.
-- **Windows without a PC**: `.github/workflows/ci.yml` runs the tests on macOS, Windows and Linux; **Build app** (`app.yml`) builds the installers. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-notify` type-checks most Windows code; `src-tauri` and `whisper` need CI.
+- **Windows without a PC**: `.github/workflows/ci.yml` runs the tests on macOS, Windows and Linux. It is started by hand for now (Actions tab, or `gh workflow run CI`), because macOS minutes are costly on a private repository; **Build app** (`app.yml`) builds the installers. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code; `src-tauri` and `whisper` need CI.
 
 ## Permissions and code signing
 

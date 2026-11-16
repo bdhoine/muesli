@@ -28,6 +28,9 @@ pub use whisper_model::WhisperModel;
 /// The version of the Windows app: the Cargo workspace version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Where Muesli comes from.
+pub const REPOSITORY: &str = "https://github.com/bdhoine/muesli";
+
 /// Where deleted transcripts go, as the user sees it.
 pub fn trash_name() -> &'static str {
     if cfg!(target_os = "macos") {

@@ -13,6 +13,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var customModelPath: String? = nil
     /// False only on a first launch; a config.json from before onboarding existed counts as done.
     public var onboardingDone = false
+    /// The user's own language list, kept while "use my Mac's languages" is on, so it comes back.
+    public var savedLanguages: [String]? = nil
 
     public static let recentLimitOptions = [0, 3, 5, 10]
     public static let maxRecentLimit = 10
@@ -34,6 +36,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         model = (try? c.decodeIfPresent(WhisperModel.self, forKey: .model)) ?? d.model
         customModelPath = try c.decodeIfPresent(String.self, forKey: .customModelPath)
         onboardingDone = try c.decodeIfPresent(Bool.self, forKey: .onboardingDone) ?? true
+        savedLanguages = try c.decodeIfPresent([String].self, forKey: .savedLanguages)
     }
 
     public static func load() -> Preferences {
@@ -44,6 +47,19 @@ public struct Preferences: Codable, Equatable, Sendable {
 
     public func save() {
         try? JSONCoding.encoder().encode(self).write(to: Paths.config, options: .atomic)
+    }
+
+    /// Whether the languages follow the system (`languages == nil`).
+    public var usesSystemLanguages: Bool { languages == nil }
+
+    /// Switches between the system's languages and the user's own list without losing that list.
+    public mutating func setUsesSystemLanguages(_ on: Bool, systemDefaults: [String] = Languages.defaults()) {
+        if on {
+            if let own = languages { savedLanguages = own }
+            languages = nil
+        } else if languages == nil {
+            languages = savedLanguages ?? systemDefaults
+        }
     }
 
     public var effectiveLanguages: [String] {

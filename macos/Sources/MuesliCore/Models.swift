@@ -1,7 +1,8 @@
 import Foundation
 
 public enum MuesliInfo {
-    public static let version = "0.3.0"
+    public static let version = "0.0.1"
+    public static let repository = URL(string: "https://github.com/bdhoine/muesli")!
 }
 
 public enum MeetingState: String, Codable, Sendable {

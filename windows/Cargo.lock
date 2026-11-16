@@ -2472,13 +2472,14 @@ dependencies = [
 
 [[package]]
 name = "muesli-app"
-version = "0.3.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
+ "dirs 5.0.1",
  "muesli-audio",
  "muesli-core",
  "muesli-detect",
- "muesli-notify",
+ "muesli-system",
  "muesli-whisper",
  "serde",
  "serde_json",
@@ -2492,7 +2493,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-audio"
-version = "0.3.0"
+version = "0.0.1"
 dependencies = [
  "audioadapter-buffers",
  "cpal",
@@ -2502,7 +2503,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-core"
-version = "0.3.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -2515,7 +2516,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-detect"
-version = "0.3.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2526,7 +2527,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-mcp"
-version = "0.3.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2537,16 +2538,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "muesli-notify"
-version = "0.3.0"
+name = "muesli-system"
+version = "0.0.1"
 dependencies = [
  "tauri-winrt-notification",
+ "windows",
  "windows-registry",
 ]
 
 [[package]]
 name = "muesli-whisper"
-version = "0.3.0"
+version = "0.0.1"
 dependencies = [
  "muesli-core",
  "tempfile",

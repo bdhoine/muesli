@@ -124,7 +124,7 @@ The Windows app is new and has had far less use than the macOS app; [docs/PLATFO
 
 ### First start
 
-A short setup asks one thing at a time: which speech model to download (Small is about 490 MB; it carries on while you continue), your languages, whether to stop and save automatically when a call ends, and whether AI assistants may read your transcripts. Then it asks for each permission on its own screen. Until a model is ready, transcribing is switched off. In Settings you can later switch to the Medium or Large model, or point Muesli at your own whisper.cpp `.bin` file.
+A short setup asks one thing at a time: which speech model to download (Small is about 490 MB; it carries on while you continue), your languages, whether to stop and save automatically when a call ends, and whether AI assistants may read your transcripts. Then it asks for each permission on its own screen. Until a model is ready, transcribing is switched off. In Settings you can later pick the Medium or Large model (Muesli downloads it and keeps using the current one until it is ready), or point Muesli at your own whisper.cpp `.bin` file. The **Permissions** page in Settings shows what the system currently allows.
 
 On macOS these permissions are asked for:
 

@@ -82,6 +82,8 @@ mod imp {
 
 pub use imp::{ask, register_app};
 
+pub mod status;
+
 #[cfg(test)]
 mod tests {
     use super::*;

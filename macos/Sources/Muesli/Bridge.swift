@@ -20,6 +20,15 @@ final class BridgeController {
         Bundle.main.url(forResource: "Muesli", withExtension: "mcpb")
     }
 
+    /// Whether the Claude desktop app itself is installed (not just a leftover data folder).
+    static var claudeAppInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") != nil
+    }
+
+    private static func extensionState() -> ClaudeDesktopExtension.State {
+        ClaudeDesktopExtension.state(appInstalled: claudeAppInstalled)
+    }
+
     var extensionInstalled: Bool {
         switch claudeExtension {
         case .installed, .outdated: true
@@ -29,7 +38,7 @@ final class BridgeController {
 
     func apply(_ settings: Preferences) {
         self.settings = settings
-        claudeExtension = ClaudeDesktopExtension.state()
+        claudeExtension = BridgeController.extensionState()
         guard BridgeController.helperURL != nil else {
             localStatus = "muesli-mcp is missing from the app bundle; rebuild with build.sh."
             return
@@ -39,7 +48,7 @@ final class BridgeController {
 
     func refreshExtension() {
         let wasInstalled = extensionInstalled
-        claudeExtension = ClaudeDesktopExtension.state()
+        claudeExtension = BridgeController.extensionState()
         if extensionInstalled && !wasInstalled { applyConfigEntry() }
     }
 

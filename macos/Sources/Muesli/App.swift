@@ -54,6 +54,12 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         publish()
         bridge.apply(settings)
         model.apply(settings)
+        model.onSwitch = { [weak self] picked in
+            guard let self else { return }
+            var new = settings
+            new.model = picked
+            update(new)
+        }
         if !model.isReady, !model.isDownloading { model.downloadSelectedIfNeeded() }
         if !settings.onboardingDone {
             OnboardingWindow.show(self)
@@ -296,6 +302,7 @@ struct MuesliApp: App {
                     Button { permission.openSettings() } label: {
                         Label("Open Privacy Settings…", systemImage: "lock.shield")
                     }
+                    Button("Show All Permissions…") { SettingsWindow.show(state, page: .permissions) }
                     Button("Try Again") { state.dismiss() }
                 }
             }

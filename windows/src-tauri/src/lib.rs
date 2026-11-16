@@ -33,6 +33,11 @@ pub fn run() {
             commands::update_prefs,
             commands::download_model,
             commands::cancel_download,
+            commands::select_model,
+            commands::remove_unused_models,
+            commands::open_models_folder,
+            commands::use_system_languages,
+            commands::set_start_at_login,
             commands::delete_model,
             commands::choose_model_file,
             commands::choose_transcripts_folder,
@@ -44,6 +49,7 @@ pub fn run() {
             commands::finish_onboarding,
             commands::request_permission,
             commands::open_privacy_settings,
+            commands::open_repository,
             commands::open_path,
             commands::install_extension,
             commands::show_window,
@@ -85,10 +91,20 @@ fn boot(ctx: &Ctx) {
         .map(|m| muesli_core::status::LastReady { id: m.id, title: m.title, ended_at: m.ended_at });
     bridge::apply(app, &app.prefs());
 
-    let _ = muesli_notify::register_app(prompt::APP_ID, "Muesli"); // so Windows shows prompts under our name
+    let _ = muesli_system::register_app(prompt::APP_ID, "Muesli"); // so Windows shows prompts under our name
     let _ = tray::build(ctx);
 
     // Download the selected model on the first start, and whenever it went missing.
+    // A model picked in Settings becomes the active one once it is on disk.
+    let c = ctx.clone();
+    app.model.set_on_switch(move |picked| {
+        let mut prefs = c.app.prefs();
+        prefs.model = picked;
+        let _ = prefs.save(&c.app.paths());
+        c.app.model.apply(prefs.clone());
+        *c.app.prefs.lock().unwrap() = prefs;
+        c.changed();
+    });
     let c = ctx.clone();
     app.model.download_selected_if_needed(move || c.changed());
     if !app.prefs().onboarding_done {

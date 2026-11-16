@@ -185,3 +185,74 @@ fn partial_files_from_an_interrupted_run_are_cleared() {
     let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name()).collect();
     assert_eq!(names, ["config.json"]);
 }
+
+#[test]
+fn a_picked_model_becomes_active_only_when_it_is_on_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths::new(dir.path(), dir.path().join("t"));
+    let manager = ModelManager::new(paths.clone(), Preferences::default());
+    let switched = Arc::new(Mutex::new(Vec::new()));
+    let sink = switched.clone();
+    manager.set_on_switch(move |m| sink.lock().unwrap().push(m));
+
+    let url = serve_slowly(1_000_000);
+    let dest = WhisperModel::Medium.path(&paths);
+    manager.select_with(WhisperModel::Medium, std::time::Duration::from_millis(40), || {}, move |_| DownloadSpec {
+        url: url.clone(),
+        dest: dest.clone(),
+        min_bytes: 1,
+        approximate_bytes: 1_000_000,
+    });
+    assert_eq!(manager.wanted(), Some(WhisperModel::Medium));
+    assert!(!manager.is_downloading()); // still inside the delay
+    assert!(switched.lock().unwrap().is_empty());
+    std::thread::sleep(std::time::Duration::from_millis(120));
+    assert!(manager.is_downloading());
+    assert!(switched.lock().unwrap().is_empty()); // the active model is untouched while it downloads
+    manager.wait();
+    assert_eq!(*switched.lock().unwrap(), vec![WhisperModel::Medium]);
+    assert_eq!(manager.wanted(), None);
+}
+
+#[test]
+fn picking_again_within_the_delay_downloads_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths::new(dir.path(), dir.path().join("t"));
+    let manager = ModelManager::new(paths.clone(), Preferences::default());
+    let started = Arc::new(Mutex::new(0));
+    let count = started.clone();
+    let spec = move |m: WhisperModel| {
+        *count.lock().unwrap() += 1;
+        DownloadSpec { url: "http://127.0.0.1:9/none".into(), dest: m.path(&paths), min_bytes: 1, approximate_bytes: 1 }
+    };
+    let delay = std::time::Duration::from_millis(80);
+    manager.select_with(WhisperModel::Large, delay, || {}, spec.clone());
+    manager.select_with(WhisperModel::Small, delay, || {}, spec); // back to the active model: an accidental pick
+    assert_eq!(manager.wanted(), None);
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert_eq!(*started.lock().unwrap(), 0);
+    assert!(!manager.is_downloading());
+}
+
+#[test]
+fn a_failed_pick_keeps_the_active_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths::new(dir.path(), dir.path().join("t"));
+    let manager = ModelManager::new(paths.clone(), Preferences::default());
+    let switched = Arc::new(Mutex::new(false));
+    let sink = switched.clone();
+    manager.set_on_switch(move |_| *sink.lock().unwrap() = true);
+    let url = serve("500 Internal Server Error", vec![], None);
+    let dest = WhisperModel::Medium.path(&paths);
+    manager.select_with(WhisperModel::Medium, std::time::Duration::ZERO, || {}, move |_| DownloadSpec {
+        url: url.clone(),
+        dest: dest.clone(),
+        min_bytes: 1,
+        approximate_bytes: 1,
+    });
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    manager.wait();
+    assert!(!*switched.lock().unwrap());
+    assert_eq!(manager.wanted(), None);
+    assert!(manager.last_error().unwrap().contains("500"));
+}

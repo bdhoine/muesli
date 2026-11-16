@@ -5,7 +5,7 @@ import UserNotifications
 
 /// Everything Muesli asks macOS for. One place for the wording, the status, the request and the
 /// System Settings pane, used by recording, the menu and onboarding.
-enum Permission: Equatable {
+enum Permission: Hashable, CaseIterable {
     case microphone, systemAudio, calendar, notifications
 
     enum Access { case unknown, granted, denied }
@@ -16,6 +16,16 @@ enum Permission: Equatable {
         case .systemAudio: "System Audio"
         case .calendar: "Calendar"
         case .notifications: "Notifications"
+        }
+    }
+
+    /// Why Muesli wants it, for the Permissions page.
+    var purpose: String {
+        switch self {
+        case .microphone: "To transcribe your side of the conversation"
+        case .systemAudio: "To transcribe the other side of a call. Muesli never records your screen."
+        case .calendar: "To notice meetings as they start and to name the transcript"
+        case .notifications: "To ask whether to transcribe when a meeting starts"
         }
     }
 

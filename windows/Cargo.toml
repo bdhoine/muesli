@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/mcp", "crates/whisper", "crates/audio", "crates/detect", "crates/notify", "src-tauri"]
+members = ["crates/core", "crates/mcp", "crates/whisper", "crates/audio", "crates/detect", "crates/system", "src-tauri"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.0.1"
 edition = "2021"

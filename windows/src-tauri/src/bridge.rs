@@ -24,8 +24,21 @@ pub fn extension_path() -> Option<PathBuf> {
         .find(|p| p.exists())
 }
 
+/// Whether the Claude desktop app is installed. On Windows the installer's folder is checked,
+/// and Claude's data folder as a fallback, because the install location differs between builds.
+pub fn claude_installed() -> bool {
+    let data = ClaudeDesktopConfig::default_directory();
+    if cfg!(target_os = "macos") {
+        let home_apps = dirs::home_dir().map(|h| h.join("Applications/Claude.app"));
+        std::path::Path::new("/Applications/Claude.app").exists() || home_apps.is_some_and(|p| p.exists())
+    } else {
+        let exe = dirs::data_local_dir().map(|d| d.join("AnthropicClaude").join("claude.exe"));
+        exe.is_some_and(|p| p.exists()) || data.exists()
+    }
+}
+
 pub fn extension_state() -> ExtensionState {
-    ClaudeDesktopExtension::state(VERSION, &ClaudeDesktopConfig::default_directory())
+    ClaudeDesktopExtension::state_with(VERSION, &ClaudeDesktopConfig::default_directory(), Some(claude_installed()))
 }
 
 /// Applies the MCP preferences to Claude Desktop's config file and records a status line.

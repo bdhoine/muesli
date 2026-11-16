@@ -37,7 +37,15 @@ pub struct UiState {
     system_languages: Vec<String>,
     supported_languages: Vec<Language>,
     model: ModelPhase,
+    /// The model picked in Settings that is not active yet.
+    wanted_model: Option<WhisperModel>,
+    download: Option<Download>,
+    download_error: Option<String>,
     models: Vec<ModelInfo>,
+    models_folder: PathBuf,
+    unused_models: usize,
+    unused_bytes: u64,
+    system: SystemStatus,
     recent: Vec<Recent>,
     transcripts_folder: PathBuf,
     /// True when the user chose the folder (so it can be reset).
@@ -45,6 +53,25 @@ pub struct UiState {
     /// True when TRANSCRIPT_DIR fixes the folder and it cannot be changed here.
     transcripts_folder_locked: bool,
     assistants: Assistants,
+}
+
+#[derive(Serialize)]
+struct Download {
+    model: WhisperModel,
+    received: u64,
+    total: u64,
+}
+
+/// How Muesli stands with the operating system, for the Permissions page.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemStatus {
+    /// "allowed", "denied" or "unknown"
+    microphone: &'static str,
+    notifications: &'static str,
+    /// False where the system asks nothing for recording what the computer plays (Windows).
+    system_audio_needs_permission: bool,
+    start_at_login: bool,
 }
 
 #[derive(Serialize)]
@@ -141,8 +168,12 @@ fn assistants(app: &App) -> Assistants {
 }
 
 #[tauri::command]
-pub fn get_state(app: Shared) -> UiState {
+pub fn get_state(handle: AppHandle, app: Shared) -> UiState {
+    use muesli_system::status;
+    use tauri_plugin_autostart::ManagerExt;
     let prefs = app.prefs();
+    let paths = app.paths();
+    let (unused, unused_bytes) = muesli_core::whisper_model::unused_models(prefs.model, &paths);
     let defaults = languages::system_defaults();
     UiState {
         version: VERSION,
@@ -152,6 +183,18 @@ pub fn get_state(app: Shared) -> UiState {
         system_languages: defaults,
         supported_languages: languages::SUPPORTED.iter().map(|code| Language { code, name: languages::english_name(code) }).collect(),
         model: app.model.phase().into(),
+        wanted_model: app.model.wanted(),
+        download: app.model.download_progress().map(|(model, received, total)| Download { model, received, total }),
+        download_error: app.model.last_error(),
+        models_folder: paths.models.clone(),
+        unused_models: unused.len(),
+        unused_bytes,
+        system: SystemStatus {
+            microphone: status::microphone().as_str(),
+            notifications: status::notifications(crate::prompt::APP_ID).as_str(),
+            system_audio_needs_permission: cfg!(target_os = "macos"),
+            start_at_login: handle.autolaunch().is_enabled().unwrap_or(false),
+        },
         models: WhisperModel::ALL
             .iter()
             .map(|m| ModelInfo {
@@ -190,6 +233,43 @@ pub fn update_prefs(handle: AppHandle, app: Shared, prefs: Preferences) {
 pub fn download_model(handle: AppHandle, app: Shared, model: WhisperModel) {
     let c = ctx(&handle, &app);
     app.model.download(model, move || c.changed());
+    ctx(&handle, &app).changed();
+}
+
+/// A pick in Settings: the active model stays until the picked one is on disk.
+#[tauri::command]
+pub fn select_model(handle: AppHandle, app: Shared, model: WhisperModel) {
+    let c = ctx(&handle, &app);
+    app.model.select(model, std::time::Duration::from_secs(3), move || c.changed());
+}
+
+#[tauri::command]
+pub fn remove_unused_models(handle: AppHandle, app: Shared) {
+    app.model.remove_unused();
+    ctx(&handle, &app).changed();
+}
+
+/// Opens the folder that holds the downloaded models.
+#[tauri::command]
+pub fn open_models_folder(handle: AppHandle, app: Shared) {
+    let folder = app.paths().models;
+    let _ = std::fs::create_dir_all(&folder);
+    crate::tray::open_path(&handle, &folder.to_string_lossy());
+}
+
+/// Switches between the system's languages and the user's own list, keeping that list.
+#[tauri::command]
+pub fn use_system_languages(handle: AppHandle, app: Shared, on: bool) {
+    let mut prefs = app.prefs();
+    prefs.set_uses_system_languages(on, &languages::system_defaults());
+    update_prefs(handle, app, prefs);
+}
+
+#[tauri::command]
+pub fn set_start_at_login(handle: AppHandle, app: Shared, on: bool) {
+    use tauri_plugin_autostart::ManagerExt;
+    let launcher = handle.autolaunch();
+    let _ = if on { launcher.enable() } else { launcher.disable() };
     ctx(&handle, &app).changed();
 }
 
@@ -267,12 +347,21 @@ pub async fn request_permission(kind: String) -> Result<(), String> {
     result.map_err(|e| e.to_string())
 }
 
+/// Opens Muesli's repository in the browser.
+#[tauri::command]
+pub fn open_repository(handle: AppHandle) {
+    use tauri_plugin_opener::OpenerExt;
+    let _ = handle.opener().open_url(muesli_core::REPOSITORY, None::<&str>);
+}
+
 #[tauri::command]
 pub fn open_privacy_settings(handle: AppHandle, kind: String) {
     use tauri_plugin_opener::OpenerExt;
     let url = match (cfg!(windows), kind.as_str()) {
+        (true, "notifications") => "ms-settings:notifications",
         (true, _) => "ms-settings:privacy-microphone",
         (false, "microphone") => "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+        (false, "notifications") => "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
         (false, _) => "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture",
     };
     let _ = handle.opener().open_url(url, None::<&str>);

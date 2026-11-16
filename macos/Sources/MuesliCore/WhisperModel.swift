@@ -57,6 +57,37 @@ public enum WhisperModel: String, Codable, CaseIterable, Sendable, Identifiable 
     }
 }
 
+/// What to do when the user picks a model in Settings. The active model keeps working until the
+/// new one is on disk, so a pick never leaves Muesli without a model.
+public enum ModelSwitch: Equatable, Sendable {
+    /// Nothing to do: it is the active model already.
+    case nothing
+    /// The file is there: make it the active model now.
+    case switchNow
+    /// Not on disk: download it, then switch.
+    case download
+    /// Its download is already running: switch when it finishes.
+    case wait
+
+    public static func decide(active: WhisperModel, wanted: WhisperModel, installed: Set<WhisperModel>,
+                              downloading: WhisperModel?) -> ModelSwitch {
+        if wanted == active { return .nothing }
+        if installed.contains(wanted) { return .switchNow }
+        return downloading == wanted ? .wait : .download
+    }
+}
+
+extension WhisperModel {
+    /// Downloaded models other than the active one, and the space removing them frees.
+    public static func unused(active: WhisperModel, installed: Set<WhisperModel>) -> (models: [WhisperModel], bytes: Int64) {
+        let models = allCases.filter { $0 != active && installed.contains($0) }
+        let bytes = models.reduce(Int64(0)) { sum, m in
+            sum + (((try? FileManager.default.attributesOfItem(atPath: m.url.path)[.size]) as? NSNumber)?.int64Value ?? 0)
+        }
+        return (models, bytes)
+    }
+}
+
 extension Preferences {
     /// A model file the user chose themselves; it replaces the downloadable models.
     public var customModelURL: URL? {

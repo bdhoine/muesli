@@ -220,7 +220,13 @@ impl ClaudeDesktopExtension {
     }
 
     pub fn state(bundled_version: &str, claude: &Path) -> ExtensionState {
-        if !claude.exists() {
+        Self::state_with(bundled_version, claude, None)
+    }
+
+    /// `app_installed`: whether the Claude app itself is installed, when the caller can tell.
+    /// Without it, Claude counts as present when its data folder exists.
+    pub fn state_with(bundled_version: &str, claude: &Path, app_installed: Option<bool>) -> ExtensionState {
+        if !app_installed.unwrap_or_else(|| claude.exists()) {
             return ExtensionState::ClaudeMissing;
         }
         match Self::installed_version(claude) {

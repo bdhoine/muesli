@@ -74,6 +74,42 @@ impl WhisperModel {
     }
 }
 
+/// What to do when the user picks a model in Settings. The active model keeps working until the
+/// new one is on disk, so a pick never leaves Muesli without a model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelSwitch {
+    /// Nothing to do: it is the active model already.
+    Nothing,
+    /// The file is there: make it the active model now.
+    SwitchNow,
+    /// Not on disk: download it, then switch.
+    Download,
+    /// Its download is already running: switch when it finishes.
+    Wait,
+}
+
+impl ModelSwitch {
+    pub fn decide(active: WhisperModel, wanted: WhisperModel, installed: &[WhisperModel], downloading: Option<WhisperModel>) -> Self {
+        if wanted == active {
+            Self::Nothing
+        } else if installed.contains(&wanted) {
+            Self::SwitchNow
+        } else if downloading == Some(wanted) {
+            Self::Wait
+        } else {
+            Self::Download
+        }
+    }
+}
+
+/// Downloaded models other than the active one, and the space removing them frees.
+pub fn unused_models(active: WhisperModel, paths: &Paths) -> (Vec<WhisperModel>, u64) {
+    let models: Vec<WhisperModel> =
+        WhisperModel::ALL.into_iter().filter(|m| *m != active && m.is_installed(paths)).collect();
+    let bytes = models.iter().map(|m| std::fs::metadata(m.path(paths)).map(|d| d.len()).unwrap_or(0)).sum();
+    (models, bytes)
+}
+
 /// Whether `path` exists and holds at least `minimum` bytes (and at least one).
 pub fn file_is_at_least(path: &std::path::Path, minimum: u64) -> bool {
     std::fs::metadata(path).map(|m| m.len() >= minimum.max(1)).unwrap_or(false)
