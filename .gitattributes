@@ -1,0 +1,2 @@
+# Fixtures written by the Swift app are compared byte for byte; keep them LF on every OS.
+fixtures/** text eol=lf

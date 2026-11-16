@@ -7,16 +7,16 @@
 
 <p align="center"><strong>Granola's raw, unbaked cousin</strong></p>
 
-<p align="center">An open-source meeting transcriber that runs entirely on your Mac.</p>
+<p align="center">An open-source meeting transcriber for macOS and Windows that runs entirely on your computer.</p>
 
 ---
 
-Muesli sits in your menu bar, notices when a call or meeting starts, and offers to transcribe it. When the meeting is over you have a plain text transcript in a folder. No bot joins your call, no audio leaves your Mac, and there is no account to create.
+Muesli sits in your menu bar (macOS) or system tray (Windows), notices when a call or meeting starts, and offers to transcribe it. When the meeting is over you have a plain text transcript in a folder. No bot joins your call, no audio leaves your computer, and there is no account to create.
 
 ## What it does
 
-- **Notices meetings.** Muesli watches your calendar and your microphone. When a meeting starts or a call is under way, it asks whether to transcribe.
-- **Transcribes on your Mac.** Speech is turned into text by Whisper running locally. Every 30 seconds it picks the language being spoken from the languages you chose, so a meeting that drifts between Dutch, English and French is fine.
+- **Notices meetings.** Muesli watches your microphone, and on macOS your calendar too. When a meeting starts or a call is under way, it asks whether to transcribe.
+- **Transcribes on your computer.** Speech is turned into text by Whisper running locally. Every 30 seconds it picks the language being spoken from the languages you chose, so a meeting that drifts between Dutch, English and French is fine.
 - **Captures both sides without a bot.** Your microphone is labelled "You" and the call audio is labelled "Others". Nobody sees a recorder join.
 - **Writes a file and steps aside.** Each meeting becomes a readable Markdown file and a JSON file with the same content. What you do with them is up to you.
 - **Knows when the call ends.** Muesli asks whether to stop, or stops by itself if you prefer.
@@ -25,7 +25,7 @@ Muesli sits in your menu bar, notices when a call or meeting starts, and offers 
 ## Private by design
 
 - Audio is never stored. Only the transcript is written.
-- Transcription happens on your Mac. Muesli makes no network connections.
+- Transcription happens on your computer. Muesli goes online only to download the speech model, once.
 - No account, no sign-up, no telemetry.
 - Transcripts are ordinary files in a folder you choose.
 
@@ -88,29 +88,54 @@ Setup steps are in [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md).
 
 ## Install
 
-There is no download yet, so for now you build Muesli yourself. You need macOS 14 or later and Xcode 15 or later.
+Muesli supports **macOS 14.4 or later** and **Windows 10/11 (64-bit)**. There are no downloads yet, so for now you build it yourself.
+
+| | macOS | Windows |
+|---|---|---|
+| App | Native menu bar app (Swift) | System tray app (Rust and Tauri) |
+| Other side of the call | System audio recording (one permission) | System audio loopback (no permission) |
+| Notices meetings from | Calendar, microphone in use, Teams | Microphone in use, Teams (Windows has no system calendar) |
+| Deleted transcripts go to | Trash | Recycle Bin |
+
+### macOS
+
+You need Xcode 15 or later.
 
 ```bash
 git clone https://github.com/bdhoine/muesli.git
 cd muesli
-
-# The speech model (just under 500 MB), downloaded once
-mkdir -p ~/Library/Application\ Support/Muesli
-curl -L -o ~/Library/Application\ Support/Muesli/ggml-small.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
-
-./build.sh
+macos/build.sh
 ```
 
-Move `Muesli.app` to Applications and open it.
+Move `macos/Muesli.app` to Applications and open it.
 
-On first use macOS asks for three permissions:
+### Windows
+
+The installer is built by GitHub Actions: on the repository's **Actions** tab, run the **Build app** workflow and download the `muesli-x86_64-pc-windows-msvc` artifact. It is not code-signed yet, so Windows SmartScreen asks you to confirm. To build it yourself you need [Rust](https://rustup.rs), the Visual Studio C++ build tools and CMake:
+
+```bash
+git clone https://github.com/bdhoine/muesli.git
+cd muesli/windows
+cargo install tauri-cli --version "^2" --locked
+cargo tauri build
+```
+
+The Windows app is new and has had far less use than the macOS app; [docs/PLATFORMS.md](docs/PLATFORMS.md) lists how the two differ. Please report what breaks.
+
+### First start
+
+A short setup asks one thing at a time: which speech model to download (Small is about 490 MB; it carries on while you continue), your languages, whether to stop and save automatically when a call ends, and whether AI assistants may read your transcripts. Then it asks for each permission on its own screen. Until a model is ready, transcribing is switched off. In Settings you can later switch to the Medium or Large model, or point Muesli at your own whisper.cpp `.bin` file.
+
+On macOS these permissions are asked for:
 
 | Permission | Why |
 |---|---|
 | Microphone | To transcribe your side of the conversation |
-| Screen Recording | macOS requires it for capturing call audio. Muesli records no video. After granting it, quit and reopen Muesli. |
+| System Audio Recording | To capture the other side of the call. This is the "System Audio Recording Only" permission; Muesli never records your screen or video. |
 | Calendar | To notice meetings as they start, and to name the transcript |
+| Notifications | To ask whether to transcribe when a meeting starts |
+
+On Windows only the microphone needs permission (Settings → Privacy & security → Microphone).
 
 If recording reports that a permission is off, choose **Open Privacy Settings** in the menu. More help is in [CONTRIBUTING.md](CONTRIBUTING.md#permissions-and-code-signing).
 
@@ -119,7 +144,7 @@ If recording reports that a permission is off, choose **Open Privacy Settings** 
 - Speakers are "You" and "Others". Muesli does not tell the other participants apart.
 - Text appears in 30-second steps, so the transcript trails the conversation slightly.
 - Meetings in your calendar are recognised when they have other attendees or a Teams, Zoom, Google Meet or Webex link.
-- Detecting the end of a call needs macOS 14.2 or later.
+- On Windows, meetings are noticed from other apps using the microphone and from Teams. There is no calendar detection, because Windows has no system calendar that apps can read; an in-person meeting has to be started by hand. [Why the two apps differ](docs/PLATFORMS.md).
 - Muesli transcribes. It does not summarise or write notes; that is what the files, and Claude, are for.
 
 ## Status

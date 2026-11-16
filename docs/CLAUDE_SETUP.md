@@ -1,8 +1,8 @@
 # Connecting Muesli to an AI assistant
 
-Muesli ships a small MCP server, `muesli-mcp`, inside the app bundle. An assistant such as Claude uses it to ask whether Muesli is recording, to list transcripts and read them, and to manage finished meetings: rename them, set attendees, rename speakers ("Others" → "Ann") and delete them. Deleted files go to the macOS Trash.
+Muesli ships a small MCP server, `muesli-mcp`, inside the app bundle. An assistant such as Claude uses it to ask whether Muesli is recording, to list transcripts and read them, and to manage finished meetings: rename them, set attendees, rename speakers ("Others" → "Ann") and delete them. Deleted files go to the Trash (macOS) or the Recycle Bin (Windows).
 
-Everything stays on your Mac. The assistant starts `muesli-mcp` itself and talks to it over stdio. The app never opens a socket and nothing is exposed to the network. A transcript the assistant reads is sent to its provider, for example to Anthropic for Claude. Assistants cannot start or stop a recording, and cannot change a meeting that is still being recorded.
+This works the same on macOS and Windows; only the paths differ. Everything stays on your computer. The assistant starts `muesli-mcp` itself and talks to it over stdio. The app never opens a socket and nothing is exposed to the network. A transcript the assistant reads is sent to its provider, for example to Anthropic for Claude. Assistants cannot start or stop a recording, and cannot change a meeting that is still being recorded.
 
 ## Switch it on
 
@@ -26,6 +26,12 @@ Claude Code, Codex CLI, Gemini CLI, VS Code, Cursor and other MCP clients connec
 claude mcp add --scope user muesli -- '/Applications/Muesli.app/Contents/MacOS/muesli-mcp'
 ```
 
+On Windows, Settings shows the same command with the path of `muesli-mcp.exe` next to the installed app, quoted for PowerShell. Copy it from there:
+
+```powershell
+claude mcp add --scope user muesli -- 'C:\Program Files\Muesli\muesli-mcp.exe'
+```
+
 ## Claude on your phone
 
 There is no direct connection from claude.ai or the Claude mobile app to Muesli. Conversations sync across Claude apps, though, so a conversation in Claude Desktop on your Mac that read a transcript can be continued on your phone.
@@ -40,13 +46,13 @@ There is no direct connection from claude.ai or the Claude mobile app to Muesli.
 | `rename_transcript` | Renames a finished meeting and its exported files |
 | `set_attendees` | Sets the attendees of a finished meeting |
 | `rename_speaker` | Renames a speaker in a finished meeting, for example "Others" to "Ann" |
-| `delete_transcript` | Moves a finished meeting's files to the Trash |
+| `delete_transcript` | Moves a finished meeting's files to the Trash or Recycle Bin |
 
 The first three only read. The others work only on meetings that are no longer recording.
 
 A transcript is complete when its `state` is `ready`. The assistant has to ask; Muesli cannot notify a conversation.
 
-Calls to the management tools are logged to `~/Library/Application Support/Muesli/audit.log`, one JSON line per call with time, tool and meeting id. Read calls are not logged.
+Calls to the management tools are logged to `~/Library/Application Support/Muesli/audit.log` (Windows: `%APPDATA%\Muesli\audit.log`), one JSON line per call with time, tool and meeting id. Read calls are not logged.
 
 ## Troubleshooting
 
@@ -58,6 +64,6 @@ Run the built-in check first:
 
 It reports whether the preferences file exists, whether access is switched on, whether the app is running, and how many meetings it can see.
 
-- **Claude Desktop does not show Muesli.** Restart Claude Desktop. Check that the extension is listed under Settings → Extensions, or, with the config-file option, that the `Muesli` entry in `~/Library/Application Support/Claude/claude_desktop_config.json` points at the app's current location; switching the option off and on rewrites it.
+- **Claude Desktop does not show Muesli.** Restart Claude Desktop. Check that the extension is listed under Settings → Extensions, or, with the config-file option, that the `Muesli` entry in `~/Library/Application Support/Claude/claude_desktop_config.json` (Windows: `%APPDATA%\Claude\claude_desktop_config.json`) points at the app's current location; switching the option off and on rewrites it.
 - **Tools answer "switched off".** Switch on **Let AI assistants use Muesli** in Settings… → AI Assistants.
 - **`get_status` says the app is not running.** Open Muesli. The server relies on the app's heartbeat in `state.json`.

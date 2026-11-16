@@ -1,0 +1,33 @@
+{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "t", "version": "1"}}}
+{"jsonrpc": "2.0", "method": "notifications/initialized"}
+{"jsonrpc": "2.0", "id": 2, "method": "ping"}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/list"}
+{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "get_status", "arguments": {}}}
+{"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "list_transcripts", "arguments": {}}}
+{"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "list_transcripts", "arguments": {"state": "ready", "limit": 1}}}
+{"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "list_transcripts", "arguments": {"since": "2026-11-12"}}}
+{"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "list_transcripts", "arguments": {"since": "yesterday"}}}
+{"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {"name": "list_transcripts", "arguments": {"state": "bogus"}}}
+{"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": {"name": "get_transcript", "arguments": {"id": "alpha-1"}}}
+{"jsonrpc": "2.0", "id": 11, "method": "tools/call", "params": {"name": "get_transcript", "arguments": {"id": "alpha-1", "format": "json", "fromSeconds": 5, "toSeconds": 15}}}
+{"jsonrpc": "2.0", "id": 12, "method": "tools/call", "params": {"name": "get_transcript", "arguments": {"id": "gamma-3"}}}
+{"jsonrpc": "2.0", "id": 13, "method": "tools/call", "params": {"name": "get_transcript", "arguments": {"id": "beta-2", "fromSeconds": 100}}}
+{"jsonrpc": "2.0", "id": 14, "method": "tools/call", "params": {"name": "get_transcript", "arguments": {"id": "nope"}}}
+{"jsonrpc": "2.0", "id": 15, "method": "tools/call", "params": {"name": "rename_speaker", "arguments": {"id": "alpha-1", "from": "Others", "to": "Ann"}}}
+{"jsonrpc": "2.0", "id": 16, "method": "tools/call", "params": {"name": "rename_speaker", "arguments": {"id": "alpha-1", "from": "Zed", "to": "Q"}}}
+{"jsonrpc": "2.0", "id": 17, "method": "tools/call", "params": {"name": "set_attendees", "arguments": {"id": "alpha-1", "attendees": ["Ann", "ann", " Cy "]}}}
+{"jsonrpc": "2.0", "id": 18, "method": "tools/call", "params": {"name": "set_attendees", "arguments": {"id": "alpha-1", "attendees": [1]}}}
+{"jsonrpc": "2.0", "id": 19, "method": "tools/call", "params": {"name": "rename_transcript", "arguments": {"id": "alpha-1", "title": "  Planning\nQ4 "}}}
+{"jsonrpc": "2.0", "id": 20, "method": "tools/call", "params": {"name": "rename_transcript", "arguments": {"id": "alpha-1", "title": "   "}}}
+{"jsonrpc": "2.0", "id": 21, "method": "tools/call", "params": {"name": "rename_transcript", "arguments": {"id": "gamma-3", "title": "x"}}}
+{"jsonrpc": "2.0", "id": 22, "method": "tools/call", "params": {"name": "delete_transcript", "arguments": {"id": "missing"}}}
+{"jsonrpc": "2.0", "id": 23, "method": "tools/call", "params": {"name": "delete_transcript", "arguments": {"id": "gamma-3"}}}
+{"jsonrpc": "2.0", "id": 24, "method": "tools/call", "params": {"name": "start_recording", "arguments": {}}}
+{"jsonrpc": "2.0", "id": 25, "method": "nope"}
+{"jsonrpc": "2.0", "id": 26}
+[{"jsonrpc": "2.0", "id": 27, "method": "ping"}, {"jsonrpc": "2.0", "method": "notifications/x"}]
+[{"jsonrpc": "2.0", "method": "notifications/x"}]
+{"jsonrpc": "2.0", "id": 28, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}}
+{"jsonrpc": "2.0", "id": "str-id", "method": "ping"}
+{not json
+42

@@ -1,0 +1,23 @@
+[package]
+name = "muesli-detect"
+description = "Meeting detection: samples the system and feeds the decisions in muesli-core."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+muesli-core = { path = "../core" }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Media_Audio",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Variant",
+  "Win32_Devices_FunctionDiscovery",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-audio = "0.3"

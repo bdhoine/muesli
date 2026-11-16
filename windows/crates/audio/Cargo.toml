@@ -1,0 +1,15 @@
+[package]
+name = "muesli-audio"
+description = "Microphone and system-audio capture for Muesli, as 16 kHz mono f32 chunks."
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+muesli-core = { path = "../core" }
+rubato = "5"
+audioadapter-buffers = "5"
+
+# cpal records the microphone everywhere and system audio through WASAPI loopback (Windows) and
+# a Core Audio process tap (macOS 14.6+). Linux builds only the pure resampling code.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+cpal = "0.18"

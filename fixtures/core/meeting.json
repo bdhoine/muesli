@@ -1,0 +1,32 @@
+{
+  "attendees" : [
+    "Ann"
+  ],
+  "endedAt" : "2027-01-15T08:30:00Z",
+  "id" : "golden-1",
+  "partial" : true,
+  "source" : "calendar",
+  "startedAt" : "2027-01-15T08:00:00Z",
+  "state" : "ready",
+  "title" : "Weekly sync",
+  "transcript" : [
+    {
+      "end" : 4,
+      "speaker" : "You",
+      "start" : 0,
+      "text" : "Segment 0"
+    },
+    {
+      "end" : 9,
+      "speaker" : "Others",
+      "start" : 5,
+      "text" : "Segment 1"
+    },
+    {
+      "end" : 14,
+      "speaker" : "You",
+      "start" : 10,
+      "text" : "Segment 2"
+    }
+  ]
+}

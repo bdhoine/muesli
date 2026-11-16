@@ -1,0 +1,14 @@
+{
+  "autoStop" : false,
+  "claudeDesktopConfigEntry" : false,
+  "customModelPath" : "\/models\/x.bin",
+  "endDelaySeconds" : 60,
+  "languages" : [
+    "nl",
+    "en"
+  ],
+  "mcpEnabled" : true,
+  "model" : "medium",
+  "onboardingDone" : true,
+  "recentLimit" : 5
+}

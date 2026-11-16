@@ -1,0 +1,38 @@
+{
+  "attendees": [
+    "Ann",
+    "Bob"
+  ],
+  "endedAt": "2026-11-10T09:30:00Z",
+  "id": "alpha-1",
+  "source": "calendar",
+  "startedAt": "2026-11-10T09:00:00Z",
+  "state": "ready",
+  "title": "Weekly sync",
+  "transcript": [
+    {
+      "end": 4.0,
+      "speaker": "You",
+      "start": 0.0,
+      "text": "Good morning everyone."
+    },
+    {
+      "end": 9.0,
+      "speaker": "Others",
+      "start": 5.0,
+      "text": "Morning! Shall we start?"
+    },
+    {
+      "end": 14.0,
+      "speaker": "You",
+      "start": 10.0,
+      "text": "Yes, first item is the roadmap."
+    },
+    {
+      "end": 19.0,
+      "speaker": "Others",
+      "start": 15.0,
+      "text": "Roadmap looks fine to me."
+    }
+  ]
+}

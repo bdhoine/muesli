@@ -1,0 +1,18 @@
+{
+  "appState" : "recording",
+  "current" : {
+    "id" : "golden-1",
+    "segmentCount" : 3,
+    "source" : "calendar",
+    "startedAt" : "2027-01-15T08:00:00Z",
+    "title" : "Weekly sync"
+  },
+  "lastReady" : {
+    "endedAt" : "2027-01-15T08:00:00Z",
+    "id" : "m",
+    "title" : "t"
+  },
+  "pid" : 4242,
+  "schemaVersion" : 1,
+  "updatedAt" : "2027-01-15T08:01:40Z"
+}

@@ -1,0 +1,24 @@
+{
+  "attendees": [],
+  "endedAt": "2026-11-12T14:10:30Z",
+  "id": "beta-2",
+  "partial": true,
+  "source": "audio",
+  "startedAt": "2026-11-12T14:00:00Z",
+  "state": "ready",
+  "title": "Call",
+  "transcript": [
+    {
+      "end": 4.0,
+      "speaker": "You",
+      "start": 0.0,
+      "text": "Hello?"
+    },
+    {
+      "end": 9.0,
+      "speaker": "Others",
+      "start": 5.0,
+      "text": "Hi, can you hear me?"
+    }
+  ]
+}

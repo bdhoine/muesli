@@ -1,0 +1,16 @@
+{
+  "attendees": [],
+  "id": "gamma-3",
+  "source": "manual",
+  "startedAt": "2026-11-13T10:00:00Z",
+  "state": "recording",
+  "title": "Live meeting",
+  "transcript": [
+    {
+      "end": 4.0,
+      "speaker": "You",
+      "start": 0.0,
+      "text": "Starting now."
+    }
+  ]
+}

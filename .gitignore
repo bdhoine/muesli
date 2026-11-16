@@ -1,5 +1,15 @@
-.build/
-Muesli.app/
-*.bin
 .DS_Store
-.swiftpm/
+
+# Whisper models
+*.bin
+
+# macOS app (Swift)
+macos/.build/
+macos/.swiftpm/
+macos/Muesli.app/
+
+# Windows app (Rust and Tauri)
+windows/target/
+windows/dist/
+windows/src-tauri/gen/
+windows/src-tauri/binaries/

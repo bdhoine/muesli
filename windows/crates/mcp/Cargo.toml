@@ -1,0 +1,23 @@
+[package]
+name = "muesli-mcp"
+description = "Muesli's MCP server (stdio). Port of the Swift muesli-mcp."
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "muesli_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "muesli-mcp"
+path = "src/main.rs"
+
+[dependencies]
+muesli-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde", "clock"] }
+trash = "5"
+
+[dev-dependencies]
+tempfile = "3"

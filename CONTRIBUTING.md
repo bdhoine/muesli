@@ -2,23 +2,38 @@
 
 Thanks for helping. This file is the developer documentation: how to build, test and find your way around. The product description is in [README.md](README.md).
 
-## Build
+## Repository layout
 
-Requires macOS 14+ and Xcode 15+.
+Muesli supports macOS and Windows, and the two apps are peers in this repository:
+
+```
+macos/          The macOS app (Swift): Package.swift, Sources/, Tests/, Info.plist, build.sh
+windows/        The Windows app (Rust and Tauri): crates/, src-tauri/, ui/
+fixtures/       The contract between the two: files and MCP replies produced by the Swift app, checked by the Rust tests
+assets/brand/   The one source for logo, icons and colours
+scripts/        build-mcpb.py (Claude Desktop extension), sync-icons.py, regenerate-fixtures.sh
+docs/           REQUIREMENTS.md, PLATFORMS.md, CLAUDE_SETUP.md
+```
+
+The sections below describe the macOS app first, then [the Windows app](#the-windows-app-windows). Both are permanent; neither replaces the other.
+
+## Build (macOS app)
+
+Requires macOS 14.4+ and Xcode 15+.
 
 ```bash
-mkdir -p ~/Library/Application\ Support/Muesli
-curl -L -o ~/Library/Application\ Support/Muesli/ggml-small.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin
-./build.sh
-open Muesli.app
+macos/build.sh
+open macos/Muesli.app
 ```
+
+On first launch Muesli downloads the Small model into `~/Library/Application Support/Muesli/`. Set `MUESLI_SUPPORT_DIR` to keep a test copy elsewhere.
 
 `build.sh` runs `swift build -c release`, assembles `Muesli.app`, copies `muesli-mcp` next to the main executable, builds `Muesli.icns` from the iconset, packs the Claude Desktop extension `Muesli.mcpb` (manifest from `muesli-mcp --mcpb-manifest`, the 512 px icon and a signed copy of `muesli-mcp`) into `Contents/Resources`, and signs the bundle. Muesli needs a real bundle for notifications and permissions, so run the app, not the bare executable.
 
 ## Test
 
 ```bash
+cd macos
 swift test
 ```
 
@@ -42,11 +57,11 @@ If you build on a Mac and something in the third group fails to compile or misbe
  Detector (every 5 s)                 Capture                                  Output
  ├ Calendar (EventKit)  ─┐        ┌ Mic via AVAudioEngine ("You")
  ├ Teams process         ├─► Notification ─► Start ─┤                 ─► 30 s chunks ─► whisper.cpp (on-device) ─► transcripts folder
- └ Mic in use (CoreAudio)┘   "Start transcribing?"  └ System audio via ScreenCaptureKit ("Others")
+ └ Mic in use (CoreAudio)┘   "Start transcribing?"  └ System audio via Core Audio tap ("Others")
 ```
 
 ```
-Muesli.app                 no network; capture, detection, whisper.cpp
+Muesli.app                 network only for model download; capture, detection, whisper.cpp
    │ writes state + meetings to ~/Library/Application Support/Muesli/
    │ writes .md/.json to the transcripts folder
    ▼
@@ -55,7 +70,7 @@ muesli-mcp                 separate executable, MCP server over stdio
    └─ started by the assistant on the same Mac (Claude Desktop, Claude Code, Codex, …)
 ```
 
-The app never opens a socket and nothing is exposed to the network. Everything assistant-related runs in `muesli-mcp`, which the assistant starts itself. It reads what the app wrote, and its management tools (`MeetingEditor`) change only finished meetings: the store entry and the exported `.md`/`.json`, located through `transcriptsFolder` in `state.json`. The reasoning and the full requirement list are in [REQUIREMENTS.md](REQUIREMENTS.md).
+The app never opens a socket and nothing is exposed to the network. Everything assistant-related runs in `muesli-mcp`, which the assistant starts itself. It reads what the app wrote, and its management tools (`MeetingEditor`) change only finished meetings: the store entry and the exported `.md`/`.json`, located through `transcriptsFolder` in `state.json`. The reasoning and the full requirement list are in [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ### Detection
 
@@ -75,7 +90,7 @@ The app never opens a socket and nothing is exposed to the network. Everything a
 | Path | Written by | Contents |
 |---|---|---|
 | `~/Documents/MeetingTranscripts/` (configurable) | app | The `.md` and `.json` pair per finished meeting |
-| `~/Library/Application Support/Muesli/ggml-small.bin` | you | Whisper model |
+| `~/Library/Application Support/Muesli/ggml-*.bin` | the app (model download) or you | Whisper model |
 | `…/Muesli/meetings/<id>.json` | app | Canonical copy of every meeting, rewritten during recording |
 | `…/Muesli/state.json` | app | Current state and heartbeat, rewritten on change and every 10 s |
 | `…/Muesli/config.json` | app | Preferences shared with `muesli-mcp` |
@@ -89,22 +104,23 @@ Environment variables: `TRANSCRIPT_DIR` overrides the transcripts folder; `MUESL
 
 | Path | Purpose |
 | --- | --- |
-| `Sources/Muesli/App.swift` | Menu bar UI, notifications, record/stop flow, `state.json` heartbeat |
-| `Sources/Muesli/MeetingDetector.swift` | Samples calendar, Teams and microphone use; feeds `DetectionLogic` |
-| `Sources/Muesli/AudioCapture.swift` | Mic and system audio capture, resampled to 16 kHz mono |
-| `Sources/Muesli/Transcriber.swift` | whisper.cpp through its C API (the `whisper_cpp` module of SwiftWhisper): language detection limited to the configured languages, then transcription |
-| `Sources/Muesli/SettingsView.swift` | Settings window (sidebar: General, Transcription, AI Assistants), brand accent colours |
-| `Sources/MuesliCore/AssistantSetup.swift` | Setup command or config snippet per MCP client (Claude Code, Codex, Gemini CLI, VS Code, Cursor, other) |
-| `Sources/Muesli/Bridge.swift` | Claude Desktop extension status and install, or the `Muesli` entry in `claude_desktop_config.json` for accounts that block extensions |
-| `Sources/Muesli/Permissions.swift` | Microphone and Screen Recording checks before recording |
-| `Sources/MuesliCore/` | Shared, Foundation-only: data types, paths, transcript files, meeting store, preferences, transcription languages, audio chunking, detection rules, Claude Desktop extension manifest and install detection (`ClaudeDesktopExtension.swift`), MCP client setup snippets (`AssistantSetup.swift`), rename/attendees/speaker/delete (`MeetingEditor.swift`) |
-| `Sources/MuesliCore/MCP/` | The MCP server: tools, stdio transport, audit log, `doctor` |
-| `Sources/muesli-mcp/` | Entry point of the `muesli-mcp` executable |
-| `Tests/MuesliCoreTests/` | Unit tests |
-| `Info.plist`, `build.sh` | App bundle metadata and build script |
+| `macos/Sources/Muesli/App.swift` | Menu bar UI, notifications, record/stop flow, `state.json` heartbeat |
+| `macos/Sources/Muesli/MeetingDetector.swift` | Samples calendar, Teams and microphone use; feeds `DetectionLogic` |
+| `macos/Sources/Muesli/AudioCapture.swift` | Mic and system audio capture, resampled to 16 kHz mono |
+| `macos/Sources/Muesli/Transcriber.swift` | whisper.cpp through its C API (the `whisper_cpp` module of SwiftWhisper): language detection limited to the configured languages, then transcription |
+| `macos/Sources/Muesli/SettingsView.swift` | Settings window (sidebar: General, Transcription, AI Assistants), brand accent colours |
+| `macos/Sources/MuesliCore/AssistantSetup.swift` | Setup command or config snippet per MCP client (Claude Code, Codex, Gemini CLI, VS Code, Cursor, other) |
+| `macos/Sources/Muesli/Bridge.swift` | Claude Desktop extension status and install, or the `Muesli` entry in `claude_desktop_config.json` for accounts that block extensions |
+| `macos/Sources/Muesli/OnboardingView.swift` | First-launch setup window (model, languages, assistants, permissions) |
+| `macos/Sources/Muesli/Permissions.swift` | Microphone and System Audio Recording checks before recording |
+| `macos/Sources/MuesliCore/` | Shared, Foundation-only: data types, paths, transcript files, meeting store, preferences, transcription languages, audio chunking, detection rules, Claude Desktop extension manifest and install detection (`ClaudeDesktopExtension.swift`), MCP client setup snippets (`AssistantSetup.swift`), rename/attendees/speaker/delete (`MeetingEditor.swift`) |
+| `macos/Sources/MuesliCore/MCP/` | The MCP server: tools, stdio transport, audit log, `doctor` |
+| `macos/Sources/muesli-mcp/` | Entry point of the `muesli-mcp` executable |
+| `macos/Tests/MuesliCoreTests/` | Unit tests |
+| `macos/Info.plist`, `macos/build.sh` | App bundle metadata and build script |
 | `assets/brand/` | Logo, app icon and menu bar icon |
 | `docs/CLAUDE_SETUP.md` | User-facing setup for Claude and other AI assistants |
-| `REQUIREMENTS.md` | Requirements and design decisions for the Claude integration |
+| `docs/REQUIREMENTS.md` | Requirements and design decisions for the Claude integration |
 
 ## The MCP server
 
@@ -127,15 +143,48 @@ Rules to keep:
 - The stdio server refuses tool calls unless access is switched on.
 - Management tool calls are written to `audit.log`.
 
+## The Windows app (`windows/`)
+
+The Windows app is written in Rust with Tauri. It also builds and runs on macOS, so it can be developed and tested from a Mac, but the macOS product is the Swift app. [docs/PLATFORMS.md](docs/PLATFORMS.md) lists how the two differ. Both read and write the same files and expose the same MCP tools, so a change to a file format or a tool must be made in both, and in both test suites.
+
+| Crate | What it holds |
+|---|---|
+| `crates/core` | Models, preferences, `state.json`, languages, chunker, detection logic, store (append, finish, recover), editor, assistant setup and Claude Desktop config. No OS code. |
+| `crates/mcp` | `muesli-mcp`, the MCP server (stdio) |
+| `crates/whisper` | Model download and validation, whisper.cpp transcriber (`whisper-rs`) |
+| `crates/audio` | Capture with `cpal`: microphone, WASAPI loopback (Windows), Core Audio tap (macOS). Resampling with `rubato`. |
+| `crates/detect` | Samplers: Core Audio process list (macOS), WASAPI sessions (Windows), Teams process |
+| `crates/notify` | Notifications with answer buttons: Windows toasts for the meeting prompts |
+| `src-tauri` | The Tauri app: tray, windows, recording session, commands. Keep it thin. |
+| `ui/` | The web UI (plain JS, no build step): Settings, onboarding, prompt |
+
+```bash
+cd windows
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo run -p muesli-app            # the app (on a Mac: for development only; it shares the Swift app's data folder)
+```
+
+Install Rust with `brew install rustup && rustup default stable` (macOS) or from rustup.rs (Windows, plus the Visual Studio C++ build tools and CMake).
+
+- **Formats stay compatible.** `fixtures/` at the repo root is the contract between the two apps: `fixtures/core` holds files written by the Swift encoders, which `crates/core/tests/golden.rs` loads; `fixtures/mcp` holds 33 requests and what the Swift `muesli-mcp` answered, which `crates/mcp/tests/contract.rs` replays. When a format or tool changes on purpose, run `scripts/regenerate-fixtures.sh` and make the Rust tests pass again.
+- **Icons have one source.** `windows/src-tauri/icons/` is generated from `assets/brand` by `scripts/sync-icons.py`; CI fails if it is out of date. Never edit it by hand.
+- **One version.** The Windows app's version is the workspace version in `windows/Cargo.toml`; the Swift app's is `MuesliInfo.version`. Keep them equal.
+- **Paths are passed around** as a `Paths` value instead of read from the environment, so tests run in parallel. On Windows, models live in `%LOCALAPPDATA%\Muesli`, everything else in `%APPDATA%\Muesli`.
+- **Use libraries for the hard parts**: `rubato` (resampling), `cpal` (audio devices), `whisper-rs`, `uuid`, `tempfile` (atomic writes), `trash`. Do not hand-roll replacements.
+- **Try the UI without the app**: serve `windows/ui` and open `index.html?mock=1&window=onboarding` (or `settings`, `prompt`).
+- **Check capture on a real machine**: `cargo run -p muesli-audio --example probe -- 8`. Check the resampler by ear or with Whisper: `--example resample_wav -- in.wav out.wav`. Transcribe real speech: the ignored test in `crates/whisper/tests/transcribe.rs`.
+- **Windows without a PC**: `.github/workflows/ci.yml` runs the tests on macOS, Windows and Linux; **Build app** (`app.yml`) builds the installers. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-notify` type-checks most Windows code; `src-tauri` and `whisper` need CI.
+
 ## Permissions and code signing
 
-Grant Microphone, Calendar and Screen Recording when asked. Screen Recording is what allows system audio capture; after enabling it, quit and reopen Muesli.
+Grant Microphone, Calendar and System Audio Recording when asked. System Audio Recording (the "System Audio Recording Only" pane) is what allows capturing the other side's audio through a Core Audio tap; there is no public API to check it, so `Permissions.swift` reads the TCC status through the private TCC framework and skips the check if that is unavailable. This is the one private API in the app: re-check it on every major macOS release.
 
 Without a signing certificate `build.sh` signs ad hoc, and macOS ties permissions for ad-hoc apps to the exact build, so each rebuild can invalidate them. If a permission looks enabled but still fails, remove Muesli from that list, or reset it, then relaunch and grant again:
 
 ```bash
 tccutil reset Microphone com.github.bdhoine.muesli
-tccutil reset ScreenCapture com.github.bdhoine.muesli
+tccutil reset AudioCapture com.github.bdhoine.muesli
 ```
 
 Signing with a real certificate avoids this. `build.sh` uses the first "Apple Development" or "Developer ID Application" certificate in your keychain (override with `SIGN_IDENTITY="..." ./build.sh`). To get a free Apple Development certificate: Xcode → Settings → Accounts → add your Apple ID → Manage Certificates → + → Apple Development. After the first signed build, reset and grant the permissions once more; they then survive rebuilds.
@@ -143,7 +192,7 @@ Signing with a real certificate avoids this. `build.sh` uses the first "Apple De
 ## Conventions
 
 - **Brand.** Follow [assets/brand/BRAND.md](assets/brand/BRAND.md) for the logo, colours, icons and tone. Use the asset files as they are; do not redraw or recolour them.
-- **No network.** The app opens no sockets and `muesli-mcp` speaks stdio only. Nothing listens on a port.
+- **Minimal network.** The only request is the Whisper model download from Hugging Face (`ModelController`). Nothing listens on a port and `muesli-mcp` speaks stdio only.
 - **Audio is never written to disk.**
 - **Dependencies.** SwiftWhisper is pinned to an exact commit in `Package.swift`; bump it deliberately. Avoid adding others.
 - **Pull requests.** Keep them focused, add tests for logic in `MuesliCore`, and run `swift test` before opening one.

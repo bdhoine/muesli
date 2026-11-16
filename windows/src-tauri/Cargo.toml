@@ -1,0 +1,31 @@
+[package]
+name = "muesli-app"
+description = "Muesli: on-device meeting transcription for the menu bar and system tray."
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "muesli_app_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "muesli"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+muesli-core = { path = "../crates/core" }
+muesli-audio = { path = "../crates/audio" }
+muesli-whisper = { path = "../crates/whisper" }
+muesli-detect = { path = "../crates/detect" }
+muesli-notify = { path = "../crates/notify" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde", "clock"] }
