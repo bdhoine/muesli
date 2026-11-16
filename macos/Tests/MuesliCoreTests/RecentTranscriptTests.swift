@@ -49,7 +49,7 @@ final class RecentTranscriptTests: IsolatedTestCase {
 
     func testRecentLimitDefaultsToFiveAndIsCapped() throws {
         XCTAssertEqual(Preferences().recentLimit, 5)
-        let old = try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8))
+        let old = try preferences(fromJSON: "{}")
         XCTAssertEqual(old.recentLimit, 5)
         var p = Preferences()
         p.recentLimit = 50

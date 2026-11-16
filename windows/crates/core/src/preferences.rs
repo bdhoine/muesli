@@ -31,8 +31,8 @@ pub struct Preferences {
     pub custom_model_path: Option<String>,
     #[serde(default = "done_when_missing")]
     pub onboarding_done: bool,
-    /// Where transcripts are written, when the user chose a folder. The Windows app keeps this
-    /// here; the macOS app keeps it in its own defaults and never writes this key.
+    /// Where transcripts are written, when the user chose a folder. Both apps keep it here
+    /// (the macOS app moved it over from its own defaults once).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcripts_folder: Option<String>,
     /// The user's own language list, kept while "use my computer's languages" is on, so it comes back.

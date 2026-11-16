@@ -1,22 +1,21 @@
 import Foundation
 import MuesliFFI
 
-/// The Whisper models Muesli can download. All come from whisper.cpp's ggml releases.
-public enum WhisperModel: String, Codable, CaseIterable, Sendable, Identifiable {
-    case small, medium, large
+// WhisperModel is generated from the Rust core; this adds the Swift conveniences.
+extension WhisperModel: CaseIterable, Identifiable, Sendable {
+    public static var allCases: [WhisperModel] { [.small, .medium, .large] }
 
     public var id: String { rawValue }
 
-    /// Static facts about the model; they come from the shared Rust core.
-    private var info: ModelInfo { modelInfo(model: kind) }
-
-    var kind: ModelKind {
+    public var rawValue: String {
         switch self {
-        case .small: .small
-        case .medium: .medium
-        case .large: .large
+        case .small: "small"
+        case .medium: "medium"
+        case .large: "large"
         }
     }
+
+    private var info: ModelInfo { modelInfo(m: self) }
 
     public var title: String { info.title }
     public var fileName: String { info.fileName }
@@ -52,8 +51,8 @@ public enum ModelSwitch: Equatable, Sendable {
 
     public static func decide(active: WhisperModel, wanted: WhisperModel, installed: Set<WhisperModel>,
                               downloading: WhisperModel?) -> ModelSwitch {
-        switch modelSwitchDecide(active: active.kind, wanted: wanted.kind,
-                                 installed: installed.map(\.kind), downloading: downloading?.kind) {
+        switch modelSwitchDecide(active: active, wanted: wanted,
+                                 installed: Array(installed), downloading: downloading) {
         case .nothing: .nothing
         case .switchNow: .switchNow
         case .download: .download
@@ -75,11 +74,8 @@ extension WhisperModel {
 
 extension Preferences {
     /// A model file the user chose themselves; it replaces the downloadable models.
-    public var customModelURL: URL? {
-        guard let path = customModelPath, !path.isEmpty else { return nil }
-        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
-    }
+    public var customModelURL: URL? { preferencesCustomModelPath(prefs: self).map { URL(fileURLWithPath: $0) } }
 
     /// The file Whisper will load: the custom model if set, else the selected download.
-    public var modelURL: URL { customModelURL ?? model.url }
+    public var modelURL: URL { URL(fileURLWithPath: preferencesModelPath(prefs: self, paths: Paths.current)) }
 }

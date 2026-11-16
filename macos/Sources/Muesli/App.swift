@@ -24,6 +24,8 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
 
     func boot() {
         try? SMAppService.mainApp.register()                       // always run: start at login
+        Paths.migrateLegacyTranscriptsFolder()                     // older versions kept the folder in UserDefaults
+        settings = Preferences.load()
         MeetingStore.recoverInterrupted()                          // keep what an interrupted recording transcribed
         MeetingStore.importTranscripts()
         refreshRecent()
@@ -90,7 +92,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
             out.detected = .init(title: d.meeting.title, source: d.meeting.source, since: d.since)
         }
         if let m = current {
-            out.current = .init(id: m.id, title: m.title, source: m.source, startedAt: m.startedAt, segmentCount: m.transcript.count)
+            out.current = .init(id: m.id, title: m.title, source: m.source, startedAt: m.startedAt, segmentCount: UInt32(m.transcript.count))
         }
         out.write()
     }
@@ -215,7 +217,11 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: Preferences
 
-    func update(_ new: Preferences) {
+    func update(_ edited: Preferences) {
+        // The transcripts folder is changed only through Paths (the folder buttons in Settings), so a
+        // preferences copy that was opened earlier must not write an old value back.
+        var new = edited
+        new.transcriptsFolder = Preferences.load().transcriptsFolder
         guard new != settings else { return }
         let bridgeChanged = new.mcpEnabled != settings.mcpEnabled || new.claudeDesktopConfigEntry != settings.claudeDesktopConfigEntry
         settings = new
@@ -235,7 +241,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func refreshRecent() {
-        recent = Store.recentTranscripts(limit: settings.effectiveRecentLimit)
+        recent = Store.recentTranscripts(limit: Int(settings.effectiveRecentLimit))
     }
 
     func chooseTranscriptsFolder() {
@@ -250,11 +256,13 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Paths.setTranscripts(url)
+        settings = Preferences.load()
         refreshRecent()
     }
 
     func resetTranscriptsFolder() {
         Paths.setTranscripts(nil)
+        settings = Preferences.load()
         refreshRecent()
     }
 }

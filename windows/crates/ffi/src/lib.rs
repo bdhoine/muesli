@@ -9,4 +9,15 @@ uniffi::setup_scaffolding!();
 mod assistants;
 mod languages;
 mod models;
+mod paths;
+mod preferences;
+mod status;
+mod store;
+
 mod whisper_model;
+
+/// The app version, shared by both apps (the workspace version).
+#[uniffi::export]
+pub fn muesli_version() -> String {
+    muesli_core::VERSION.to_string()
+}

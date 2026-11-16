@@ -21,10 +21,17 @@ class IsolatedTestCase: XCTestCase {
 
     func meeting(_ id: String, state: MeetingState, segments: Int = 2, title: String = "Weekly sync",
                  started: Date = Date(timeIntervalSince1970: 1_800_000_000)) -> Meeting {
-        Meeting(id: id, title: title, source: "calendar", startedAt: started,
-                endedAt: state == .ready ? started.addingTimeInterval(1800) : nil,
-                attendees: ["Ann"],
-                transcript: (0..<segments).map { TranscriptSegment(start: Double($0) * 5, end: Double($0) * 5 + 4, speaker: $0 % 2 == 0 ? "You" : "Others", text: "Segment \($0)") },
-                state: state)
+        let transcript = (0..<segments).map { i -> TranscriptSegment in
+            TranscriptSegment(start: Double(i) * 5, end: Double(i) * 5 + 4, speaker: i % 2 == 0 ? "You" : "Others", text: "Segment \(i)")
+        }
+        let ended: Date? = state == .ready ? started.addingTimeInterval(1800) : nil
+        return Meeting(id: id, title: title, source: "calendar", startedAt: started, endedAt: ended,
+                       attendees: ["Ann"], transcript: transcript, state: state, partial: nil)
+    }
+
+    /// Preferences as another version of the app would have written them to config.json.
+    func preferences(fromJSON json: String) throws -> Preferences {
+        try Data(json.utf8).write(to: Paths.config)
+        return Preferences.load()
     }
 }

@@ -92,7 +92,7 @@ final class TranscriptionTests: IsolatedTestCase {
         XCTAssertNotNil(name.range(of: #"^\d{4}-\d{2}-\d{2}_\d{4}_Weekly-sync-Q4-plans$"#, options: .regularExpression), name)
 
         let json = url.deletingPathExtension().appendingPathExtension("json")
-        let back = try JSONCoding.decoder().decode(Meeting.self, from: Data(contentsOf: json))
+        let back = try XCTUnwrap(MeetingStore.importTranscripts(from: transcriptsDir).first)
         XCTAssertEqual(back.id, "m1")
         XCTAssertEqual(back.transcript.count, 2)
         XCTAssertEqual(back.state, .ready)
@@ -125,7 +125,9 @@ final class TranscriptionTests: IsolatedTestCase {
     }
 
     func testTimestampsPastAnHourKeepCountingMinutes() {
-        XCTAssertTrue(Store.line(TranscriptSegment(start: 3725, end: 3730, speaker: "You", text: "x")).hasPrefix("[62:05]"))
+        var m = meeting("long", state: .ready, segments: 0)
+        m.transcript = [TranscriptSegment(start: 3725, end: 3730, speaker: "You", text: "x")]
+        XCTAssertTrue(Store.markdown(m).contains("[62:05] **You**: x"))
     }
 
     func testRecentListsNewestMarkdownFirstAndHonoursLimit() throws {
@@ -164,7 +166,7 @@ final class TranscriptionTests: IsolatedTestCase {
     }
 
     func testLanguagesMissingFromOldConfigUseTheDefault() throws {
-        let p = try JSONDecoder().decode(Preferences.self, from: Data(#"{"mcpEnabled": true}"#.utf8))
+        let p = try preferences(fromJSON: #"{"mcpEnabled": true}"#)
         XCTAssertNil(p.languages)
         XCTAssertEqual(p.effectiveLanguages, Languages.defaults())
     }

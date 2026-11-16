@@ -1,56 +1,34 @@
 import Foundation
+@_exported import MuesliFFI
+
+// Meeting, TranscriptSegment, MeetingState, Preferences, AppStatus and PathSet are defined once,
+// in the Rust core (windows/crates/core), and generated into MuesliFFI. This file adds the
+// Swift conveniences the app uses.
 
 public enum MuesliInfo {
-    public static let version = "0.0.1"
+    public static var version: String { muesliVersion() }
     public static let repository = URL(string: "https://github.com/bdhoine/muesli")!
 }
 
-public enum MeetingState: String, Codable, Sendable {
-    case detected, recording, finalizing, ready, failed
-}
-
-public struct TranscriptSegment: Codable, Sendable, Equatable {
-    public var start: Double          // seconds from meeting start
-    public var end: Double
-    public var speaker: String        // "You" (mic) or "Others" (system audio)
-    public var text: String
-
-    public init(start: Double, end: Double, speaker: String, text: String) {
-        self.start = start; self.end = end; self.speaker = speaker; self.text = text
+extension MeetingState: Sendable {
+    /// The word used in files and messages.
+    public var rawValue: String {
+        switch self {
+        case .detected: "detected"
+        case .recording: "recording"
+        case .finalizing: "finalizing"
+        case .ready: "ready"
+        case .failed: "failed"
+        }
     }
 }
 
-public struct Meeting: Codable, Identifiable, Sendable {
-    public var id: String
-    public var title: String
-    public var source: String             // calendar | teams | audio | manual
-    public var startedAt: Date
-    public var endedAt: Date?
-    public var attendees: [String]
-    public var transcript: [TranscriptSegment]
-    public var state: MeetingState
-    /// True when the transcript was cut short (recovered after a crash).
-    public var partial: Bool?
-
-    public init(id: String = UUID().uuidString, title: String, source: String, startedAt: Date = Date(),
-                endedAt: Date? = nil, attendees: [String] = [], transcript: [TranscriptSegment] = [],
-                state: MeetingState = .recording, partial: Bool? = nil) {
-        self.id = id; self.title = title; self.source = source; self.startedAt = startedAt
-        self.endedAt = endedAt; self.attendees = attendees; self.transcript = transcript
-        self.state = state; self.partial = partial
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(String.self, forKey: .id)
-        title = try c.decode(String.self, forKey: .title)
-        source = try c.decode(String.self, forKey: .source)
-        startedAt = try c.decode(Date.self, forKey: .startedAt)
-        endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
-        attendees = try c.decodeIfPresent([String].self, forKey: .attendees) ?? []
-        transcript = try c.decodeIfPresent([TranscriptSegment].self, forKey: .transcript) ?? []
-        state = try c.decodeIfPresent(MeetingState.self, forKey: .state) ?? .ready   // files written before states existed
-        partial = try c.decodeIfPresent(Bool.self, forKey: .partial)
+extension Meeting: Identifiable {
+    /// A meeting that starts now, with a new id (the usual way to begin a recording).
+    public init(title: String, source: String, attendees: [String] = [], state: MeetingState = .recording) {
+        self = meetingNew(title: title, source: source)
+        self.attendees = attendees
+        self.state = state
     }
 }
 
@@ -75,77 +53,34 @@ public struct AudioChunk: Sendable {
     }
 }
 
+/// Where Muesli keeps its data. The rules (environment overrides, the folder chosen in
+/// config.json) live in the Rust core; each access asks for the paths in effect now.
 public enum Paths {
-    /// App data: Whisper model, state.json, config.json, meetings/. MUESLI_SUPPORT_DIR overrides (tests).
-    public static var support: URL {
-        let u: URL
-        if let custom = ProcessInfo.processInfo.environment["MUESLI_SUPPORT_DIR"] {
-            u = URL(fileURLWithPath: custom, isDirectory: true)
-        } else {
-            u = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("Muesli", isDirectory: true)
-        }
-        try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
-        return u
-    }
-    public static var state: URL { support.appendingPathComponent("state.json") }
-    public static var config: URL { support.appendingPathComponent("config.json") }
-    public static var auditLog: URL { support.appendingPathComponent("audit.log") }
-    public static var meetings: URL {
-        let u = support.appendingPathComponent("meetings", isDirectory: true)
-        try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
-        return u
-    }
+    public static var current: PathSet { pathsCurrent() }
 
-    public static let transcriptDirKey = "transcriptDir"
+    /// App data: Whisper models, state.json, config.json, meetings/. MUESLI_SUPPORT_DIR overrides (tests).
+    public static var support: URL { URL(fileURLWithPath: current.support, isDirectory: true) }
+    public static var state: URL { URL(fileURLWithPath: pathsStateFile(paths: current)) }
+    public static var config: URL { URL(fileURLWithPath: pathsConfigFile(paths: current)) }
+    public static var auditLog: URL { URL(fileURLWithPath: pathsAuditLog(paths: current)) }
+    public static var meetings: URL { URL(fileURLWithPath: pathsMeetingsDir(paths: current), isDirectory: true) }
 
-    public static var transcriptsOverriddenByEnvironment: Bool {
-        ProcessInfo.processInfo.environment["TRANSCRIPT_DIR"] != nil
-    }
+    /// Where transcripts are written. TRANSCRIPT_DIR overrides, then the folder chosen in Settings.
+    public static var transcripts: URL { URL(fileURLWithPath: current.transcripts, isDirectory: true) }
+    public static var exportFolder: URL { URL(fileURLWithPath: pathsExportFolder(paths: current), isDirectory: true) }
 
-    public static var transcriptsIsCustom: Bool {
-        UserDefaults.standard.string(forKey: transcriptDirKey) != nil
-    }
+    public static var transcriptsOverriddenByEnvironment: Bool { pathsTranscriptsSetByEnvironment() }
+    public static var transcriptsIsCustom: Bool { Preferences.load().transcriptsFolder != nil }
 
-    public static func setTranscripts(_ url: URL?) {
-        UserDefaults.standard.set(url?.path, forKey: transcriptDirKey)
-    }
+    public static func setTranscripts(_ url: URL?) { pathsSetTranscriptsFolder(folder: url?.path) }
 
-    public static var exportFolder: URL {
-        if transcriptsOverriddenByEnvironment || transcriptsIsCustom { return transcripts }
-        if let path = AppStatus.read()?.transcriptsFolder, !path.isEmpty {
-            return URL(fileURLWithPath: path, isDirectory: true)
-        }
-        return transcripts
-    }
+    static let legacyTranscriptDirKey = "transcriptDir"
 
-    /// Where transcripts are written. Override with TRANSCRIPT_DIR.
-    public static var transcripts: URL {
-        let u: URL
-        if let custom = ProcessInfo.processInfo.environment["TRANSCRIPT_DIR"] {
-            u = URL(fileURLWithPath: (custom as NSString).expandingTildeInPath, isDirectory: true)
-        } else if let saved = UserDefaults.standard.string(forKey: transcriptDirKey) {
-            u = URL(fileURLWithPath: saved, isDirectory: true)
-        } else {
-            u = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Documents/MeetingTranscripts", isDirectory: true)
-        }
-        try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
-        return u
-    }
-}
-
-enum JSONCoding {
-    static func encoder(pretty: Bool = true) -> JSONEncoder {
-        let e = JSONEncoder()
-        e.dateEncodingStrategy = .iso8601
-        e.outputFormatting = pretty ? [.prettyPrinted, .sortedKeys] : [.sortedKeys]
-        return e
-    }
-
-    static func decoder() -> JSONDecoder {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
-        return d
+    /// Before 0.0.2 the macOS app kept the transcripts folder in its own defaults. Moves it to
+    /// config.json once, so both apps use the same file.
+    public static func migrateLegacyTranscriptsFolder(defaults: UserDefaults = .standard) {
+        guard let saved = defaults.string(forKey: legacyTranscriptDirKey) else { return }
+        if Preferences.load().transcriptsFolder == nil { pathsSetTranscriptsFolder(folder: saved) }
+        defaults.removeObject(forKey: legacyTranscriptDirKey)
     }
 }

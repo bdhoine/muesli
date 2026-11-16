@@ -26,7 +26,8 @@ final class SettingsLogicTests: IsolatedTestCase {
     }
 
     func testSavedLanguagesRoundTripAndStayOutOfOldFiles() throws {
-        XCTAssertFalse(String(decoding: try JSONEncoder().encode(Preferences()), as: UTF8.self).contains("savedLanguages"))
+        Preferences().save()
+        XCTAssertFalse(try String(contentsOf: Paths.config, encoding: .utf8).contains("savedLanguages"))
         var p = Preferences()
         p.savedLanguages = ["fr"]
         p.save()

@@ -199,8 +199,8 @@ private struct GeneralSettings: View {
     }
 
     private var endDelayOptions: [Int] {
-        let options = Preferences.endDelayOptions
-        return options.contains(draft.endDelaySeconds) ? options : (options + [draft.endDelaySeconds]).sorted()
+        let options = Preferences.endDelayOptions.map(Int.init)
+        return options.contains(Int(draft.endDelaySeconds)) ? options : (options + [Int(draft.endDelaySeconds)]).sorted()
     }
 
     static func duration(_ seconds: Int) -> String {

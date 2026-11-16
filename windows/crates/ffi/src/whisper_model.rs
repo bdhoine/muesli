@@ -1,21 +1,10 @@
 use muesli_core::whisper_model::{self, ModelSwitch, WhisperModel};
 
-/// Mirror of `muesli_core::whisper_model::WhisperModel` for Swift.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum ModelKind {
+#[uniffi::remote(Enum)]
+pub enum WhisperModel {
     Small,
     Medium,
     Large,
-}
-
-impl From<ModelKind> for WhisperModel {
-    fn from(m: ModelKind) -> Self {
-        match m {
-            ModelKind::Small => Self::Small,
-            ModelKind::Medium => Self::Medium,
-            ModelKind::Large => Self::Large,
-        }
-    }
 }
 
 /// What the UI shows and the downloader checks for one model.
@@ -30,8 +19,7 @@ pub struct ModelInfo {
 }
 
 #[uniffi::export]
-pub fn model_info(model: ModelKind) -> ModelInfo {
-    let m = WhisperModel::from(model);
+pub fn model_info(m: WhisperModel) -> ModelInfo {
     ModelInfo {
         title: m.title().into(),
         file_name: m.file_name().into(),
@@ -53,13 +41,12 @@ pub enum ModelSwitchAction {
 
 #[uniffi::export]
 pub fn model_switch_decide(
-    active: ModelKind,
-    wanted: ModelKind,
-    installed: Vec<ModelKind>,
-    downloading: Option<ModelKind>,
+    active: WhisperModel,
+    wanted: WhisperModel,
+    installed: Vec<WhisperModel>,
+    downloading: Option<WhisperModel>,
 ) -> ModelSwitchAction {
-    let installed: Vec<WhisperModel> = installed.into_iter().map(Into::into).collect();
-    match ModelSwitch::decide(active.into(), wanted.into(), &installed, downloading.map(Into::into)) {
+    match ModelSwitch::decide(active, wanted, &installed, downloading) {
         ModelSwitch::Nothing => ModelSwitchAction::Nothing,
         ModelSwitch::SwitchNow => ModelSwitchAction::SwitchNow,
         ModelSwitch::Download => ModelSwitchAction::Download,
@@ -79,15 +66,15 @@ mod tests {
 
     #[test]
     fn info_and_decision_match_the_core() {
-        let info = model_info(ModelKind::Large);
+        let info = model_info(WhisperModel::Large);
         assert_eq!(info.file_name, "ggml-large-v3.bin");
         assert_eq!(info.minimum_valid_bytes, info.approximate_bytes / 10 * 9);
         assert_eq!(
-            model_switch_decide(ModelKind::Small, ModelKind::Medium, vec![ModelKind::Medium], None),
+            model_switch_decide(WhisperModel::Small, WhisperModel::Medium, vec![WhisperModel::Medium], None),
             ModelSwitchAction::SwitchNow
         );
         assert_eq!(
-            model_switch_decide(ModelKind::Small, ModelKind::Medium, vec![], Some(ModelKind::Medium)),
+            model_switch_decide(WhisperModel::Small, WhisperModel::Medium, vec![], Some(WhisperModel::Medium)),
             ModelSwitchAction::Wait
         );
     }

@@ -27,14 +27,14 @@ final class WhisperModelTests: IsolatedTestCase {
     }
 
     func testOldConfigWithoutModelDecodes() throws {
-        let p = try JSONDecoder().decode(Preferences.self, from: Data(#"{"autoStop":true}"#.utf8))
+        let p = try preferences(fromJSON: #"{"autoStop":true}"#)
         XCTAssertTrue(p.autoStop)
         XCTAssertEqual(p.model, .small)
         XCTAssertNil(p.customModelPath)
     }
 
     func testUnknownModelFallsBackToSmall() throws {
-        let p = try JSONDecoder().decode(Preferences.self, from: Data(#"{"model":"huge"}"#.utf8))
+        let p = try preferences(fromJSON: #"{"model":"huge"}"#)
         XCTAssertEqual(p.model, .small)
     }
 
@@ -54,7 +54,7 @@ final class OnboardingPreferencesTests: IsolatedTestCase {
     }
 
     func testConfigFromBeforeOnboardingCountsAsDone() throws {
-        let p = try JSONDecoder().decode(Preferences.self, from: Data(#"{"autoStop":true}"#.utf8))
+        let p = try preferences(fromJSON: #"{"autoStop":true}"#)
         XCTAssertTrue(p.onboardingDone)
     }
 

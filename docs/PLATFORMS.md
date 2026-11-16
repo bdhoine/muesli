@@ -1,6 +1,6 @@
 # macOS and Windows: how the two apps differ
 
-Muesli has two apps that are both here to stay: the macOS app (Swift, `macos/`) and the Windows app (Rust and Tauri, `windows/`). They share the file formats and the MCP tools (`fixtures/` is the contract, checked by tests) and should offer the same features. This page records every difference and why it exists:
+Muesli has two apps that are both here to stay: the macOS app (Swift, `macos/`) and the Windows app (Rust and Tauri, `windows/`). They share the file formats and the MCP tools (the Rust core `windows/crates/core` and `crates/mcp` is shared; `fixtures/` freezes the formats and replies, checked by tests) and should offer the same features. This page records every difference and why it exists:
 
 1. differences the platform itself imposes, which will stay;
 2. differences that could be closed and are not yet;
@@ -19,7 +19,6 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 | Where the app lives | Menu bar | System tray (notification area) | Platform convention. |
 | Deleted transcripts | Trash | Recycle Bin | Platform convention. Both can be restored. |
 | Where models are stored | `~/Library/Application Support/Muesli` | `%LOCALAPPDATA%\Muesli` (everything else in `%APPDATA%\Muesli`) | Windows roams `%APPDATA%` between PCs in company domains; multi-gigabyte files must not roam. macOS has no such split. |
-| Where the chosen transcripts folder is remembered | The app's own defaults | `transcriptsFolder` in `config.json` | Windows has no per-app defaults store like macOS; the registry would be the alternative. The macOS app ignores the key and never writes it. Assistants find the folder through `state.json` on both. |
 | Speech model acceleration | GPU (Metal), always available on Apple Silicon | CPU | Every supported Mac has the same GPU API. On Windows it depends on the graphics card and its drivers (Vulkan or CUDA), so one build cannot rely on it. See section 2. |
 
 ## 2. Could be closed, not done yet

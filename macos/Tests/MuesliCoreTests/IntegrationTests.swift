@@ -119,7 +119,7 @@ final class IntegrationTests: IsolatedTestCase {
         XCTAssertEqual(s.appState, "error")
         XCTAssertEqual(s.error, "Whisper model missing")
         XCTAssertEqual(s.lastReady?.id, "m")
-        XCTAssertEqual(s.pid, ProcessInfo.processInfo.processIdentifier)
+        XCTAssertEqual(s.pid, UInt32(ProcessInfo.processInfo.processIdentifier))
         XCTAssertNil(s.current)
     }
 
