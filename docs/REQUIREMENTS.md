@@ -32,7 +32,7 @@ muesli-mcp                 separate executable, MCP server over stdio
    └─ started by the assistant on the same Mac (Claude Desktop, Claude Code, Codex CLI, …)
 ```
 
-Swift package layout: a `MuesliCore` library (models, store, state), the `Muesli` app target, and a `muesli-mcp` executable target that depends only on `MuesliCore`.
+Layout: the logic (models, store, state, MCP server) is one Rust library, `windows/crates/core` and `crates/mcp`, shared by both apps; the macOS app reaches it through UniFFI bindings (`windows/crates/ffi`, wrapped by the thin Swift `MuesliCore`), and `muesli-mcp` is the Rust binary built from `crates/mcp`.
 
 ## 3. App requirements (Muesli.app)
 
