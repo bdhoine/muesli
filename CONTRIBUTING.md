@@ -39,14 +39,14 @@ swift test
 
 The tests cover everything in `MuesliCore`: audio chunking, Whisper segment mapping, language selection, transcript files, detection rules, the meeting store, crash recovery and importing older transcripts, preferences, Claude Desktop registration, MCP client setup snippets and the meeting editor. The MCP server itself is tested in `windows/crates/mcp` (`cargo test -p muesli-mcp`). They need no microphone, calendar or network, and each test gets its own temporary data folders.
 
-`MuesliCore` uses only Foundation, so `swift build` and `swift test` also work on Linux. `Package.swift` adds the app target and its whisper.cpp dependency on macOS only.
+`MuesliCore` is Foundation plus the shared Rust core, so `swift build` and `swift test` need macOS and a one-time `scripts/build-ffi.sh` (run by `build.sh` too). That script builds `windows/crates/ffi` into the git-ignored `macos/Frameworks/MuesliFFI.xcframework` and the generated `macos/Sources/MuesliFFI/muesli_ffi.swift` (UniFFI). Logic moves from `MuesliCore` into `windows/crates/core` module by module; `Languages` is the first, and `MuesliCore` keeps thin Swift wrappers around the generated functions. `Package.swift` adds the app target and its whisper.cpp dependency on macOS only.
 
 When you add logic, put it in `MuesliCore` if it can live without AppKit, AVFoundation, EventKit or CoreAudio, and test it there. The app target should stay a thin shell.
 
 ### What is verified
 
 - Transcription end to end, in local testing on macOS.
-- `MuesliCore`: compiled and tested on Linux. `muesli-mcp` (Rust): tested with `cargo test`, including the real binary over stdio.
+- `MuesliCore`: tested on macOS (no longer builds on Linux since it links the Rust core). `muesli-mcp` (Rust): tested with `cargo test`, including the real binary over stdio.
 - Not yet compiled or run on macOS since they were written: the Settings window, the `state.json` heartbeat, the Claude Desktop bridge, and the per-process microphone check in `MeetingDetector`.
 
 If you build on a Mac and something in the third group fails to compile or misbehaves, that is a useful bug report.

@@ -7,6 +7,8 @@
 macos/.build/
 macos/.swiftpm/
 macos/Muesli.app/
+macos/Frameworks/
+macos/Sources/MuesliFFI/
 
 # Windows app (Rust and Tauri)
 windows/target/

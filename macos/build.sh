@@ -8,6 +8,7 @@ BRAND=../assets/brand
 export PATH="$PATH:$HOME/.cargo/bin:/opt/homebrew/opt/rustup/bin"   # rustup shims, if not already on PATH
 command -v cargo >/dev/null || { echo "cargo not found: install Rust (https://rustup.rs)." >&2; exit 1; }
 RUST_TARGET=aarch64-apple-darwin
+../scripts/build-ffi.sh                                   # shared Rust core (XCFramework + Swift bindings)
 swift build -c release
 (cd ../windows && cargo build --release -p muesli-mcp --target "$RUST_TARGET")
 APP=Muesli.app

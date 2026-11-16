@@ -33,6 +33,12 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows
+      - name: Build the shared Rust core for Swift
+        run: scripts/build-ffi.sh
       - run: swift test
         working-directory: macos
       - name: Windows app icons match assets/brand
