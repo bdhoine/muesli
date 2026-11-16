@@ -18,3 +18,4 @@ cli = ["uniffi/cli"]
 [dependencies]
 muesli-core = { path = "../core" }
 uniffi = "0.32"
+chrono = "0.4"

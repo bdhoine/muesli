@@ -8,4 +8,5 @@ uniffi::setup_scaffolding!();
 
 mod assistants;
 mod languages;
+mod models;
 mod whisper_model;
