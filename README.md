@@ -90,7 +90,7 @@ Assistants can read transcripts and manage finished meetings: rename them, set a
 
 Setup steps are in [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md).
 
-**Plugin.** The `plugin/` folder is a Claude plugin (macOS only for now) that starts the `muesli-mcp` server of the installed app and teaches Claude how to use its tools. In Claude Code: `/plugin install muesli --marketplace bdhoine/muesli`. See [plugin/README.md](plugin/README.md).
+**Plugin.** The `plugin/` folder is a Claude plugin (macOS only for now) that starts the `muesli-mcp` server of the installed app and teaches Claude how to use its tools. In Claude Code: `/plugin install muesli --marketplace bdhoine/muesli`. See [plugin/README.md](plugin/README.md). Anthropic's plugin directory does not list local MCP servers from unverified organizations, so the plugin is installed from this repository.
 
 ## Install
 

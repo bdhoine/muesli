@@ -1,6 +1,6 @@
 ---
 name: muesli
-description: Use when the user asks about their meetings, calls or transcripts recorded with Muesli: whether it is recording, what was said, summaries and action items of a meeting, or renaming a meeting, its attendees or a speaker.
+description: "Use when the user asks about their meetings, calls or transcripts recorded with Muesli, such as whether it is recording, what was said, summaries and action items of a meeting, or renaming a meeting, its attendees or a speaker."
 ---
 
 # Muesli transcripts
