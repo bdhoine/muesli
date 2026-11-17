@@ -33,12 +33,13 @@ extension AppStatus {
     public typealias Detected = StatusDetected
     public typealias Current = StatusCurrent
     public typealias LastReady = StatusLastReady
+    public typealias FileJob = StatusFileJob
 
     public static var freshSeconds: TimeInterval { TimeInterval(appStatusFreshSeconds()) }
 
-    public init(appState: String, detected: Detected? = nil, current: Current? = nil, lastReady: LastReady? = nil, error: String? = nil) {
+    public init(appState: String, detected: Detected? = nil, current: Current? = nil, lastReady: LastReady? = nil, fileJob: FileJob? = nil, error: String? = nil) {
         self = appStatusNew(appState: appState)
-        self.detected = detected; self.current = current; self.lastReady = lastReady; self.error = error
+        self.detected = detected; self.current = current; self.lastReady = lastReady; self.fileJob = fileJob; self.error = error
     }
 
     public func write() { appStatusWrite(status: self, paths: Paths.current) }

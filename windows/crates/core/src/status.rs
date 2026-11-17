@@ -35,6 +35,18 @@ pub struct LastReady {
     pub ended_at: Option<DateTime<Utc>>,
 }
 
+/// An audio file that is being transcribed (from the drop folder or picked by hand).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileJob {
+    pub name: String,
+    /// 0 to 1, or `None` while the length is not known yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<f64>,
+    /// Files queued behind this one.
+    pub waiting: u32,
+}
+
 /// `state.json`: what the app is doing right now. Rewritten on every change and every 10 s.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,7 +55,7 @@ pub struct AppStatus {
     #[serde(with = "iso_date")]
     pub updated_at: DateTime<Utc>,
     pub pid: u32,
-    /// idle | preparing | recording | finalizing | error | permissionMissing
+    /// idle | preparing | recording | finalizing | transcribingFile | error | permissionMissing
     pub app_state: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detected: Option<Detected>,
@@ -51,6 +63,9 @@ pub struct AppStatus {
     pub current: Option<Current>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_ready: Option<LastReady>,
+    /// The audio file being transcribed, while `appState` is `transcribingFile`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_job: Option<FileJob>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -67,6 +82,7 @@ impl AppStatus {
             detected: None,
             current: None,
             last_ready: None,
+            file_job: None,
             error: None,
             transcripts_folder: None,
         }
@@ -92,6 +108,8 @@ pub enum Activity {
     Idle { preparing: bool },
     Recording,
     Finalizing,
+    /// Transcribing an audio file while nothing is being recorded.
+    TranscribingFile,
     Error(String),
     PermissionMissing(String),
 }
@@ -104,6 +122,7 @@ impl Activity {
             Self::Idle { preparing: true } => ("preparing", None),
             Self::Recording => ("recording", None),
             Self::Finalizing => ("finalizing", None),
+            Self::TranscribingFile => ("transcribingFile", None),
             Self::Error(message) => ("error", Some(message)),
             Self::PermissionMissing(message) => ("permissionMissing", Some(message)),
         }

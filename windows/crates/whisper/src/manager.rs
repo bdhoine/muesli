@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use muesli_core::whisper_model::{file_is_at_least, DEFAULT_MODEL, VAD_MODEL};
 use muesli_core::{Paths, Preferences};
 
-use crate::download::{download, DownloadError, DownloadSpec};
+use crate::download::{check_reachable, download, DownloadError, DownloadSpec, Reach};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Phase {
@@ -23,6 +23,8 @@ pub enum Phase {
 struct Job {
     received: u64,
     total: u64,
+    /// The file being fetched right now.
+    url: String,
     cancel: Arc<AtomicBool>,
 }
 
@@ -31,6 +33,8 @@ struct Inner {
     settings: Preferences,
     job: Option<Job>,
     last_error: Option<String>,
+    /// The address that failed, for `last_error`.
+    last_url: Option<String>,
 }
 
 /// Knows which files Muesli needs (the speech model, or the user's own file, and the voice
@@ -102,6 +106,27 @@ impl ModelManager {
         self.inner.lock().unwrap().last_error.clone()
     }
 
+    /// The address the last download failed on.
+    pub fn last_url(&self) -> Option<String> {
+        self.inner.lock().unwrap().last_url.clone()
+    }
+
+    /// The address being downloaded right now.
+    pub fn current_url(&self) -> Option<String> {
+        self.inner.lock().unwrap().job.as_ref().map(|j| j.url.clone())
+    }
+
+    /// Asks each server Muesli downloads from whether it can be reached (headers only). Blocks
+    /// for up to a few seconds per address: call it off the UI thread.
+    pub fn check_connection(&self) -> Vec<Reach> {
+        let custom = self.inner.lock().unwrap().settings.custom_model_url().is_some();
+        [(VAD_MODEL, true), (DEFAULT_MODEL, !custom)]
+            .into_iter()
+            .filter(|(_, needed)| *needed)
+            .map(|(model, _)| check_reachable(model.url))
+            .collect()
+    }
+
     /// What is missing: the voice activity model, then the speech model unless the user chose a file.
     pub fn missing_downloads(&self) -> Vec<DownloadSpec> {
         let custom = self.inner.lock().unwrap().settings.custom_model_url().is_some();
@@ -138,7 +163,8 @@ impl ModelManager {
                 return; // already on its way
             }
             inner.last_error = None;
-            inner.job = Some(Job { received: 0, total, cancel: cancel.clone() });
+            inner.last_url = None;
+            inner.job = Some(Job { received: 0, total, url: specs[0].url.clone(), cancel: cancel.clone() });
         }
         let me = self.clone();
         std::thread::spawn(move || {
@@ -146,7 +172,11 @@ impl ModelManager {
             let mine = |inner: &Inner| inner.job.as_ref().is_some_and(|j| Arc::ptr_eq(&j.cancel, &cancel));
             let mut done_before = 0u64;
             let mut result = Ok(());
+            let mut failed_url = None;
             for spec in &specs {
+                if let Some(job) = me.inner.lock().unwrap().job.as_mut().filter(|j| Arc::ptr_eq(&j.cancel, &cancel)) {
+                    job.url = spec.url.clone();
+                }
                 result = download(
                     spec,
                     &mut |received, _| {
@@ -162,6 +192,7 @@ impl ModelManager {
                     &cancel,
                 );
                 if result.is_err() {
+                    failed_url = Some(spec.url.clone());
                     break;
                 }
                 done_before += spec.approximate_bytes;
@@ -172,6 +203,7 @@ impl ModelManager {
                     return; // cancelled and possibly replaced: the newer job reports for itself
                 }
                 inner.job = None;
+                inner.last_url = failed_url.filter(|_| !matches!(result, Ok(()) | Err(DownloadError::Cancelled)));
                 inner.last_error = match result {
                     Ok(()) | Err(DownloadError::Cancelled) => None,
                     Err(e) => Some(e.to_string()),

@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Muesli's own windows may use the app commands and the dialog and opener plugins.",
-  "windows": ["settings", "onboarding", "prompt"],
+  "windows": ["settings", "onboarding", "prompt", "transcribe"],
   "permissions": ["core:default", "dialog:default", "opener:default"]
 }

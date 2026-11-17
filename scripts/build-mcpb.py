@@ -16,7 +16,7 @@ exe = "muesli-mcp.exe" if windows else "muesli-mcp"
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 windows = os.path.join(root, "windows")
 binary = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(windows, "target", "release", exe)
-icon = os.path.join(root, "assets", "brand", "app-icon", "AppIcon.iconset", "icon_128x128@2x.png")
+icon = os.path.join(root, "assets", "brand", "app-icon", "extension-icon-512.png")  # the tile without the macOS icon margin
 
 manifest = subprocess.run([binary, "--mcpb-manifest"], check=True, capture_output=True, text=True).stdout
 os.makedirs(os.path.join(windows, "dist"), exist_ok=True)

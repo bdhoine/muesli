@@ -33,6 +33,10 @@ The one exception is the optional AI assistant connection: a transcript an assis
 
 Please tell the people you meet with that you are transcribing, and check your company's policy first.
 
+## Audio files
+
+Besides live calls, Muesli transcribes recordings you already have (mp3, m4a, wav, flac, ogg). Use **Transcribe Audio File…** in the menu, or choose a **drop folder** (in setup or Settings): every audio file you put in it is transcribed, and you can have the file moved to the Trash or deleted afterwards. Nothing leaves your computer.
+
 ## What you get
 
 One pair of files per meeting, in `~/Documents/MeetingTranscripts/` unless you choose another folder:

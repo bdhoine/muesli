@@ -41,7 +41,12 @@ pub struct UiState {
     /// The one speech model every install uses (Settings shows it; another needs an own file).
     model_info: ModelInfo,
     download: Option<Download>,
+    /// The address being downloaded now, or the one the last download failed on.
+    download_url: Option<String>,
     download_error: Option<String>,
+    /// Audio files being transcribed or waiting (the picked ones stay in the list until cleared).
+    files: Vec<crate::files::FileItem>,
+    file_error: Option<String>,
     models_folder: PathBuf,
     /// Model files from earlier versions that can be removed, and the space they take.
     legacy_models: usize,
@@ -183,7 +188,10 @@ pub fn get_state(handle: AppHandle, app: Shared) -> UiState {
         model: app.model.phase().into(),
         model_info: ModelInfo { title: DEFAULT_MODEL.title, summary: DEFAULT_MODEL.summary, bytes: DEFAULT_MODEL.approximate_bytes },
         download: app.model.download_progress().map(|(received, total)| Download { received, total }),
+        download_url: app.model.current_url().or_else(|| app.model.last_url()),
         download_error: app.model.last_error(),
+        files: app.files.items(),
+        file_error: app.files.error.lock().unwrap().clone(),
         models_folder: paths.models.clone(),
         legacy_models: legacy.len(),
         legacy_bytes,
@@ -226,6 +234,24 @@ pub fn download_model(handle: AppHandle, app: Shared) {
     let c = ctx(&handle, &app);
     app.model.ensure_ready(move || c.changed());
     ctx(&handle, &app).changed();
+}
+
+/// What the connection check found for one address.
+#[derive(Serialize)]
+pub struct Reachability {
+    url: String,
+    ok: bool,
+    detail: String,
+}
+
+/// Asks each model server whether it answers, so the settings can say what is wrong.
+#[tauri::command]
+pub async fn check_connection(app: Shared<'_>) -> Result<Vec<Reachability>, String> {
+    let model = app.model.clone();
+    let found = tauri::async_runtime::spawn_blocking(move || model.check_connection())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(found.into_iter().map(|r| Reachability { url: r.url, ok: r.ok, detail: r.detail }).collect())
 }
 
 /// Deletes the model files earlier versions let the user pick (Small, Medium, Large).
@@ -278,6 +304,61 @@ pub async fn choose_model_file(handle: AppHandle) -> Option<String> {
 pub async fn choose_transcripts_folder(handle: AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
     let folder = handle.dialog().file().set_title("Choose where Muesli saves transcripts").blocking_pick_folder()?;
+    folder.into_path().ok().map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Asks for audio files, queues them and opens the small progress window.
+#[tauri::command]
+pub async fn transcribe_files(handle: AppHandle, app: Shared<'_>) -> Result<(), String> {
+    pick_and_queue(&handle, app.inner().clone());
+    Ok(())
+}
+
+/// Used by the tray item too.
+pub fn pick_and_queue(handle: &AppHandle, app: Arc<App>) {
+    use tauri_plugin_dialog::DialogExt;
+    let extensions: Vec<&str> = muesli_core::import::AUDIO_EXTENSIONS.to_vec();
+    let handle = handle.clone();
+    // The dialog blocks, so it gets a thread of its own.
+    std::thread::spawn(move || {
+        let Some(files) = handle.dialog().file().set_title("Choose audio files to transcribe").add_filter("Audio", &extensions).blocking_pick_files() else { return };
+        let paths: Vec<PathBuf> = files.into_iter().filter_map(|f| f.into_path().ok()).collect();
+        if paths.is_empty() {
+            return;
+        }
+        let ctx = Ctx { app, handle: handle.clone() };
+        crate::files::enqueue(&ctx, paths, true);
+        crate::windows::show(&handle, "transcribe");
+    });
+}
+
+#[tauri::command]
+pub fn cancel_file(handle: AppHandle, app: Shared, id: u64) {
+    crate::files::cancel(&ctx(&handle, &app), id);
+}
+
+#[tauri::command]
+pub fn cancel_all_files(handle: AppHandle, app: Shared) {
+    crate::files::cancel_all_manual(&ctx(&handle, &app));
+}
+
+/// "Done" in the small window: forgets the finished files and closes it.
+#[tauri::command]
+pub fn close_file_window(handle: AppHandle, app: Shared) {
+    crate::files::clear_finished(&ctx(&handle, &app));
+    crate::windows::close(&handle, "transcribe");
+}
+
+#[tauri::command]
+pub fn dismiss_file_error(handle: AppHandle, app: Shared) {
+    crate::files::dismiss_error(&ctx(&handle, &app));
+}
+
+/// Asks for the drop folder; returns the chosen folder.
+#[tauri::command]
+pub async fn choose_drop_folder(handle: AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let folder = handle.dialog().file().set_title("Choose a folder to drop audio files in").blocking_pick_folder()?;
     folder.into_path().ok().map(|p| p.to_string_lossy().into_owned())
 }
 

@@ -5,7 +5,7 @@ import MuesliCore
 /// Windows app runs). Chunks are consumed one at a time by AppState, so the single Whisper
 /// instance is never used concurrently.
 final class Transcriber: @unchecked Sendable {
-    private let core: MuesliFFI.Transcriber
+    let core: MuesliFFI.Transcriber                       // also handed to the file importer
     private let queue = DispatchQueue(label: "muesli.whisper")
 
     /// nil when a file is missing or Whisper cannot load it. The voice activity model keeps Whisper

@@ -16,13 +16,14 @@ required-features = ["cli"]
 cli = ["uniffi/cli"]
 # On-device transcription (whisper.cpp through whisper-rs). Needs cmake and a C++ toolchain; the
 # macOS app build turns it on, plain `cargo test --workspace` does not need it.
-whisper = ["dep:muesli-whisper"]
+whisper = ["dep:muesli-whisper", "dep:muesli-import", "muesli-import/whisper"]
 
 [dependencies]
 muesli-core = { path = "../core" }
 uniffi = "0.32"
 chrono = "0.4"
 muesli-whisper = { path = "../whisper", optional = true }
+muesli-import = { path = "../import", optional = true }
 thiserror = "2"
 
 [dev-dependencies]

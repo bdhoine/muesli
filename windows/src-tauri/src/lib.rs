@@ -1,6 +1,7 @@
 mod bridge;
 mod commands;
 mod ctx;
+mod files;
 mod prompt;
 mod session;
 mod state;
@@ -33,6 +34,13 @@ pub fn run() {
             commands::update_prefs,
             commands::download_model,
             commands::cancel_download,
+            commands::transcribe_files,
+            commands::cancel_file,
+            commands::cancel_all_files,
+            commands::close_file_window,
+            commands::dismiss_file_error,
+            commands::choose_drop_folder,
+            commands::check_connection,
             commands::remove_legacy_models,
             commands::open_models_folder,
             commands::use_system_languages,
@@ -108,6 +116,15 @@ fn boot(ctx: &Ctx) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(10));
         c.heartbeat();
+    });
+
+    // The drop folder, every few seconds (nothing happens until the user has chosen one).
+    let c = ctx.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(5));
+        if c.app.prefs().onboarding_done {
+            files::poll_folder(&c);
+        }
     });
 
     // Meeting detection, every few seconds, once onboarding is done.

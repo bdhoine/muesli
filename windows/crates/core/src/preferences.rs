@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::import::AudioCleanup;
 use crate::json::{self, to_pretty_sorted};
 use crate::languages;
 use crate::paths::Paths;
@@ -36,6 +37,11 @@ pub struct Preferences {
     /// The user's own language list, kept while "use my computer's languages" is on, so it comes back.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saved_languages: Option<Vec<String>>,
+    /// A folder to drop audio files in; they are transcribed as they appear. Off (none) until chosen.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_folder: Option<String>,
+    /// What happens to a file from the drop folder after it is transcribed.
+    pub drop_folder_cleanup: AudioCleanup,
 }
 
 fn done_when_missing() -> bool {
@@ -55,6 +61,8 @@ impl Default for Preferences {
             onboarding_done: false,
             transcripts_folder: None,
             saved_languages: None,
+            drop_folder: None,
+            drop_folder_cleanup: AudioCleanup::Keep,
         }
     }
 }

@@ -26,8 +26,7 @@ enum OnboardingWindow {
     /// Brings the window back to the front, e.g. after a macOS permission dialog took the focus.
     static func refocus() {
         guard let window else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+        Permissions.refocus(window)
     }
 
     static func close() {
@@ -37,7 +36,7 @@ enum OnboardingWindow {
 }
 
 private enum Step: Int, CaseIterable {
-    case languages, autoStop, assistants, microphone, systemAudio, calendar, notifications
+    case languages, autoStop, assistants, dropFolder, microphone, systemAudio, calendar, notifications
 
     /// The permission this screen asks for, if it is a permission screen.
     var permission: Permission? {
@@ -55,6 +54,7 @@ private enum Step: Int, CaseIterable {
         case .languages: "globe"
         case .autoStop: "stop.circle.fill"
         case .assistants: "sparkles"
+        case .dropFolder: "folder.badge.plus"
         case .microphone: "mic.fill"
         case .systemAudio: "speaker.wave.2.fill"
         case .calendar: "calendar"
@@ -66,7 +66,7 @@ private enum Step: Int, CaseIterable {
         switch self {
         case .microphone, .calendar: .muesliPumpkinSeed
         case .languages, .systemAudio, .autoStop: .muesliMuted
-        case .assistants, .notifications: .muesliRoast
+        case .assistants, .notifications, .dropFolder: .muesliRoast
         }
     }
 
@@ -75,6 +75,7 @@ private enum Step: Int, CaseIterable {
         case .languages: "Which languages do you speak?"
         case .autoStop: "Stop when the call ends?"
         case .assistants: "Connect an AI assistant?"
+        case .dropFolder: "Transcribe audio files?"
         case .microphone: "Hear your side"
         case .systemAudio: "Hear the other side"
         case .calendar: "Notice your meetings"
@@ -87,6 +88,7 @@ private enum Step: Int, CaseIterable {
         case .languages: "Muesli works out which one is spoken. Fewer languages means fewer mistakes."
         case .autoStop: "Muesli can notice that the other app let go of the microphone and save the transcript for you, or ask you first."
         case .assistants: "Claude and other assistants can read your transcripts. They can never start or stop a recording."
+        case .dropFolder: "Choose a folder and Muesli transcribes any audio file you put in it, such as a recording from your phone. You can skip this and add one later in Settings."
         case .microphone: "Muesli needs the microphone to transcribe what you say."
         case .systemAudio: "To transcribe the other people on a call, Muesli listens to your Mac's audio. It never records your screen."
         case .calendar: "Muesli reads your calendar to spot a meeting as it starts and to name the transcript."
@@ -141,6 +143,7 @@ private struct OnboardingView: View {
                 case .languages: LanguageStep(draft: $draft)
                 case .autoStop: AutoStopStep(draft: $draft, chosen: $autoStopChosen)
                 case .assistants: AssistantStep(state: state, draft: $draft, chosen: $assistantsChosen)
+                case .dropFolder: DropFolderStep(draft: $draft)
                 default: PermissionStep(step: step, access: access)
                 }
             }
@@ -153,6 +156,18 @@ private struct OnboardingView: View {
         .frame(width: 520, height: 600)
         .onChange(of: draft) { state.update(draft) }
         .task(id: step) { access = await step.permission?.status() ?? .unknown }
+        // Waiting for the switch in System Settings: notice it, and come back to this window.
+        .task(id: "\(step)-\(access)") {
+            guard step.permission != nil, access == .denied else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                if let now = await step.permission?.status(), now == .granted {
+                    access = now
+                    OnboardingWindow.refocus()
+                    return
+                }
+            }
+        }
         // The answer may change outside the app (System Settings), so look again on return.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await recheck() }
@@ -189,7 +204,6 @@ private struct OnboardingView: View {
                 Task {
                     let answer = await permission.request()
                     access = answer == .unknown ? .denied : answer       // answered, but not with a yes
-                    OnboardingWindow.refocus()                           // the macOS dialog took the focus
                 }
             } else {
                 advance()
@@ -318,6 +332,31 @@ private struct LanguageStep: View {
         Languages.supported
             .filter { !chosen.contains($0) }
             .sorted { Languages.displayName($0) < Languages.displayName($1) }
+    }
+}
+
+private struct DropFolderStep: View {
+    @Binding var draft: Preferences
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if let folder = draft.dropFolder {
+                ChoiceCard(title: (folder as NSString).abbreviatingWithTildeInPath, detail: "Audio files put here are transcribed. Click to choose another folder.",
+                           selected: true) { choose() }
+                ForEach([AudioCleanup.keep, .trash, .delete], id: \.self) { mode in
+                    ChoiceCard(title: mode.title, detail: mode.detail, selected: draft.dropFolderCleanup == mode) { draft.dropFolderCleanup = mode }
+                }
+                Button("Don't use a folder") { draft.dropFolder = nil }.buttonStyle(.link).padding(.top, 4)
+            } else {
+                ChoiceCard(title: "Choose a folder…", detail: "Off until you choose one", selected: false) { choose() }
+            }
+            Text("You can change this later in Settings.")
+                .font(.callout).foregroundStyle(.secondary).padding(.top, 6)
+        }
+    }
+
+    private func choose() {
+        if let url = FileImports.chooseDropFolder(current: draft.dropFolderURL) { draft.dropFolder = url.path }
     }
 }
 

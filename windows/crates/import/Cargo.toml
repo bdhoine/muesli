@@ -1,0 +1,19 @@
+[package]
+name = "muesli-import"
+description = "Transcribes audio files: decode, chunk, transcribe, save as a meeting."
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = []
+# Implements `SpeechToText` for the whisper.cpp transcriber.
+whisper = ["dep:muesli-whisper"]
+
+[dependencies]
+muesli-core = { path = "../core" }
+muesli-audio = { path = "../audio", default-features = false }
+muesli-whisper = { path = "../whisper", optional = true }
+chrono = { version = "0.4", features = ["clock"] }
+
+[dev-dependencies]
+tempfile = "3"

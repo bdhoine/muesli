@@ -12,6 +12,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
     private(set) var recent: [RecentTranscript] = []
     let bridge = BridgeController()
     let model = ModelController()
+    let files = FileImports()
 
     private var pending: DetectedMeeting?
     private var current: Meeting?
@@ -20,6 +21,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
     private var chunks: AsyncStream<AudioChunk>.Continuation?
     private var consumer: Task<Void, Never>?
     private var heartbeat: Timer?
+    private var loadedTranscriber: (key: String, value: Transcriber)?
     private let detector = MeetingDetector()
 
     func boot() {
@@ -53,6 +55,15 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         heartbeat = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.syncWithStore() }
         }
+        files.canRun = { [weak self] in self.map { $0.status == .idle && $0.model.isReady } ?? false }
+        files.transcriber = { [weak self] in self?.sharedTranscriber() }
+        files.onFinished = { [weak self] m in
+            self?.lastReady = .init(id: m.id, title: m.title, endedAt: m.endedAt)
+            self?.refreshRecent()
+        }
+        files.onChange = { [weak self] in self?.publish() }
+        files.onIdle = { [weak self] in self?.releaseTranscriberIfIdle() }
+        files.configure(folder: settings.dropFolderURL, cleanup: settings.dropFolderCleanup)
         publish()
         bridge.apply(settings)
         model.apply(settings)
@@ -74,9 +85,11 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
     /// Writes state.json: what the app is doing right now.
     private func publish() {
         var out = AppStatus(appState: "idle", lastReady: lastReady)
+        let file = files.running
         out.transcriptsFolder = Paths.transcripts.path
         switch status {
-        case .idle: if model.isDownloading { out.appState = "preparing" }
+        case .idle:
+            if file != nil { out.appState = "transcribingFile" } else if model.isDownloading { out.appState = "preparing" }
         case .recording: out.appState = "recording"
         case .saving: out.appState = "finalizing"
         case .error(let e): out.appState = "error"; out.error = e
@@ -84,6 +97,9 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         }
         if let d = detector.inProgress {
             out.detected = .init(title: d.meeting.title, source: d.meeting.source, since: d.since)
+        }
+        if let file {
+            out.fileJob = .init(name: file.name, progress: files.progress, waiting: UInt32(files.waitingCount))
         }
         if let m = current {
             out.current = .init(id: m.id, title: m.title, source: m.source, startedAt: m.startedAt, segmentCount: UInt32(m.transcript.count))
@@ -137,7 +153,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         if let missing = await Permissions.missingForRecording() {
             setStatus(.permissionMissing(missing)); return
         }
-        guard let transcriber = Transcriber(modelURL: settings.modelURL, vadURL: settings.vadModelURL, languages: settings.effectiveLanguages) else {
+        guard let transcriber = sharedTranscriber() else {
             setStatus(.error("Whisper model could not be loaded: \(settings.modelURL.lastPathComponent)")); return
         }
         guard status == .idle else { return }                      // something else started while we were waiting
@@ -172,6 +188,20 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// One loaded Whisper model for live recording and files alike (its lock lets them take turns),
+    /// kept while either is busy.
+    private func sharedTranscriber() -> Transcriber? {
+        let key = [settings.modelURL.path, settings.vadModelURL.path] + settings.effectiveLanguages
+        if let loaded = loadedTranscriber, loaded.key == key.joined(separator: "|") { return loaded.value }
+        guard let fresh = Transcriber(modelURL: settings.modelURL, vadURL: settings.vadModelURL, languages: settings.effectiveLanguages) else { return nil }
+        loadedTranscriber = (key.joined(separator: "|"), fresh)
+        return fresh
+    }
+
+    private func releaseTranscriberIfIdle() {
+        if status == .idle, !files.isBusy { loadedTranscriber = nil }
+    }
+
     /// Transcribed segments arrive every ~30 s; persist them so they survive a crash
     /// and can be read while the meeting is still going on.
     private func append(_ segs: [TranscriptSegment]) {
@@ -197,6 +227,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         current = nil
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["ended"])
         setStatus(.idle)
+        releaseTranscriberIfIdle()
     }
 
     /// A stream broke mid-recording and could not be restarted: keep what was transcribed.
@@ -221,6 +252,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         settings = new
         new.save()
         model.apply(new)
+        files.configure(folder: new.dropFolderURL, cleanup: new.dropFolderCleanup)
         detector.endDelay = TimeInterval(new.endDelaySeconds)
         refreshRecent()
         if bridgeChanged { bridge.apply(new) }
@@ -309,6 +341,13 @@ struct MuesliApp: App {
                 }
             }
 
+            Divider()
+            Button { if state.files.chooseFiles() { AudioFileWindow.show(state) } } label: {
+                Label("Transcribe Audio File…", systemImage: "waveform.badge.plus")
+            }
+            .disabled(!state.model.isReady)
+            FileStatusItems(files: state.files)
+
             if state.settings.effectiveRecentLimit > 0 {
                 Divider()
                 Section("Recent Transcripts") {
@@ -356,4 +395,27 @@ struct MuesliApp: App {
     }()
 
     init() { DispatchQueue.main.async { [state] in state.boot() } }
+}
+
+/// What the menu says about audio files: the one being transcribed, how many wait, and the last
+/// problem with a file from the drop folder.
+struct FileStatusItems: View {
+    let files: FileImports
+
+    var body: some View {
+        if let running = files.running {
+            Section("Audio Files") {
+                Text("Transcribing \(Store.shortenTitle(running.name))" + (files.progress.map { " · \(Int($0 * 100))%" } ?? "…"))
+                if files.waitingCount > 0 { Text("\(files.waitingCount) more waiting") }
+            }
+        } else if files.waitingCount > 0 {
+            Section("Audio Files") { Text("\(files.waitingCount) waiting for the model or the recording") }
+        }
+        if let problem = files.folderError {
+            Section("Audio File Problem") {
+                Text(problem)
+                Button("Dismiss") { files.dismissError() }
+            }
+        }
+    }
 }

@@ -27,7 +27,7 @@ jobs:
         run: cargo test --workspace
       # Linux has no app (no WebKitGTK here) and no audio capture; test the portable crates.
       - if: matrix.os == 'ubuntu-latest'
-        run: cargo test -p muesli-core -p muesli-mcp -p muesli-detect -p muesli-audio -p muesli-system
+        run: cargo test -p muesli-core -p muesli-mcp -p muesli-detect -p muesli-audio -p muesli-system -p muesli-import
 
   icons:
     name: Windows app icons match assets/brand

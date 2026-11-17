@@ -37,7 +37,7 @@ final class SettingsNavigation {
 }
 
 enum SettingsPage: String, CaseIterable, Identifiable {
-    case general, transcription, assistants, permissions
+    case general, transcription, audioFiles, assistants, permissions
 
     var id: Self { self }
 
@@ -45,6 +45,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .transcription: "Transcription"
+        case .audioFiles: "Audio Files"
         case .assistants: "AI Assistants"
         case .permissions: "Permissions"
         }
@@ -54,6 +55,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
         switch self {
         case .general: "gearshape.fill"
         case .transcription: "waveform"
+        case .audioFiles: "waveform.badge.plus"
         case .assistants: "sparkles"
         case .permissions: "lock.shield.fill"
         }
@@ -62,7 +64,7 @@ enum SettingsPage: String, CaseIterable, Identifiable {
     var tile: Color {
         switch self {
         case .general: .muesliMuted
-        case .transcription: .muesliPumpkinSeed
+        case .transcription, .audioFiles: .muesliPumpkinSeed
         case .assistants: .muesliRoast
         case .permissions: .muesliMuted
         }
@@ -100,6 +102,7 @@ struct SettingsView: View {
                 switch page {
                 case .general: GeneralSettings(state: state, draft: $draft)
                 case .transcription: TranscriptionSettings(state: state, draft: $draft)
+                case .audioFiles: AudioFileSettings(state: state, draft: $draft)
                 case .assistants: AssistantSettings(state: state, draft: $draft)
                 case .permissions: PermissionSettings()
                 }
@@ -116,6 +119,8 @@ struct SettingsView: View {
         .onChange(of: draft.savedLanguages) { state.update(draft) }
         .onChange(of: state.settings) { _, new in if new != draft { draft = new } }
         .onChange(of: draft.customModelPath) { state.update(draft) }
+        .onChange(of: draft.dropFolder) { state.update(draft) }
+        .onChange(of: draft.dropFolderCleanup) { state.update(draft) }
         .onChange(of: draft.mcpEnabled) { state.update(draft) }
         .onChange(of: draft.claudeDesktopConfigEntry) { state.update(draft) }
     }
@@ -136,6 +141,69 @@ private struct SidebarTile: View {
 }
 
 // MARK: General
+
+private struct AudioFileSettings: View {
+    let state: AppState
+    @Binding var draft: Preferences
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent {
+                    HStack {
+                        if draft.dropFolder != nil {
+                            Button("Stop Watching") { draft.dropFolder = nil }
+                        }
+                        Button(draft.dropFolder == nil ? "Choose Folder…" : "Change…") {
+                            if let url = FileImports.chooseDropFolder(current: draft.dropFolderURL) { draft.dropFolder = url.path }
+                        }
+                    }
+                } label: {
+                    Text("Drop folder")
+                    Text(draft.dropFolder.map { ($0 as NSString).abbreviatingWithTildeInPath }
+                         ?? "Off. Audio files put in this folder are transcribed automatically.")
+                        .truncationMode(.middle)
+                }
+                Picker(selection: $draft.dropFolderCleanup) {
+                    ForEach([AudioCleanup.keep, .trash, .delete], id: \.self) { Text($0.title).tag($0) }
+                } label: {
+                    Text("After transcribing")
+                    Text(draft.dropFolderCleanup.detail)
+                }
+                .disabled(draft.dropFolder == nil)
+                if draft.dropFolderCleanup == .delete && draft.dropFolder != nil {
+                    Label("Deleted files do not go to the Trash. Keep a copy of anything you need.", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+            }
+            Section {
+                LabeledContent {
+                    Button("Choose Files…") { if state.files.chooseFiles() { AudioFileWindow.show(state) } }
+                        .disabled(!state.model.isReady)
+                } label: {
+                    Text("Transcribe an audio file")
+                    Text("mp3, m4a, wav, flac, ogg. Also in the menu bar.")
+                }
+                LabeledContent("Status") { status }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        let files = state.files
+        if let running = files.running {
+            Text("Transcribing \(running.name)" + (files.progress.map { " · \(Int($0 * 100))%" } ?? "…")
+                 + (files.waitingCount > 0 ? " · \(files.waitingCount) waiting" : ""))
+        } else if files.waitingCount > 0 {
+            Text("\(files.waitingCount) waiting")
+        } else if let problem = files.folderError {
+            Text(problem).foregroundStyle(.red)
+        } else {
+            Text("Nothing to transcribe").foregroundStyle(.secondary)
+        }
+    }
+}
 
 private struct GeneralSettings: View {
     let state: AppState
@@ -650,7 +718,6 @@ private struct PermissionSettings: View {
                     Button("Allow…") {
                         Task {
                             await permission.request()
-                            NSApp.activate(ignoringOtherApps: true)      // the macOS dialog took the focus
                             await refresh()
                         }
                     }

@@ -4,7 +4,7 @@
   const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
 
   let S = null; // the last state from the backend
-  const ui = { page: "general", step: 0, chosen: { autoStop: false, assistants: false }, access: {}, client: 0, prompt: null, info: null, ownModel: null };
+  const ui = { page: "general", step: 0, chosen: { autoStop: false, assistants: false }, access: {}, client: 0, prompt: null, info: null, ownModel: null, reach: null };
 
   // ---- tiny DOM helper -------------------------------------------------------------------
   function h(tag, attrs, ...kids) {
@@ -115,6 +115,7 @@
         p.autoStop ? row("Call has ended after", "How long other apps must leave the microphone free",
           h("select", { onchange: (e) => setPrefs({ endDelaySeconds: +e.target.value }) },
             [30, 60, 120, 300].map((s) => h("option", { value: s, selected: p.endDelaySeconds === s }, s < 120 ? `${s} seconds` : `${s / 60} minutes`)))) : null),
+      audioFilesGroup(),
       h("p", { class: "footer about" }, `Muesli ${S.version} · `, h("button", { class: "link", onclick: () => invoke("open_repository") }, "GitHub")));
   }
 
@@ -125,6 +126,32 @@
     if (m.kind === "downloading") return status("warn", "Downloading. Transcribing is off until it is ready.");
     if (m.kind === "failed") return status("err", m.message);
     return status("warn", "Not downloaded yet. Transcribing is off.");
+  }
+
+  // Why the download does not work and where it was trying to go, with a way to test the servers.
+  async function checkConnection() {
+    ui.reach = "checking"; render();
+    try { ui.reach = await invoke("check_connection"); } catch (e) { ui.reach = [{ url: "", ok: false, detail: String(e) }]; }
+    render();
+  }
+
+  function downloadProblem() {
+    const failed = S.model.kind === "failed" && !ui.ownModel && S.downloadError;
+    if (!failed && !ui.reach) return null;
+    const results = ui.reach === "checking" ? [h("span", { class: "sub small" }, "Checking the connection…")]
+      : Array.isArray(ui.reach) ? ui.reach.map((r) => h("div", { class: "reach" },
+          h("span", { class: r.ok ? "ok-text" : "err-text" }, r.ok ? "Reachable" : "Not reachable"),
+          h("span", { class: "sub small mono-digits", style: "word-break:break-all" }, ` ${r.url}`),
+          r.ok ? null : h("div", { class: "sub small" }, r.detail))) : [];
+    return h("div", { class: "row", style: "flex-direction:column;align-items:stretch;gap:8px" },
+      failed ? h("div", { class: "err-text" }, "The model could not be downloaded.") : null,
+      failed ? h("div", { class: "sub small" }, S.downloadError) : null,
+      failed && S.downloadUrl ? h("div", { class: "sub small" }, "Address: ", h("span", { class: "mono-digits", style: "word-break:break-all;user-select:text" }, S.downloadUrl)) : null,
+      failed ? h("div", { class: "sub small" }, "You can also download the files yourself and put them in the models folder, then restart Muesli.") : null,
+      ...results,
+      h("div", { style: "display:flex;gap:8px" },
+        failed ? h("button", { onclick: () => { ui.reach = null; invoke("download_model"); } }, "Try again") : null,
+        h("button", { disabled: ui.reach === "checking", onclick: checkConnection }, "Check connection")));
   }
 
   function transcriptionPage() {
@@ -150,8 +177,10 @@
           h("div", { style: "display:flex;justify-content:space-between;align-items:center" },
             h("span", { class: "sub small mono-digits" }, `Downloading the speech model · ${mb(d.received)} of ${mb(d.total)}`),
             h("button", { onclick: () => invoke("cancel_download") }, "Cancel download"))) : null,
-        !d && (S.model.kind === "missing" || S.model.kind === "failed") && !ui.ownModel
-          ? row(S.model.kind === "failed" ? "Download failed" : "Speech model", null, h("button", { onclick: () => invoke("download_model") }, S.model.kind === "failed" ? "Try again" : "Download")) : null,
+        d && S.downloadUrl ? h("div", { class: "row" }, h("span", { class: "sub small mono-digits", style: "word-break:break-all;user-select:text" }, `Fetching ${S.downloadUrl}`)) : null,
+        !d && S.model.kind === "missing" && !ui.ownModel
+          ? row("Speech model", null, [h("button", { onclick: () => invoke("download_model") }, "Download"), h("button", { onclick: checkConnection }, "Check connection")]) : null,
+        !d ? downloadProblem() : null,
         row("Use my own model file", null, toggle(ui.ownModel, (v) => { ui.ownModel = v; if (!v && p.customModelPath) setPrefs({ customModelPath: null }); render(); })),
         ui.ownModel ? row("Model file", p.customModelPath || "Any whisper.cpp .bin file. None chosen yet.",
           h("button", { onclick: async () => { const f = await invoke("choose_model_file"); if (f) setPrefs({ customModelPath: f }); } }, p.customModelPath ? "Change…" : "Choose File…")) : null,
@@ -227,9 +256,76 @@
       foot("Changes you make in your system settings show here when you come back to this window."));
   }
 
+
+  const CLEANUP = [
+    ["keep", "Keep the file", "The file stays in the folder. It is not transcribed again."],
+    ["trash", () => `Move to the ${S.platform === "windows" ? "Recycle Bin" : "Trash"}`, () => `Once transcribed, the file goes to the ${S.platform === "windows" ? "Recycle Bin" : "Trash"}.`],
+    ["delete", "Delete the file", "Once transcribed, the file is deleted for good."],
+  ];
+  const cleanupTitle = (c) => (typeof c[1] === "function" ? c[1]() : c[1]);
+  const cleanupDetail = (c) => (typeof c[2] === "function" ? c[2]() : c[2]);
+
+  async function chooseDropFolder() {
+    const f = await invoke("choose_drop_folder");
+    if (f) setPrefs({ dropFolder: f });
+  }
+
+  // What the audio-file queue is doing, in one line.
+  function fileStatus() {
+    const running = S.files.find((f) => f.state.kind === "running");
+    const waiting = S.files.filter((f) => f.state.kind === "waiting").length;
+    if (running) {
+      const p = running.state.progress;
+      return `Transcribing ${running.name}${p != null ? ` · ${Math.round(p * 100)}%` : "…"}${waiting ? ` · ${waiting} waiting` : ""}`;
+    }
+    return waiting ? `${waiting} waiting` : "Nothing to transcribe";
+  }
+
+  function audioFilesGroup() {
+    const p = S.prefs;
+    return [
+      h("h2", { style: "font-size:15px" }, "Audio files"),
+      group(
+        row("Drop folder", p.dropFolder || "Off. Audio files put in this folder are transcribed automatically.", [
+          p.dropFolder ? h("button", { onclick: () => setPrefs({ dropFolder: null }) }, "Stop watching") : null,
+          h("button", { onclick: chooseDropFolder }, p.dropFolder ? "Change…" : "Choose Folder…")]),
+        row("After transcribing", p.dropFolder ? cleanupDetail(CLEANUP.find((c) => c[0] === p.dropFolderCleanup) || CLEANUP[0]) : "Choose a folder first",
+          h("select", { disabled: !p.dropFolder, onchange: (e) => setPrefs({ dropFolderCleanup: e.target.value }) },
+            CLEANUP.map((c) => h("option", { value: c[0], selected: p.dropFolderCleanup === c[0] }, cleanupTitle(c))))),
+        p.dropFolder && p.dropFolderCleanup === "delete" ? h("div", { class: "row" }, h("span", { class: "warn-text" }, "Deleted files do not go to the Recycle Bin. Keep a copy of anything you need.")) : null,
+        row("Transcribe an audio file", "mp3, m4a, wav, flac, ogg. Also in the tray menu.",
+          h("button", { disabled: S.model.kind !== "ready", onclick: () => invoke("transcribe_files") }, "Choose Files…")),
+        row("Status", null, S.fileError ? h("span", { class: "err-text" }, S.fileError) : h("span", { class: "sub" }, fileStatus()))),
+    ];
+  }
+
+  // ---- small window for files picked from the menu -----------------------------------------
+  function transcribe() {
+    const items = S.files.filter((f) => f.manual);
+    const working = items.some((f) => f.state.kind === "waiting" || f.state.kind === "running");
+    const stateText = (f) => {
+      const k = f.state.kind;
+      if (k === "waiting") return h("span", { class: "sub" }, "Waiting");
+      if (k === "running") return h("span", { class: "sub mono-digits" }, f.state.progress != null ? `${Math.round(f.state.progress * 100)}%` : "Starting…");
+      if (k === "done") return h("span", { class: "ok-text" }, "✓ Done");
+      if (k === "failed") return h("span", { class: "err-text" }, "Failed");
+      return h("span", { class: "sub" }, "Cancelled");
+    };
+    return h("div", { class: "files-window", style: "padding:20px;display:flex;flex-direction:column;gap:14px;height:100vh;box-sizing:border-box" },
+      h("div", { style: "flex:1;overflow:auto;display:flex;flex-direction:column;gap:14px" },
+        items.length ? items.map((f) => h("div", { style: "display:flex;flex-direction:column;gap:5px" },
+          h("div", { style: "display:flex;justify-content:space-between;gap:10px" }, h("span", { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, f.name), stateText(f)),
+          f.state.kind === "running" ? h("div", { class: "bar" + (f.state.progress == null ? " indeterminate" : "") }, h("i", { style: `width:${(f.state.progress || 0) * 100}%` })) : null,
+          f.state.kind === "failed" ? h("div", { class: "err-text small" }, f.state.message) : null)) : h("p", { class: "sub" }, "No audio files.")),
+      h("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px" },
+        h("span", { class: "sub small" }, "Transcripts appear in your transcripts folder and the tray menu."),
+        working ? h("button", { onclick: () => invoke("cancel_all_files") }, "Cancel")
+          : h("button", { class: "primary", onclick: () => invoke("close_file_window") }, "Done")));
+  }
+
   // ---- onboarding assistant ----------------------------------------------------------------
   function steps() {
-    const all = ["languages", "autoStop", "assistants", "microphone"];
+    const all = ["languages", "autoStop", "assistants", "dropFolder", "microphone"];
     if (S.platform === "macos") all.push("systemAudio"); // Windows loopback needs no permission
     return all;
   }
@@ -237,6 +333,7 @@
     languages: ["🌐", "#6b5a4b", "Which languages do you speak?", "Muesli works out which one is spoken. Fewer languages means fewer mistakes."],
     autoStop: ["⏹", "#6b5a4b", "Stop when the call ends?", "Muesli can notice that the other app let go of the microphone and save the transcript for you, or ask you first."],
     assistants: ["✦", "#3b2a1e", "Connect an AI assistant?", "Claude and other assistants can read your transcripts. They can never start or stop a recording."],
+    dropFolder: ["📂", "#3b2a1e", "Transcribe audio files?", "Choose a folder and Muesli transcribes any audio file you put in it, such as a recording from your phone. You can skip this and add one later in Settings."],
     microphone: ["🎙", "#5b7a3a", "Hear your side", "Muesli needs the microphone to transcribe what you say."],
     systemAudio: ["🔊", "#6b5a4b", "Hear the other side", "To transcribe the other people on a call, Muesli listens to your computer's audio. It never records your screen."],
   };
@@ -256,6 +353,12 @@
       choice("Stop and save automatically", "Once the call has ended, the transcript is saved without asking", ui.chosen.autoStop && p.autoStop, () => { ui.chosen.autoStop = true; setPrefs({ autoStop: true }); }),
       choice("Ask me first", "Muesli shows a prompt and keeps recording until you say so", ui.chosen.autoStop && !p.autoStop, () => { ui.chosen.autoStop = true; setPrefs({ autoStop: false }); }),
       h("p", { class: "footer" }, "You can change this later in Settings.")];
+    else if (id === "dropFolder") body = p.dropFolder ? [
+      choice(p.dropFolder, "Audio files put here are transcribed. Click to choose another folder.", true, chooseDropFolder),
+      ...CLEANUP.map((c) => choice(cleanupTitle(c), cleanupDetail(c), p.dropFolderCleanup === c[0], () => setPrefs({ dropFolderCleanup: c[0] }))),
+      h("button", { class: "link", onclick: () => setPrefs({ dropFolder: null }) }, "Don't use a folder"),
+      h("p", { class: "footer" }, "You can change this later in Settings.")]
+      : [choice("Choose a folder…", "Off until you choose one", false, chooseDropFolder), h("p", { class: "footer" }, "You can change this later in Settings.")];
     else if (id === "assistants") body = [
       choice("Yes, connect assistants", "Read-only access to your transcripts", ui.chosen.assistants && p.mcpEnabled, () => { ui.chosen.assistants = true; setPrefs({ mcpEnabled: true }); }),
       choice("Not now", "You can switch this on later in Settings", ui.chosen.assistants && !p.mcpEnabled, () => { ui.chosen.assistants = true; setPrefs({ mcpEnabled: false }); }),
@@ -313,11 +416,11 @@
     if (!S) return;
     const root = document.getElementById("app");
     const scroll = root.querySelector(".content, .body")?.scrollTop || 0;
-    const view = { settings, onboarding, prompt }[label()] || settings;
+    const view = { settings, onboarding, prompt, transcribe }[label()] || settings;
     root.replaceChildren(view());
     const el = root.querySelector(".content, .body");
     if (el) el.scrollTop = scroll;
-    document.title = { settings: "Muesli Settings", onboarding: "Welcome to Muesli", prompt: "Muesli" }[label()] || "Muesli";
+    document.title = { settings: "Muesli Settings", onboarding: "Welcome to Muesli", prompt: "Muesli", transcribe: "Transcribing Audio" }[label()] || "Muesli";
   }
 
   let pending = false;

@@ -28,7 +28,7 @@ open macos/Muesli.app
 
 On first launch Muesli downloads the speech model (Large v3 Turbo, q5_0, 574 MB) and the voice activity model into `~/Library/Application Support/Muesli/`. Set `MUESLI_SUPPORT_DIR` to keep a test copy elsewhere.
 
-`build.sh` runs `swift build -c release` and `cargo build --release -p muesli-mcp --target aarch64-apple-darwin` (the MCP server is the Rust binary from `windows/crates/mcp`, shared with the Windows app, so a Rust toolchain is required), assembles `Muesli.app`, copies `muesli-mcp` next to the main executable, builds `Muesli.icns` from the iconset, packs the Claude Desktop extension `Muesli.mcpb` (manifest from `muesli-mcp --mcpb-manifest`, the 512 px icon and a signed copy of `muesli-mcp`) into `Contents/Resources`, and signs the bundle. Muesli needs a real bundle for notifications and permissions, so run the app, not the bare executable.
+`build.sh` runs `swift build -c release` and `cargo build --release -p muesli-mcp --target aarch64-apple-darwin` (the MCP server is the Rust binary from `windows/crates/mcp`, shared with the Windows app, so a Rust toolchain is required), assembles `Muesli.app`, copies `muesli-mcp` next to the main executable, builds `Muesli.icns` from the iconset, packs the Claude Desktop extension `Muesli.mcpb` (manifest from `muesli-mcp --mcpb-manifest`, the 512 px tile icon `extension-icon-512.png` (the app icon without its transparent margin, so Claude Desktop fills its box) and a signed copy of `muesli-mcp`) into `Contents/Resources`, and signs the bundle. Muesli needs a real bundle for notifications and permissions, so run the app, not the bare executable.
 
 ## Test
 
@@ -85,6 +85,10 @@ The app never opens a socket and nothing is exposed to the network. Everything a
 
 `recording → finalizing → ready`, or `failed`. The meeting is saved to the store when recording starts and again after every transcribed chunk, so a crash loses at most the audio not yet transcribed. On launch, `MeetingStore.recoverInterrupted()` turns leftovers into `ready` with `partial: true`, or `failed` when nothing was transcribed. It then runs `MeetingStore.importTranscripts()`, which copies any `.json` in the transcripts folder whose id is not in the store yet (meetings recorded before the store existed), so `list_transcripts` sees them; it never overwrites a stored meeting.
 
+## Audio files
+
+Two ways in, one code path (`muesli-import`). Files picked from the menu show a small progress window; files found in the drop folder (`dropFolder` in `config.json`, polled every 5 s by `DropFolder`, which only offers a file once its size and time stopped changing and never twice) only show a status line in the menu and Settings. A queue runs one file at a time and waits while a recording is going on; the Windows app also pauses between chunks (`Polite` in `files.rs`), the macOS app shares one loaded model with the recording (`AppState.sharedTranscriber`). After a folder file succeeds, `dropFolderCleanup` (`keep` | `trash` | `delete`) is applied; files picked by hand are never touched. The meeting has `source: "file"`, a single speaker `Speaker`, the file name as title and the file's modified time as its end; `state.json` says `transcribingFile` with a `fileJob` (name, progress, waiting) while one runs and nothing is recording. Test audio is in `fixtures/audio/` (one second of a tone per format); real speech: `MUESLI_TEST_MODEL`, `MUESLI_TEST_VAD` and `MUESLI_TEST_AUDIO` with `cargo test -p muesli-import --features whisper -- --ignored` or `swift test --filter AudioFileTests`.
+
 ## Files on disk
 
 | Path | Written by | Contents |
@@ -94,6 +98,7 @@ The app never opens a socket and nothing is exposed to the network. Everything a
 | `…/Muesli/meetings/<id>.json` | app | Canonical copy of every meeting, rewritten during recording |
 | `…/Muesli/state.json` | app | Current state and heartbeat, rewritten on change and every 10 s |
 | `…/Muesli/config.json` | app | Preferences shared with `muesli-mcp` |
+| `…/Muesli/imported.json` | app | Audio files from the drop folder that were already handled (path, size, modified time), so a file that is kept is not transcribed twice |
 | `…/Muesli/audit.log` | `muesli-mcp` | One JSON line per management tool call (time, tool, meetingId); read calls are not logged |
 
 Transcript JSON fields: `id`, `title`, `source` (calendar | teams | audio | manual), `startedAt`, `endedAt`, `attendees`, `state`, `partial`, `transcript[]` (`start`, `end`, `speaker`, `text`).
@@ -150,6 +155,8 @@ The Windows app is written in Rust with Tauri. It also builds and runs on macOS,
 |---|---|
 | `crates/core` | Models, preferences, `state.json`, languages, chunker, detection logic, store (append, finish, recover), editor, assistant setup and Claude Desktop config. No OS code. |
 | `crates/mcp` | `muesli-mcp`, the MCP server (stdio) |
+| `crates/audio` | Resampling, microphone and system-audio capture (feature `capture`), and `decode_file`: any audio file (mp3, m4a/aac, flac, wav, ogg, alac) to 16 kHz mono blocks, with `symphonia` |
+| `crates/import` | `import_file`: decode, 30 s chunks, transcribe, save as a meeting with source `file`; shared by both apps (macOS through `muesli-ffi`) |
 | `crates/whisper` | Model download and validation (`ModelManager`, used by both apps), whisper.cpp transcriber (`whisper-rs`) with voice activity detection |
 | `crates/audio` | Capture with `cpal`: microphone, WASAPI loopback (Windows), Core Audio tap (macOS). Resampling with `rubato`. |
 | `crates/detect` | Samplers: Core Audio process list (macOS), WASAPI sessions (Windows), Teams process |

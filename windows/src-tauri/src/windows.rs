@@ -10,6 +10,7 @@ pub fn show(handle: &AppHandle, label: &str) {
     let (title, width, height) = match label {
         "onboarding" => ("Welcome to Muesli", 560.0, 640.0),
         "prompt" => ("Muesli", 380.0, 150.0),
+        "transcribe" => ("Transcribing Audio", 460.0, 320.0),
         _ => ("Muesli Settings", 820.0, 600.0),
     };
     let mut builder = WebviewWindowBuilder::new(handle, label, WebviewUrl::App("index.html".into()))
@@ -22,7 +23,7 @@ pub fn show(handle: &AppHandle, label: &str) {
             let screen = monitor.size().to_logical::<f64>(scale);
             builder = builder.position(screen.width - width - 20.0, 48.0);
         }
-    } else if label == "onboarding" {
+    } else if label == "transcribe" || label == "onboarding" {
         builder = builder.resizable(false).center();
     } else {
         builder = builder.min_inner_size(640.0, 460.0).center();

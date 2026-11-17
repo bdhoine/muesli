@@ -1,4 +1,5 @@
 use muesli_core::preferences::{self, Preferences};
+use muesli_core::AudioCleanup;
 
 use crate::paths::PathSet;
 
@@ -14,6 +15,8 @@ pub struct Preferences {
     pub onboarding_done: bool,
     pub transcripts_folder: Option<String>,
     pub saved_languages: Option<Vec<String>>,
+    pub drop_folder: Option<String>,
+    pub drop_folder_cleanup: AudioCleanup,
 }
 
 #[uniffi::export]

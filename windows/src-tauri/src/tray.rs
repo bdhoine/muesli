@@ -51,6 +51,24 @@ fn entries(app: &App) -> Vec<Entry> {
             out.push(item("dismiss", "Dismiss", true));
         }
     }
+    out.push(Entry::Separator);
+    out.push(item("transcribe_file", "Transcribe Audio File…", app.model.is_ready()));
+    if let Some(running) = app.files.running() {
+        let progress = match running.state {
+            crate::files::FileState::Running { progress: Some(p) } => format!(" · {}%", (p * 100.0) as u32),
+            _ => "…".into(),
+        };
+        out.push(label(format!("Transcribing {}{progress}", shorten_title(&running.name, 36))));
+        if app.files.waiting() > 0 {
+            out.push(label(format!("{} more waiting", app.files.waiting())));
+        }
+    } else if app.files.waiting() > 0 {
+        out.push(label(format!("{} audio files waiting", app.files.waiting())));
+    }
+    if let Some(problem) = app.files.error.lock().unwrap().clone() {
+        out.push(label(shorten_title(&problem, 90)));
+        out.push(item("dismiss_file_error", "Dismiss", true));
+    }
     let limit = app.prefs().effective_recent_limit() as usize;
     if limit > 0 {
         out.push(Entry::Separator);
@@ -122,6 +140,8 @@ fn on_menu(handle: &AppHandle, id: &str) {
         "start" => crate::session::start(&ctx, muesli_core::DetectedMeeting::new("Meeting", "manual")),
         "stop" => crate::session::stop(&ctx),
         "dismiss" => ctx.set_status(Status::Idle),
+        "transcribe_file" => crate::commands::pick_and_queue(handle, ctx.app.clone()),
+        "dismiss_file_error" => crate::files::dismiss_error(&ctx),
         "settings" => windows::show(handle, "settings"),
         "folder" => open_path(handle, &ctx.app.paths().transcripts_dir().to_string_lossy()),
         "quit" => handle.exit(0),

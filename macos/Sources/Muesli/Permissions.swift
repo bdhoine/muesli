@@ -86,8 +86,12 @@ enum Permission: Hashable, CaseIterable {
     }
 
     /// Shows the macOS prompt (if it has not been answered yet) and returns the new status.
-    @discardableResult
+    @MainActor @discardableResult
     func request() async -> Access {
+        // The macOS dialog takes the focus and gives it back to whoever had it before only after
+        // our answer arrives, so a single activate here is too early: repeat it a little later.
+        let window = NSApp.isActive ? (NSApp.keyWindow ?? NSApp.windows.first { $0.isVisible }) : nil
+        defer { if let window { Permissions.refocus(window) } }
         switch self {
         case .microphone: _ = await AVCaptureDevice.requestAccess(for: .audio)
         case .systemAudio: _ = await SystemAudioAccess.request()
@@ -99,6 +103,20 @@ enum Permission: Hashable, CaseIterable {
 }
 
 enum Permissions {
+    /// Brings `window` back to the front now and again shortly after, once macOS has finished
+    /// closing its permission dialog.
+    @MainActor
+    static func refocus(_ window: NSWindow) {
+        for delay in [0.0, 0.3, 0.8] {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(delay))
+                guard window.isVisible else { return }
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+    }
+
     /// The one calendar store: the instance that asks for access is the one that reads events.
     static let eventStore = EKEventStore()
 

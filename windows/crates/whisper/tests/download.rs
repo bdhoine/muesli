@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use muesli_core::whisper_model::{DEFAULT_MODEL, LEGACY_FILES, VAD_MODEL};
 use muesli_core::{Paths, Preferences};
-use muesli_whisper::{download, DownloadError, DownloadSpec, ModelManager, Phase};
+use muesli_whisper::{check_reachable, download, DownloadError, DownloadSpec, ModelManager, Phase};
 
 /// Serves `body` once with the given status line and optional lying Content-Length.
 fn serve(status: &'static str, body: Vec<u8>, content_length: Option<usize>) -> String {
@@ -153,6 +153,7 @@ fn failures_are_remembered_until_the_next_attempt() {
     m.wait();
     assert!(matches!(m.phase(), Phase::Failed(e) if e.contains("500")));
     assert!(m.last_error().unwrap().contains("500"));
+    assert!(m.last_url().unwrap().ends_with("/model.bin")); // the address that failed is kept for the UI
     let url = serve("200 OK", vec![1u8; 1000], None);
     m.download_all(vec![spec_to(url, VAD_MODEL.path(&paths), 1000)], || {});
     assert_eq!(m.last_error(), None); // a new attempt clears the old error
@@ -226,4 +227,40 @@ fn old_model_files_can_be_listed_and_removed() {
     assert_eq!(m.legacy_models().1, 7);
     assert_eq!(m.remove_legacy_models(), 1);
     assert_eq!(m.legacy_models(), (vec![], 0));
+}
+
+#[test]
+fn a_server_that_cannot_be_reached_fails_with_the_address() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m, paths) = manager(dir.path(), Preferences::default());
+    let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/model.bin", closed.local_addr().unwrap());
+    drop(closed); // nothing listens here any more
+    m.download_all(vec![spec_to(url.clone(), VAD_MODEL.path(&paths), 1)], || {});
+    m.wait();
+    assert!(matches!(m.phase(), Phase::Failed(e) if e.contains("Could not connect")));
+    assert_eq!(m.last_url(), Some(url));
+}
+
+#[test]
+fn the_connection_check_reports_each_address() {
+    let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/model.bin", closed.local_addr().unwrap());
+    drop(closed);
+    let reach = check_reachable(&url);
+    assert!(!reach.ok && reach.url == url && !reach.detail.is_empty());
+
+    let up = serve("200 OK", vec![], None);
+    let reach = check_reachable(&up);
+    assert!(reach.ok, "{}", reach.detail);
+    assert!(reach.detail.contains("200"));
+}
+
+#[test]
+fn the_downloads_cover_the_addresses_the_check_asks() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m, _) = manager(dir.path(), Preferences::default());
+    // The check itself needs the internet, so only the addresses it would ask are compared.
+    let wanted: Vec<String> = m.missing_downloads().into_iter().map(|s| s.url).collect();
+    assert_eq!(wanted, vec![VAD_MODEL.url.to_string(), DEFAULT_MODEL.url.to_string()]);
 }

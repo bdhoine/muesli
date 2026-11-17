@@ -2,6 +2,8 @@
   "autoStop" : false,
   "claudeDesktopConfigEntry" : false,
   "customModelPath" : "\/models\/x.bin",
+  "dropFolderCleanup" : "trash",
+  "dropFolder" : "\/Users\/me\/Audio",
   "endDelaySeconds" : 60,
   "languages" : [
     "nl",

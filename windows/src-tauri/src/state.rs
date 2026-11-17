@@ -44,6 +44,7 @@ pub struct App {
     base: Paths,
     pub prefs: Mutex<Preferences>,
     pub model: ModelManager,
+    pub files: crate::files::Files,
     pub status: Mutex<Status>,
     pub session: Mutex<Option<Session>>,
     pub detected: Mutex<Option<(DetectedMeeting, chrono::DateTime<chrono::Utc>)>>,
@@ -60,6 +61,7 @@ impl App {
         let prefs = Preferences::load(&paths);
         Arc::new(Self {
             model: ModelManager::new(paths.clone(), prefs.clone()),
+            files: Default::default(),
             base: paths,
             prefs: Mutex::new(prefs),
             status: Mutex::new(Status::Idle),
@@ -96,6 +98,7 @@ impl App {
 
     pub fn activity(&self) -> Activity {
         match self.status() {
+            Status::Idle if self.files.running().is_some() => Activity::TranscribingFile,
             Status::Idle => Activity::Idle { preparing: self.model.is_downloading() },
             Status::Recording { .. } => Activity::Recording,
             Status::Saving => Activity::Finalizing,
@@ -108,6 +111,7 @@ impl App {
         let mut out = muesli_core::AppStatus::for_activity(&self.activity());
         out.transcripts_folder = Some(self.paths().transcripts.to_string_lossy().into_owned());
         out.last_ready = self.last_ready.lock().unwrap().clone();
+        out.file_job = self.files.job();
         if let Some((d, since)) = self.detected.lock().unwrap().clone() {
             out.detected = Some(Detected { title: d.title, source: d.source, since });
         }

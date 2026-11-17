@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
-use muesli_core::status::{self, AppStatus, Current, Detected, LastReady};
+use muesli_core::status::{self, AppStatus, Current, Detected, FileJob, LastReady};
 
 use crate::paths::PathSet;
 
 pub type StatusDetected = Detected;
 pub type StatusCurrent = Current;
 pub type StatusLastReady = LastReady;
+pub type StatusFileJob = FileJob;
 
 #[uniffi::remote(Record)]
 pub struct StatusDetected {
@@ -31,6 +32,13 @@ pub struct StatusLastReady {
 }
 
 #[uniffi::remote(Record)]
+pub struct StatusFileJob {
+    pub name: String,
+    pub progress: Option<f64>,
+    pub waiting: u32,
+}
+
+#[uniffi::remote(Record)]
 pub struct AppStatus {
     pub schema_version: u32,
     pub updated_at: DateTime<Utc>,
@@ -39,6 +47,7 @@ pub struct AppStatus {
     pub detected: Option<StatusDetected>,
     pub current: Option<StatusCurrent>,
     pub last_ready: Option<StatusLastReady>,
+    pub file_job: Option<StatusFileJob>,
     pub error: Option<String>,
     pub transcripts_folder: Option<String>,
 }

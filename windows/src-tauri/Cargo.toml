@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 muesli-core = { path = "../crates/core" }
 muesli-audio = { path = "../crates/audio" }
 muesli-whisper = { path = "../crates/whisper" }
+muesli-import = { path = "../crates/import", features = ["whisper"] }
 muesli-detect = { path = "../crates/detect" }
 muesli-system = { path = "../crates/system" }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }

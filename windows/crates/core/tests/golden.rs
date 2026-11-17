@@ -64,6 +64,8 @@ fn swift_config_loads_and_reserialises_to_the_same_data() {
     assert_eq!(p.custom_model_path.as_deref(), Some("/models/x.bin"));
     assert_eq!(p.languages.as_deref(), Some(&["nl".to_string(), "en".to_string()][..]));
     assert!(p.onboarding_done);
+    assert_eq!(p.drop_folder.as_deref(), Some("/Users/me/Audio"));
+    assert_eq!(p.drop_folder_cleanup, muesli_core::AudioCleanup::Trash);
     same_json(&text, &to_pretty_sorted(&p));
 }
 

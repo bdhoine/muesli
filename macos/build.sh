@@ -27,7 +27,7 @@ MCPB_STAGE=.build/mcpb
 rm -rf "$MCPB_STAGE" .build/Muesli.mcpb; mkdir -p "$MCPB_STAGE/server"
 cp "$APP/Contents/MacOS/muesli-mcp" "$MCPB_STAGE/server/"
 "$APP/Contents/MacOS/muesli-mcp" --mcpb-manifest > "$MCPB_STAGE/manifest.json"
-cp $BRAND/app-icon/AppIcon.iconset/icon_256x256@2x.png "$MCPB_STAGE/icon.png"
+cp $BRAND/app-icon/extension-icon-512.png "$MCPB_STAGE/icon.png"          # the tile without the macOS icon margin
 (cd "$MCPB_STAGE" && zip -X -q -r ../Muesli.mcpb manifest.json icon.png server)
 cp .build/Muesli.mcpb "$APP/Contents/Resources/Muesli.mcpb"
 

@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct DownloadSpec {
@@ -30,6 +31,38 @@ impl std::fmt::Display for DownloadError {
             Self::Failed(why) => write!(f, "Download failed: {why}"),
         }
     }
+}
+
+/// One agent for downloads and checks, with timeouts on connecting and on the first answer, so an
+/// unreachable server fails with a message instead of leaving the download hanging at 0 MB. The
+/// body has no overall limit: the model is large and the connection may be slow.
+fn agent() -> ureq::Agent {
+    ureq::Agent::new_with_config(
+        ureq::Agent::config_builder()
+            .timeout_resolve(Some(Duration::from_secs(10)))
+            .timeout_connect(Some(Duration::from_secs(15)))
+            .timeout_recv_response(Some(Duration::from_secs(30)))
+            .build(),
+    )
+}
+
+/// The outcome of asking one server whether a file can be fetched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reach {
+    pub url: String,
+    pub ok: bool,
+    /// For people: "Reachable (HTTP 200)" or why not.
+    pub detail: String,
+}
+
+/// Asks the server for the file's headers only (nothing is downloaded).
+pub fn check_reachable(url: &str) -> Reach {
+    let (ok, detail) = match agent().head(url).call() {
+        Ok(r) => (true, format!("Reachable (HTTP {})", r.status().as_u16())),
+        Err(ureq::Error::StatusCode(code)) => (false, format!("The server answered HTTP {code}")),
+        Err(e) => (false, e.to_string()),
+    };
+    Reach { url: url.to_string(), ok, detail }
 }
 
 /// Downloads into `<dest>.part`, then moves the file into place only when it is complete.
@@ -61,10 +94,10 @@ fn run(
     if let Some(dir) = spec.dest.parent() {
         std::fs::create_dir_all(dir).map_err(|e| DownloadError::Failed(e.to_string()))?;
     }
-    let response = match ureq::get(&spec.url).call() {
+    let response = match agent().get(&spec.url).call() {
         Ok(r) => r,
         Err(ureq::Error::StatusCode(code)) => return Err(DownloadError::Http(code)),
-        Err(e) => return Err(DownloadError::Failed(e.to_string())),
+        Err(e) => return Err(DownloadError::Failed(format!("Could not connect: {e}"))),
     };
     let expected = response.body().content_length();
     let total = expected.unwrap_or(spec.approximate_bytes);

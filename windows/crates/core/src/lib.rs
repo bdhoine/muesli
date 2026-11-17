@@ -8,6 +8,7 @@ pub mod assistants;
 pub mod chunker;
 pub mod detection;
 pub mod editor;
+pub mod import;
 pub mod json;
 pub mod languages;
 pub mod models;
@@ -18,6 +19,7 @@ pub mod store;
 pub mod whisper_model;
 
 pub use chunker::AudioChunker;
+pub use import::{AudioCleanup, DropFolder};
 pub use detection::{DetectionEvent, DetectionLogic};
 pub use models::{AudioChunk, DetectedMeeting, Meeting, MeetingState, TranscriptSegment};
 pub use paths::Paths;

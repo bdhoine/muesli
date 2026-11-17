@@ -19,6 +19,12 @@ pub struct Transcriber {
     inner: muesli_whisper::Transcriber,
 }
 
+impl Transcriber {
+    pub(crate) fn inner(&self) -> &muesli_whisper::Transcriber {
+        &self.inner
+    }
+}
+
 #[uniffi::export]
 impl Transcriber {
     /// 16 kHz mono samples in, segments on the meeting timeline out.

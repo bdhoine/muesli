@@ -10,6 +10,7 @@ mod assistants;
 mod chunker;
 mod claude_desktop;
 mod detection;
+mod import;
 mod languages;
 mod models;
 mod paths;
