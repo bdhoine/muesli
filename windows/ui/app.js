@@ -4,7 +4,7 @@
   const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
 
   let S = null; // the last state from the backend
-  const ui = { page: "general", step: 0, chosen: { model: false, autoStop: false, assistants: false }, access: {}, client: 0, prompt: null, info: null, ownModel: null };
+  const ui = { page: "general", step: 0, chosen: { autoStop: false, assistants: false }, access: {}, client: 0, prompt: null, info: null, ownModel: null };
 
   // ---- tiny DOM helper -------------------------------------------------------------------
   function h(tag, attrs, ...kids) {
@@ -58,18 +58,6 @@
   document.addEventListener("click", () => { if (ui.info) { ui.info = null; render(); } });
 
   // ---- shared pieces -----------------------------------------------------------------------
-  function modelProgress() {
-    const m = S.model;
-    if (m.kind === "downloading") {
-      const frac = m.total > 0 ? Math.min(m.received / m.total, 1) : null;
-      return h("div", { style: "display:flex;flex-direction:column;gap:6px" },
-        h("div", { class: "bar" + (frac == null ? " indeterminate" : "") }, h("i", { style: `width:${(frac || 0) * 100}%` })),
-        h("span", { class: "sub small mono-digits" }, `Downloading ${m.model} · ${mb(m.received)} of ${mb(m.total)}`));
-    }
-    if (m.kind === "ready") return h("span", { class: "ok-text" }, "✓ Ready. You can carry on.");
-    if (m.kind === "failed") return h("span", { class: "err-text" }, m.message);
-    return null;
-  }
 
   // Settings: a switch for the computer's languages; the own list only shows while it is in use.
   function languageSettings() {
@@ -130,27 +118,18 @@
       h("p", { class: "footer about" }, `Muesli ${S.version} · `, h("button", { class: "link", onclick: () => invoke("open_repository") }, "GitHub")));
   }
 
-  // What is in use and what is happening, in one line next to the picker.
+  // What is in use and what is happening, in one line under the model name.
   function modelStatus() {
-    const p = S.prefs;
-    const active = p.customModelPath ? "your own file" : S.models.find((x) => x.id === p.model).title;
-    if (S.wantedModel) {
-      const pick = S.models.find((x) => x.id === S.wantedModel).title;
-      return S.download && S.download.model === S.wantedModel
-        ? status("warn", `Downloading ${pick}. Using ${active} until it is ready.`)
-        : status("warn", `${pick} will be downloaded in a moment. Using ${active}.`);
-    }
     const m = S.model;
     if (m.kind === "ready") return status("ok", "Ready");
     if (m.kind === "downloading") return status("warn", "Downloading. Transcribing is off until it is ready.");
     if (m.kind === "failed") return status("err", m.message);
-    return status("warn", "Not downloaded. Transcribing is off.");
+    return status("warn", "Not downloaded yet. Transcribing is off.");
   }
 
   function transcriptionPage() {
     const p = S.prefs;
     if (ui.ownModel === null) ui.ownModel = !!p.customModelPath;
-    const shown = S.wantedModel || p.model;
     const d = S.download;
     const frac = d && d.total > 0 ? Math.min(d.received / d.total, 1) : null;
     return h("div", { style: "display:flex;flex-direction:column;gap:18px" },
@@ -158,26 +137,26 @@
         h("div", { class: "row" },
           h("div", { class: "label" }, h("span", null, "Model"), h("span", { class: "sub small" }, modelStatus())),
           h("div", { class: "ctl" },
-            ui.ownModel ? h("span", { class: "sub" }, "Own file")
-              : h("select", { onchange: (e) => invoke("select_model", { model: e.target.value }) },
-                  S.models.map((x) => h("option", { value: x.id, selected: shown === x.id }, `${x.title} · ${size(x.bytes)}`))),
+            h("span", { class: "sub" }, ui.ownModel ? "Own file" : `${S.modelInfo.title} · ${size(S.modelInfo.bytes)}`),
             info("model",
-              h("p", null, "Transcription runs on this computer. Muesli only goes online to download a model you pick here. A new model is used from the next recording."),
+              h("p", null, "Transcription runs on this computer. Muesli only goes online to download the speech model once, and a small model that finds the parts of the audio that contain speech. Use your own file to transcribe with another model."),
               S.downloadError ? h("p", { class: "err-text" }, S.downloadError) : null,
               h("p", { class: "sub" }, "Models are stored in"),
               h("pre", { class: "snippet" }, S.modelsFolder),
               h("div", { class: "info-actions" },
-                h("button", { onclick: () => invoke("open_models_folder") }, `Show in ${platformName()}`),
-                h("button", { disabled: S.unusedModels === 0, onclick: () => invoke("remove_unused_models") },
-                  S.unusedModels === 0 ? "No unused models" : `Remove unused models (${size(S.unusedBytes)})`))))),
+                h("button", { onclick: () => invoke("open_models_folder") }, `Show in ${platformName()}`))))),
         d ? h("div", { class: "row", style: "flex-direction:column;align-items:stretch;gap:6px" },
           h("div", { class: "bar" + (frac == null ? " indeterminate" : "") }, h("i", { style: `width:${(frac || 0) * 100}%` })),
           h("div", { style: "display:flex;justify-content:space-between;align-items:center" },
-            h("span", { class: "sub small mono-digits" }, `Downloading ${d.model} · ${mb(d.received)} of ${mb(d.total)}`),
+            h("span", { class: "sub small mono-digits" }, `Downloading the speech model · ${mb(d.received)} of ${mb(d.total)}`),
             h("button", { onclick: () => invoke("cancel_download") }, "Cancel download"))) : null,
+        !d && (S.model.kind === "missing" || S.model.kind === "failed") && !ui.ownModel
+          ? row(S.model.kind === "failed" ? "Download failed" : "Speech model", null, h("button", { onclick: () => invoke("download_model") }, S.model.kind === "failed" ? "Try again" : "Download")) : null,
         row("Use my own model file", null, toggle(ui.ownModel, (v) => { ui.ownModel = v; if (!v && p.customModelPath) setPrefs({ customModelPath: null }); render(); })),
         ui.ownModel ? row("Model file", p.customModelPath || "Any whisper.cpp .bin file. None chosen yet.",
-          h("button", { onclick: async () => { const f = await invoke("choose_model_file"); if (f) setPrefs({ customModelPath: f }); } }, p.customModelPath ? "Change…" : "Choose File…")) : null),
+          h("button", { onclick: async () => { const f = await invoke("choose_model_file"); if (f) setPrefs({ customModelPath: f }); } }, p.customModelPath ? "Change…" : "Choose File…")) : null,
+        S.legacyModels > 0 ? row("Old model files", `From earlier versions, ${size(S.legacyBytes)}. Muesli no longer uses them.`,
+          h("button", { onclick: () => invoke("remove_legacy_models") }, "Remove")) : null),
       h("h2", { style: "font-size:15px" }, "Languages"),
       languageSettings(),
       foot("Muesli recognises which of these is spoken. Fewer languages means fewer mistakes."));
@@ -250,12 +229,11 @@
 
   // ---- onboarding assistant ----------------------------------------------------------------
   function steps() {
-    const all = ["model", "languages", "autoStop", "assistants", "microphone"];
+    const all = ["languages", "autoStop", "assistants", "microphone"];
     if (S.platform === "macos") all.push("systemAudio"); // Windows loopback needs no permission
     return all;
   }
   const META = {
-    model: ["⬇", "#5b7a3a", "Pick a speech model", "Muesli transcribes on your computer. It downloads the model once, then works offline."],
     languages: ["🌐", "#6b5a4b", "Which languages do you speak?", "Muesli works out which one is spoken. Fewer languages means fewer mistakes."],
     autoStop: ["⏹", "#6b5a4b", "Stop when the call ends?", "Muesli can notice that the other app let go of the microphone and save the transcript for you, or ask you first."],
     assistants: ["✦", "#3b2a1e", "Connect an AI assistant?", "Claude and other assistants can read your transcripts. They can never start or stop a recording."],
@@ -273,10 +251,7 @@
     const [icon, color, title, intro] = META[id];
     const p = S.prefs;
     let body;
-    if (id === "model") {
-      body = [S.models.map((m) => choice(`${m.title} · ${size(m.bytes)}`, m.summary + (m.id === "small" ? " (recommended)" : ""), ui.chosen.model && p.model === m.id, () => chooseModel(m.id))),
-        ui.chosen.model ? h("div", { style: "margin-top:8px" }, modelProgress()) : null];
-    } else if (id === "languages") body = languageChips();
+    if (id === "languages") body = languageChips();
     else if (id === "autoStop") body = [
       choice("Stop and save automatically", "Once the call has ended, the transcript is saved without asking", ui.chosen.autoStop && p.autoStop, () => { ui.chosen.autoStop = true; setPrefs({ autoStop: true }); }),
       choice("Ask me first", "Muesli shows a prompt and keeps recording until you say so", ui.chosen.autoStop && !p.autoStop, () => { ui.chosen.autoStop = true; setPrefs({ autoStop: false }); }),
@@ -304,18 +279,11 @@
         h("div", { class: "dots" }, list.map((_, i) => h("i", { class: i === ui.step ? "on" : "" }))),
         ui.step > 0 ? h("button", { class: "big", onclick: () => { ui.step--; render(); } }, "Back") : null,
         needsAsk ? h("button", { class: "big", onclick: () => advance(list) }, "Skip") : null,
-        h("button", { class: "primary big", disabled: id === "model" && !ui.chosen.model,
+        h("button", { class: "primary big",
           onclick: () => (needsAsk ? askPermission(id) : advance(list)) },
           needsAsk ? `Allow ${id === "microphone" ? "Microphone" : "System Audio"}  →` : last ? "Start using Muesli  ✓" : "Continue  →")));
   }
 
-  async function chooseModel(id) {
-    ui.chosen.model = true;
-    render();
-    await setPrefs({ model: id });
-    // Starting a download replaces one that is still running for another model.
-    if (!S.models.find((x) => x.id === id).installed) await invoke("download_model", { model: id });
-  }
   async function askPermission(id) {
     try { await invoke("request_permission", { kind: id }); ui.access[id] = "granted"; } catch { ui.access[id] = "failed"; }
     render();

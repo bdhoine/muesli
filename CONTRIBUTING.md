@@ -26,7 +26,7 @@ macos/build.sh
 open macos/Muesli.app
 ```
 
-On first launch Muesli downloads the Small model into `~/Library/Application Support/Muesli/`. Set `MUESLI_SUPPORT_DIR` to keep a test copy elsewhere.
+On first launch Muesli downloads the speech model (Large v3 Turbo, q5_0, 574 MB) and the voice activity model into `~/Library/Application Support/Muesli/`. Set `MUESLI_SUPPORT_DIR` to keep a test copy elsewhere.
 
 `build.sh` runs `swift build -c release` and `cargo build --release -p muesli-mcp --target aarch64-apple-darwin` (the MCP server is the Rust binary from `windows/crates/mcp`, shared with the Windows app, so a Rust toolchain is required), assembles `Muesli.app`, copies `muesli-mcp` next to the main executable, builds `Muesli.icns` from the iconset, packs the Claude Desktop extension `Muesli.mcpb` (manifest from `muesli-mcp --mcpb-manifest`, the 512 px icon and a signed copy of `muesli-mcp`) into `Contents/Resources`, and signs the bundle. Muesli needs a real bundle for notifications and permissions, so run the app, not the bare executable.
 
@@ -90,7 +90,7 @@ The app never opens a socket and nothing is exposed to the network. Everything a
 | Path | Written by | Contents |
 |---|---|---|
 | `~/Documents/MeetingTranscripts/` (configurable) | app | The `.md` and `.json` pair per finished meeting |
-| `~/Library/Application Support/Muesli/ggml-*.bin` | the app (model download) or you | Whisper model |
+| `~/Library/Application Support/Muesli/ggml-*.bin` | the app (model download) or you | Whisper speech model and the Silero voice activity model; files from earlier versions (`ggml-small.bin`, `ggml-medium.bin`, `ggml-large-v3.bin`) can be removed in Settings |
 | `…/Muesli/meetings/<id>.json` | app | Canonical copy of every meeting, rewritten during recording |
 | `…/Muesli/state.json` | app | Current state and heartbeat, rewritten on change and every 10 s |
 | `…/Muesli/config.json` | app | Preferences shared with `muesli-mcp` |
@@ -111,7 +111,7 @@ Environment variables: `TRANSCRIPT_DIR` overrides the transcripts folder; `MUESL
 | `macos/Sources/Muesli/SettingsView.swift` | Settings window (sidebar: General, Transcription, AI Assistants), brand accent colours |
 | `macos/Sources/MuesliCore/AssistantSetup.swift` | Setup command or config snippet per MCP client (Claude Code, Codex, Gemini CLI, VS Code, Cursor, other) |
 | `macos/Sources/Muesli/Bridge.swift` | Claude Desktop extension status and install, or the `Muesli` entry in `claude_desktop_config.json` for accounts that block extensions |
-| `macos/Sources/Muesli/OnboardingView.swift` | First-launch setup window (model, languages, assistants, permissions) |
+| `macos/Sources/Muesli/OnboardingView.swift` | First-launch setup window (languages, assistants, permissions) |
 | `macos/Sources/Muesli/Permissions.swift` | Microphone and System Audio Recording checks before recording |
 | `macos/Sources/MuesliCore/` | Swift wrappers around the Rust core (data types, paths, transcript files, meeting store and preferences come from `windows/crates/ffi`), plus transcription languages, audio chunking, detection rules, Claude Desktop extension manifest and install detection (`ClaudeDesktopExtension.swift`), MCP client setup snippets (`AssistantSetup.swift`) |
 | `windows/crates/mcp/` | The MCP server and the `muesli-mcp` executable (Rust, shared by both apps): tools, stdio transport, audit log, `doctor` |
@@ -150,7 +150,7 @@ The Windows app is written in Rust with Tauri. It also builds and runs on macOS,
 |---|---|
 | `crates/core` | Models, preferences, `state.json`, languages, chunker, detection logic, store (append, finish, recover), editor, assistant setup and Claude Desktop config. No OS code. |
 | `crates/mcp` | `muesli-mcp`, the MCP server (stdio) |
-| `crates/whisper` | Model download and validation, whisper.cpp transcriber (`whisper-rs`) |
+| `crates/whisper` | Model download and validation (`ModelManager`, used by both apps), whisper.cpp transcriber (`whisper-rs`) with voice activity detection |
 | `crates/audio` | Capture with `cpal`: microphone, WASAPI loopback (Windows), Core Audio tap (macOS). Resampling with `rubato`. |
 | `crates/detect` | Samplers: Core Audio process list (macOS), WASAPI sessions (Windows), Teams process |
 | `crates/system` | Dealings with Windows that need no audio: toasts with answer buttons for the meeting prompts, and the permission status shown in Settings |
@@ -191,7 +191,7 @@ Signing with a real certificate avoids this. `build.sh` uses the first "Apple De
 ## Conventions
 
 - **Brand.** Follow [assets/brand/BRAND.md](assets/brand/BRAND.md) for the logo, colours, icons and tone. Use the asset files as they are; do not redraw or recolour them.
-- **Minimal network.** The only request is the Whisper model download from Hugging Face (`ModelController`). Nothing listens on a port and `muesli-mcp` speaks stdio only.
+- **Minimal network.** The only requests are the downloads of the Whisper model and the voice activity model from Hugging Face (the Rust `ModelManager`). Nothing listens on a port and `muesli-mcp` speaks stdio only.
 - **Audio is never written to disk.**
 - **Dependencies.** Swift has none: everything else is the Rust workspace (`Cargo.lock` pins it). Avoid adding more.
 - **Pull requests.** Keep them focused, add tests for logic in `MuesliCore`, and run `swift test` before opening one.

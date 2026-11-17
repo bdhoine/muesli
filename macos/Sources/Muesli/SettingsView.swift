@@ -335,25 +335,12 @@ struct ModelSection: View {
     let state: AppState
     @State private var ownModel = false
 
-    private var picked: Binding<WhisperModel> {
-        Binding(get: { model.shownModel }, set: { model.select($0) })
-    }
-
     var body: some View {
         Section {
             LabeledContent {
                 HStack(spacing: 8) {
-                    if ownModel {
-                        Text("Own file").foregroundStyle(.secondary)
-                    } else {
-                        Picker("Model", selection: picked) {
-                            ForEach(WhisperModel.allCases) { m in
-                                Text("\(m.title) · \(Self.size(m.approximateBytes))").tag(m)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
+                    Text(ownModel ? "Own file" : "\(SpeechModel.info.title) · \(Self.size(Int64(SpeechModel.info.approximateBytes)))")
+                        .foregroundStyle(.secondary)
                     InfoButton { info }
                 }
             } label: {
@@ -364,11 +351,21 @@ struct ModelSection: View {
                 }
             }
 
-            if let downloading = model.downloading {
-                ModelProgressView(model: downloading, received: model.received, total: model.total)
+            if case .downloading(let received, let total) = model.phase {
+                ModelProgressView(title: "the speech model", received: received, total: total)
                 HStack {
                     Spacer()
                     Button("Cancel Download") { model.cancel() }
+                }
+            } else if case .failed = model.phase, draft.customModelURL == nil || model.lastError?.contains("not found") == false {
+                HStack {
+                    Spacer()
+                    Button("Try Again") { model.ensureReady() }
+                }
+            } else if case .missing = model.phase {
+                HStack {
+                    Spacer()
+                    Button("Download") { model.ensureReady() }
                 }
             }
 
@@ -384,6 +381,15 @@ struct ModelSection: View {
                         .truncationMode(.middle)
                 }
             }
+
+            if model.legacy.files > 0 {
+                LabeledContent {
+                    Button("Remove") { model.removeLegacy() }
+                } label: {
+                    Text("Old model files")
+                    Text("From earlier versions, \(Self.size(Int64(model.legacy.bytes))). Muesli no longer uses them.")
+                }
+            }
         }
         .onAppear { ownModel = draft.customModelURL != nil }
         .onChange(of: ownModel) { _, on in if !on { draft.customModelPath = nil } }
@@ -392,39 +398,24 @@ struct ModelSection: View {
 
     /// One line that says what is in use and what is happening.
     private var status: (health: StatusRow.Health, text: String) {
-        if let pick = model.wanted {
-            let active = draft.customModelURL == nil ? draft.model.title : "your own file"
-            return model.downloading == pick
-                ? (.warning, "Downloading \(pick.title). Using \(active) until it is ready.")
-                : (.warning, "\(pick.title) will be downloaded in a moment. Using \(active).")
-        }
         switch model.phase {
         case .ready: return (.ok, "Ready")
-        case .downloading(let m, _, _): return (.warning, "Downloading \(m.title). Transcribing is off until it is ready.")
-        case .missing(let m): return (.warning, "\(m.title) is not downloaded. Transcribing is off.")
+        case .downloading: return (.warning, "Downloading. Transcribing is off until it is ready.")
+        case .missing: return (.warning, "Not downloaded yet. Transcribing is off.")
         case .failed(let message): return (.error, message)
         }
     }
 
     @ViewBuilder private var info: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Transcription runs on this Mac. Muesli only goes online to download a model you pick here. A new model is used from the next recording.")
+            Text("Transcription runs on this Mac. Muesli only goes online to download the speech model once, and a small model that finds the parts of the audio that contain speech. Use your own file to transcribe with another model.")
                 .fixedSize(horizontal: false, vertical: true)
-            if let error = model.lastError {
-                Text(error).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
-            }
             Divider()
             Text("Models are stored in").foregroundStyle(.secondary)
             Text((Paths.support.path as NSString).abbreviatingWithTildeInPath)
                 .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
-            HStack {
-                Button("Show in Finder") { NSWorkspace.shared.open(Paths.support) }
-                Button(model.unused.models.isEmpty ? "No Unused Models" : "Remove Unused Models (\(Self.size(model.unused.bytes)))") {
-                    model.removeUnused()
-                }
-                .disabled(model.unused.models.isEmpty)
-            }
+            Button("Show in Finder") { NSWorkspace.shared.open(Paths.support) }
         }
     }
 
@@ -457,14 +448,14 @@ struct InfoButton<Content: View>: View {
 /// The download bar with its caption, shared by Settings and onboarding. The caption counts whole
 /// megabytes in fixed-width digits, so it changes once per MB and never changes width.
 struct ModelProgressView: View {
-    let model: WhisperModel
+    let title: String
     let received: Int64
     let total: Int64
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ProgressView(value: total > 0 ? min(Double(received) / Double(total), 1) : nil)
-            Text("Downloading \(model.title) · \(received / 1_000_000) of \(total / 1_000_000) MB")
+            Text("Downloading \(title) · \(received / 1_000_000) of \(total / 1_000_000) MB")
                 .font(.callout).foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)

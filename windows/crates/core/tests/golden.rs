@@ -4,7 +4,7 @@
 
 use muesli_core::json::to_pretty_sorted;
 use muesli_core::store::Store;
-use muesli_core::{AppStatus, Meeting, MeetingState, Preferences, WhisperModel};
+use muesli_core::{AppStatus, Meeting, MeetingState, Preferences};
 
 fn fixture(name: &str) -> String {
     std::fs::read_to_string(format!("{}/../../../fixtures/core/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
@@ -61,7 +61,6 @@ fn swift_config_loads_and_reserialises_to_the_same_data() {
     let text = fixture("config.json");
     let p: Preferences = serde_json::from_str(&text).unwrap();
     assert!(p.mcp_enabled);
-    assert_eq!(p.model, WhisperModel::Medium);
     assert_eq!(p.custom_model_path.as_deref(), Some("/models/x.bin"));
     assert_eq!(p.languages.as_deref(), Some(&["nl".to_string(), "en".to_string()][..]));
     assert!(p.onboarding_done);

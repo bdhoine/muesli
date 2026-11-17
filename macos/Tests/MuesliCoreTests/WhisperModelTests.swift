@@ -2,48 +2,44 @@ import XCTest
 @testable import MuesliCore
 
 final class WhisperModelTests: IsolatedTestCase {
-    func testDefaultsToSmallInSupportFolder() {
+    func testDefaultsToTheOneFixedModelInTheSupportFolder() {
         let p = Preferences()
-        XCTAssertEqual(p.model, .small)
-        XCTAssertEqual(p.modelURL, Paths.support.appendingPathComponent("ggml-small.bin"))
+        XCTAssertEqual(p.modelURL, Paths.support.appendingPathComponent("ggml-large-v3-turbo-q5_0.bin"))
+        XCTAssertEqual(p.vadModelURL, Paths.support.appendingPathComponent("ggml-silero-v5.1.2.bin"))
+        XCTAssertEqual(SpeechModel.info.fileName, "ggml-large-v3-turbo-q5_0.bin")
     }
 
-    func testCustomPathTakesPrecedence() {
+    func testCustomPathReplacesTheSpeechModelButNotTheVoiceModel() {
         var p = Preferences()
-        p.model = .large
         p.customModelPath = "/tmp/my-model.bin"
         XCTAssertEqual(p.modelURL.path, "/tmp/my-model.bin")
+        XCTAssertEqual(p.vadModelURL, Paths.support.appendingPathComponent("ggml-silero-v5.1.2.bin"))
         p.customModelPath = ""
-        XCTAssertEqual(p.modelURL, WhisperModel.large.url)
+        XCTAssertEqual(p.modelURL, Paths.support.appendingPathComponent(SpeechModel.info.fileName))
     }
 
-    func testModelFilesAndURLs() {
-        XCTAssertEqual(WhisperModel.medium.fileName, "ggml-medium.bin")
-        XCTAssertEqual(WhisperModel.large.fileName, "ggml-large-v3.bin")
-        for m in WhisperModel.allCases {
-            XCTAssertTrue(m.downloadURL.absoluteString.hasSuffix(m.fileName))
-            XCTAssertLessThan(m.minimumValidBytes, m.approximateBytes)
-        }
-    }
-
-    func testOldConfigWithoutModelDecodes() throws {
-        let p = try preferences(fromJSON: #"{"autoStop":true}"#)
+    func testTheOldModelChoiceInConfigIsIgnored() throws {
+        let p = try preferences(fromJSON: #"{"model":"medium","autoStop":true}"#)
         XCTAssertTrue(p.autoStop)
-        XCTAssertEqual(p.model, .small)
         XCTAssertNil(p.customModelPath)
+        p.save()
+        XCTAssertFalse(try String(contentsOf: Paths.config, encoding: .utf8).contains("\"model\""))
     }
 
-    func testUnknownModelFallsBackToSmall() throws {
-        let p = try preferences(fromJSON: #"{"model":"huge"}"#)
-        XCTAssertEqual(p.model, .small)
-    }
-
-    func testModelSettingsRoundTrip() {
+    func testCustomModelSettingRoundTrips() {
         var p = Preferences()
-        p.model = .medium
         p.customModelPath = "/x/y.bin"
         p.save()
         XCTAssertEqual(Preferences.load(), p)
+    }
+
+    func testOldModelFilesAreListedAndRemoved() throws {
+        XCTAssertEqual(SpeechModel.legacy.files, 0)
+        try Data(count: 10).write(to: Paths.support.appendingPathComponent("ggml-medium.bin"))
+        XCTAssertEqual(SpeechModel.legacy.files, 1)
+        XCTAssertEqual(SpeechModel.legacy.bytes, 10)
+        XCTAssertEqual(SpeechModel.removeLegacy(), 1)
+        XCTAssertEqual(SpeechModel.legacy.files, 0)
     }
 }
 

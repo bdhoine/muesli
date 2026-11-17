@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::json::{self, to_pretty_sorted};
 use crate::languages;
 use crate::paths::Paths;
-use crate::whisper_model::WhisperModel;
+use crate::whisper_model::{DEFAULT_MODEL, VAD_MODEL};
 
 pub const RECENT_LIMIT_OPTIONS: [i32; 4] = [0, 3, 5, 10];
 pub const MAX_RECENT_LIMIT: i32 = 10;
@@ -25,8 +25,6 @@ pub struct Preferences {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub languages: Option<Vec<String>>,
     pub recent_limit: i32,
-    #[serde(deserialize_with = "lenient_model")]
-    pub model: WhisperModel,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_model_path: Option<String>,
     #[serde(default = "done_when_missing")]
@@ -44,11 +42,6 @@ fn done_when_missing() -> bool {
     true
 }
 
-fn lenient_model<'de, D: Deserializer<'de>>(d: D) -> Result<WhisperModel, D::Error> {
-    let value = String::deserialize(d)?;
-    Ok(WhisperModel::from_config(&value))
-}
-
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -58,7 +51,6 @@ impl Default for Preferences {
             end_delay_seconds: 60,
             languages: None,
             recent_limit: 5,
-            model: WhisperModel::Small,
             custom_model_path: None,
             onboarding_done: false,
             transcripts_folder: None,
@@ -110,9 +102,14 @@ impl Preferences {
         }
     }
 
-    /// The file Whisper will load: the custom model if set, else the selected download.
+    /// The file Whisper will load: the custom model if set, else the default download.
     pub fn model_path(&self, paths: &Paths) -> PathBuf {
-        self.custom_model_url().unwrap_or_else(|| self.model.path(paths))
+        self.custom_model_url().unwrap_or_else(|| DEFAULT_MODEL.path(paths))
+    }
+
+    /// The voice activity model. Always the downloaded one, also with a custom speech model.
+    pub fn vad_model_path(&self, paths: &Paths) -> PathBuf {
+        VAD_MODEL.path(paths)
     }
 
     /// A missing or unreadable file gives the defaults (and a first-launch onboarding).

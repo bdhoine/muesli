@@ -5,7 +5,8 @@ mod common;
 use common::Env;
 use muesli_core::languages;
 use muesli_core::status::{AppStatus, LastReady};
-use muesli_core::{Preferences, WhisperModel};
+use muesli_core::whisper_model::{legacy_models, remove_legacy_models, DEFAULT_MODEL, LEGACY_FILES, VAD_MODEL};
+use muesli_core::Preferences;
 
 #[test]
 fn defaults_are_safe() {
@@ -15,7 +16,6 @@ fn defaults_are_safe() {
     assert!(!p.auto_stop);
     assert_eq!(p.end_delay_seconds, 60);
     assert_eq!(p.recent_limit, 5);
-    assert_eq!(p.model, WhisperModel::Small);
     assert!(p.languages.is_none());
     assert!(!p.onboarding_done);
 }
@@ -35,21 +35,27 @@ fn config_from_before_onboarding_counts_as_done() {
     let p: Preferences = serde_json::from_str(r#"{"autoStop":true}"#).unwrap();
     assert!(p.auto_stop);
     assert!(p.onboarding_done);
-    assert_eq!(p.model, WhisperModel::Small);
     assert!(p.custom_model_path.is_none());
 }
 
 #[test]
-fn unknown_model_falls_back_to_small() {
-    let p: Preferences = serde_json::from_str(r#"{"model":"huge"}"#).unwrap();
-    assert_eq!(p.model, WhisperModel::Small);
+fn the_old_model_choice_in_config_json_is_ignored_and_dropped() {
+    let env = Env::new();
+    std::fs::create_dir_all(&env.paths.support).unwrap();
+    std::fs::write(env.paths.config(), r#"{"model":"medium","autoStop":true,"onboardingDone":true}"#).unwrap();
+    let p = Preferences::load(&env.paths);
+    assert!(p.auto_stop && p.onboarding_done);
+    p.save(&env.paths).unwrap();
+    assert!(!std::fs::read_to_string(env.paths.config()).unwrap().contains("\"model\""));
+    // Any other value, also one that is not even text, must not lose the rest of the file.
+    std::fs::write(env.paths.config(), r#"{"model":null,"autoStop":true}"#).unwrap();
+    assert!(Preferences::load(&env.paths).auto_stop);
 }
 
 #[test]
 fn preferences_round_trip() {
     let env = Env::new();
     let mut p = Preferences::default();
-    p.model = WhisperModel::Medium;
     p.custom_model_path = Some("/x/y.bin".into());
     p.languages = Some(vec!["fr".into()]);
     p.onboarding_done = true;
@@ -61,22 +67,35 @@ fn preferences_round_trip() {
 fn model_path_prefers_the_custom_file() {
     let env = Env::new();
     let mut p = Preferences::default();
-    p.model = WhisperModel::Large;
-    assert_eq!(p.model_path(&env.paths), env.paths.support.join("ggml-large-v3.bin"));
+    assert_eq!(p.model_path(&env.paths), env.paths.support.join("ggml-large-v3-turbo-q5_0.bin"));
     p.custom_model_path = Some("/tmp/my-model.bin".into());
     assert_eq!(p.model_path(&env.paths).to_str(), Some("/tmp/my-model.bin"));
+    assert_eq!(p.vad_model_path(&env.paths), env.paths.support.join("ggml-silero-v5.1.2.bin")); // not custom
     p.custom_model_path = Some(String::new());
-    assert_eq!(p.model_path(&env.paths), WhisperModel::Large.path(&env.paths));
+    assert_eq!(p.model_path(&env.paths), DEFAULT_MODEL.path(&env.paths));
 }
 
 #[test]
 fn model_files_and_urls() {
-    assert_eq!(WhisperModel::Medium.file_name(), "ggml-medium.bin");
-    assert_eq!(WhisperModel::Large.file_name(), "ggml-large-v3.bin");
-    for m in WhisperModel::ALL {
-        assert!(m.download_url().ends_with(m.file_name()));
-        assert!(m.minimum_valid_bytes() < m.approximate_bytes());
+    for m in [DEFAULT_MODEL, VAD_MODEL] {
+        assert!(m.url.ends_with(m.file_name));
+        assert!(m.minimum_valid_bytes() < m.approximate_bytes);
     }
+    assert_eq!(DEFAULT_MODEL.approximate_bytes, 574_041_195);
+}
+
+#[test]
+fn old_model_files_are_found_and_removed_on_request() {
+    let env = Env::new();
+    std::fs::create_dir_all(&env.paths.models).unwrap();
+    assert_eq!(legacy_models(&env.paths), (vec![], 0));
+    std::fs::write(env.paths.models.join(LEGACY_FILES[0]), vec![0u8; 10]).unwrap();
+    std::fs::write(env.paths.models.join(LEGACY_FILES[2]), vec![0u8; 5]).unwrap();
+    std::fs::write(env.paths.models.join("ggml-custom.bin"), b"mine").unwrap(); // not ours to delete
+    assert_eq!(legacy_models(&env.paths).1, 15);
+    assert_eq!(remove_legacy_models(&env.paths), 2);
+    assert!(env.paths.models.join("ggml-custom.bin").exists());
+    assert_eq!(legacy_models(&env.paths), (vec![], 0));
 }
 
 #[test]
@@ -165,10 +184,10 @@ fn activity_maps_to_state_json() {
 #[test]
 fn model_is_installed_only_when_large_enough() {
     let env = Env::new();
-    assert!(!WhisperModel::Small.is_installed(&env.paths));
+    assert!(!DEFAULT_MODEL.is_installed(&env.paths));
     std::fs::create_dir_all(&env.paths.models).unwrap();
-    std::fs::write(WhisperModel::Small.path(&env.paths), b"tiny").unwrap();
-    assert!(!WhisperModel::Small.is_installed(&env.paths));
+    std::fs::write(DEFAULT_MODEL.path(&env.paths), b"tiny").unwrap();
+    assert!(!DEFAULT_MODEL.is_installed(&env.paths));
     assert_eq!("ready".parse::<muesli_core::MeetingState>(), Ok(muesli_core::MeetingState::Ready));
     assert!("bogus".parse::<muesli_core::MeetingState>().is_err());
     let id = muesli_core::models::new_id();

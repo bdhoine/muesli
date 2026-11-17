@@ -34,23 +34,6 @@ final class SettingsLogicTests: IsolatedTestCase {
         XCTAssertEqual(Preferences.load().savedLanguages, ["fr"])
     }
 
-    func testModelSwitchDecision() {
-        let d = ModelSwitch.decide
-        XCTAssertEqual(d(.small, .small, [.small], nil), .nothing)
-        XCTAssertEqual(d(.small, .medium, [.small, .medium], nil), .switchNow)
-        XCTAssertEqual(d(.small, .medium, [.small], nil), .download)
-        XCTAssertEqual(d(.small, .medium, [.small], .medium), .wait)
-        XCTAssertEqual(d(.small, .medium, [.small], .large), .download)   // another download is replaced
-    }
-
-    func testUnusedModelsAreTheInstalledOnesThatAreNotActive() throws {
-        try Data(count: 10).write(to: WhisperModel.medium.url)
-        let unused = WhisperModel.unused(active: .small, installed: [.small, .medium])
-        XCTAssertEqual(unused.models, [.medium])
-        XCTAssertEqual(unused.bytes, 10)
-        XCTAssertTrue(WhisperModel.unused(active: .small, installed: [.small]).models.isEmpty)
-    }
-
     func testClaudeCountsAsMissingWhenTheAppIsNotInstalled() throws {
         let claude = dir.appendingPathComponent("Claude")
         try FileManager.default.createDirectory(at: claude, withIntermediateDirectories: true)   // leftover data folder

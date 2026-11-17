@@ -5,18 +5,14 @@
   const listeners = [];
   const state = {
     version: "0.0.1", platform: "windows", status: { kind: "idle" },
-    prefs: { mcpEnabled: false, claudeDesktopConfigEntry: false, autoStop: false, endDelaySeconds: 60, recentLimit: 5, model: "small", onboardingDone: false },
+    prefs: { mcpEnabled: false, claudeDesktopConfigEntry: false, autoStop: false, endDelaySeconds: 60, recentLimit: 5, onboardingDone: false },
     effectiveLanguages: ["nl", "en"], systemLanguages: ["nl", "en"],
     supportedLanguages: ["en", "nl", "fr", "de", "es", "it", "pt", "ja", "zh"].map((code) => ({ code, name: code })),
-    model: { kind: "ready", path: "C:\\Users\\me\\AppData\\Local\\Muesli\\ggml-small.bin" },
-    wantedModel: null, download: null, downloadError: null,
-    modelsFolder: "C:\\Users\\me\\AppData\\Local\\Muesli", unusedModels: 1, unusedBytes: 1533763059,
+    model: { kind: "ready", path: "C:\\Users\\me\\AppData\\Local\\Muesli\\ggml-large-v3-turbo-q5_0.bin" },
+    modelInfo: { title: "Large v3 Turbo", summary: "Accurate and fast, runs on your computer", bytes: 574041195 },
+    download: null, downloadError: null,
+    modelsFolder: "C:\\Users\\me\\AppData\\Local\\Muesli", legacyModels: 2, legacyBytes: 3583365450,
     system: { microphone: "allowed", notifications: "denied", systemAudioNeedsPermission: false, startAtLogin: true },
-    models: [
-      { id: "small", title: "Small", summary: "Good balance of speed and accuracy", bytes: 487601967, installed: true },
-      { id: "medium", title: "Medium", summary: "More accurate, slower", bytes: 1533763059, installed: false },
-      { id: "large", title: "Large", summary: "Most accurate, slowest, needs plenty of memory", bytes: 3095033483, installed: false },
-    ],
     recent: [], transcriptsFolderIsCustom: false, transcriptsFolderLocked: false, transcriptsFolder: "C:\\Users\\me\\Documents\\MeetingTranscripts",
     assistants: { helper: "C:\\Program Files\\Muesli\\muesli-mcp.exe", configStatus: "",
       extension: { state: "notInstalled", version: null, bundled: true },
@@ -24,13 +20,15 @@
   };
   const emit = () => listeners.forEach((f) => f({}));
   let timer = null;
-  function download(id) {
-    const m = state.models.find((x) => x.id === id);
-    state.model = { kind: "downloading", model: id, received: 0, total: m.bytes };
+  function download() {
+    const total = state.modelInfo.bytes;
+    state.model = { kind: "downloading", received: 0, total };
+    state.download = { received: 0, total };
     clearInterval(timer);
     timer = setInterval(() => {
       state.model.received += 9_000_000 + Math.floor(Math.random() * 4_000_000);
-      if (state.model.received >= m.bytes) { clearInterval(timer); m.installed = true; state.model = { kind: "ready", path: "C:\\Users\\me\\AppData\\Roaming\\Muesli\\ggml-small.bin" }; }
+      state.download.received = state.model.received;
+      if (state.model.received >= total) { clearInterval(timer); state.download = null; state.model = { kind: "ready", path: "C:\\Users\\me\\AppData\\Local\\Muesli\\ggml-large-v3-turbo-q5_0.bin" }; }
       emit();
     }, 120);
     emit();
@@ -39,31 +37,15 @@
     get_state: () => JSON.parse(JSON.stringify(state)),
     get_prompt: () => ({ kind: "start", title: "Looks like a meeting: Weekly sync", body: "Detected via calendar. Start transcribing?" }),
     update_prefs: ({ prefs }) => { state.prefs = prefs; state.effectiveLanguages = prefs.languages || state.systemLanguages; state.transcriptsFolderIsCustom = !!prefs.transcriptsFolder; state.transcriptsFolder = prefs.transcriptsFolder || "C:\\Users\\me\\Documents\\MeetingTranscripts"; setTimeout(emit); },
-    download_model: ({ model }) => download(model),
-    select_model: ({ model }) => {
-      if (model === state.prefs.model) { state.wantedModel = null; clearInterval(timer); state.download = null; return emit(); }
-      state.wantedModel = model; emit();
-      setTimeout(() => {
-        if (state.wantedModel !== model) return;
-        const m = state.models.find((x) => x.id === model);
-        state.download = { model, received: 0, total: m.bytes };
-        clearInterval(timer);
-        timer = setInterval(() => {
-          state.download.received += 40_000_000;
-          if (state.download.received >= m.bytes) { clearInterval(timer); m.installed = true; state.prefs.model = model; state.wantedModel = null; state.download = null; }
-          emit();
-        }, 150);
-        emit();
-      }, 1500);
-    },
+    download_model: () => download(),
     use_system_languages: ({ on }) => {
       if (on) { state.prefs.savedLanguages = state.prefs.languages; state.prefs.languages = null; }
       else state.prefs.languages = state.prefs.savedLanguages || state.systemLanguages;
       state.effectiveLanguages = state.prefs.languages || state.systemLanguages; emit();
     },
     set_start_at_login: ({ on }) => { state.system.startAtLogin = on; emit(); },
-    remove_unused_models: () => { state.unusedModels = 0; state.unusedBytes = 0; emit(); },
-    cancel_download: () => { clearInterval(timer); state.download = null; state.wantedModel = null; if (state.model.kind !== "ready") state.model = { kind: "missing", model: state.prefs.model }; emit(); },
+    remove_legacy_models: () => { state.legacyModels = 0; state.legacyBytes = 0; emit(); },
+    cancel_download: () => { clearInterval(timer); state.download = null; if (state.model.kind !== "ready") state.model = { kind: "missing" }; emit(); },
     request_permission: () => new Promise((ok) => setTimeout(ok, 400)),
     choose_model_file: () => "C:\\models\\mine.bin",
     choose_transcripts_folder: () => "D:\\Transcripts",

@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use muesli_core::assistants::{AssistantClient, ExtensionState};
 use muesli_core::store::Store;
-use muesli_core::{languages, DetectedMeeting, Preferences, WhisperModel, VERSION};
+use muesli_core::whisper_model::DEFAULT_MODEL;
+use muesli_core::{languages, DetectedMeeting, Preferences, VERSION};
 use muesli_whisper::Phase;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -37,14 +38,14 @@ pub struct UiState {
     system_languages: Vec<String>,
     supported_languages: Vec<Language>,
     model: ModelPhase,
-    /// The model picked in Settings that is not active yet.
-    wanted_model: Option<WhisperModel>,
+    /// The one speech model every install uses (Settings shows it; another needs an own file).
+    model_info: ModelInfo,
     download: Option<Download>,
     download_error: Option<String>,
-    models: Vec<ModelInfo>,
     models_folder: PathBuf,
-    unused_models: usize,
-    unused_bytes: u64,
+    /// Model files from earlier versions that can be removed, and the space they take.
+    legacy_models: usize,
+    legacy_bytes: u64,
     system: SystemStatus,
     recent: Vec<Recent>,
     transcripts_folder: PathBuf,
@@ -57,7 +58,6 @@ pub struct UiState {
 
 #[derive(Serialize)]
 struct Download {
-    model: WhisperModel,
     received: u64,
     total: u64,
 }
@@ -83,8 +83,8 @@ struct Language {
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 enum ModelPhase {
-    Missing { model: WhisperModel },
-    Downloading { model: WhisperModel, received: u64, total: u64 },
+    Missing,
+    Downloading { received: u64, total: u64 },
     Ready { path: PathBuf },
     Failed { message: String },
 }
@@ -92,8 +92,8 @@ enum ModelPhase {
 impl From<Phase> for ModelPhase {
     fn from(phase: Phase) -> Self {
         match phase {
-            Phase::Missing(model) => Self::Missing { model },
-            Phase::Downloading { model, received, total } => Self::Downloading { model, received, total },
+            Phase::Missing => Self::Missing,
+            Phase::Downloading { received, total } => Self::Downloading { received, total },
             Phase::Ready(path) => Self::Ready { path },
             Phase::Failed(message) => Self::Failed { message },
         }
@@ -103,11 +103,9 @@ impl From<Phase> for ModelPhase {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ModelInfo {
-    id: WhisperModel,
     title: &'static str,
     summary: &'static str,
     bytes: u64,
-    installed: bool,
 }
 
 #[derive(Serialize)]
@@ -173,7 +171,7 @@ pub fn get_state(handle: AppHandle, app: Shared) -> UiState {
     use tauri_plugin_autostart::ManagerExt;
     let prefs = app.prefs();
     let paths = app.paths();
-    let (unused, unused_bytes) = muesli_core::whisper_model::unused_models(prefs.model, &paths);
+    let (legacy, legacy_bytes) = app.model.legacy_models();
     let defaults = languages::system_defaults();
     UiState {
         version: VERSION,
@@ -183,28 +181,18 @@ pub fn get_state(handle: AppHandle, app: Shared) -> UiState {
         system_languages: defaults,
         supported_languages: languages::SUPPORTED.iter().map(|code| Language { code, name: languages::english_name(code) }).collect(),
         model: app.model.phase().into(),
-        wanted_model: app.model.wanted(),
-        download: app.model.download_progress().map(|(model, received, total)| Download { model, received, total }),
+        model_info: ModelInfo { title: DEFAULT_MODEL.title, summary: DEFAULT_MODEL.summary, bytes: DEFAULT_MODEL.approximate_bytes },
+        download: app.model.download_progress().map(|(received, total)| Download { received, total }),
         download_error: app.model.last_error(),
         models_folder: paths.models.clone(),
-        unused_models: unused.len(),
-        unused_bytes,
+        legacy_models: legacy.len(),
+        legacy_bytes,
         system: SystemStatus {
             microphone: status::microphone().as_str(),
             notifications: status::notifications(crate::prompt::APP_ID).as_str(),
             system_audio_needs_permission: cfg!(target_os = "macos"),
             start_at_login: handle.autolaunch().is_enabled().unwrap_or(false),
         },
-        models: WhisperModel::ALL
-            .iter()
-            .map(|m| ModelInfo {
-                id: *m,
-                title: m.title(),
-                summary: m.summary(),
-                bytes: m.approximate_bytes(),
-                installed: app.model.is_installed(*m),
-            })
-            .collect(),
         recent: Store::recent_transcripts(&app.paths().transcripts, prefs.effective_recent_limit() as usize)
             .into_iter()
             .map(|r| Recent { minutes: r.duration_minutes(), started_at: r.started_at.to_rfc3339(), title: r.title, path: r.path })
@@ -223,6 +211,10 @@ pub fn update_prefs(handle: AppHandle, app: Shared, prefs: Preferences) {
     let _ = prefs.save(&app.paths());
     app.model.apply(prefs.clone());
     *app.prefs.lock().unwrap() = prefs.clone();
+    if !app.model.is_ready() && !app.model.is_downloading() && app.model.last_error().is_none() {
+        let c = ctx(&handle, &app);
+        app.model.ensure_ready(move || c.changed()); // e.g. back from an own model file to the download
+    }
     if prefs.mcp_enabled != before.mcp_enabled || prefs.claude_desktop_config_entry != before.claude_desktop_config_entry {
         bridge::apply(&app, &prefs);
     }
@@ -230,22 +222,16 @@ pub fn update_prefs(handle: AppHandle, app: Shared, prefs: Preferences) {
 }
 
 #[tauri::command]
-pub fn download_model(handle: AppHandle, app: Shared, model: WhisperModel) {
+pub fn download_model(handle: AppHandle, app: Shared) {
     let c = ctx(&handle, &app);
-    app.model.download(model, move || c.changed());
+    app.model.ensure_ready(move || c.changed());
     ctx(&handle, &app).changed();
 }
 
-/// A pick in Settings: the active model stays until the picked one is on disk.
+/// Deletes the model files earlier versions let the user pick (Small, Medium, Large).
 #[tauri::command]
-pub fn select_model(handle: AppHandle, app: Shared, model: WhisperModel) {
-    let c = ctx(&handle, &app);
-    app.model.select(model, std::time::Duration::from_secs(3), move || c.changed());
-}
-
-#[tauri::command]
-pub fn remove_unused_models(handle: AppHandle, app: Shared) {
-    app.model.remove_unused();
+pub fn remove_legacy_models(handle: AppHandle, app: Shared) {
+    app.model.remove_legacy_models();
     ctx(&handle, &app).changed();
 }
 
@@ -276,12 +262,6 @@ pub fn set_start_at_login(handle: AppHandle, app: Shared, on: bool) {
 #[tauri::command]
 pub fn cancel_download(handle: AppHandle, app: Shared) {
     app.model.cancel();
-    ctx(&handle, &app).changed();
-}
-
-#[tauri::command]
-pub fn delete_model(handle: AppHandle, app: Shared, model: WhisperModel) {
-    app.model.delete(model);
     ctx(&handle, &app).changed();
 }
 

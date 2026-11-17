@@ -30,7 +30,8 @@ fn run_start(ctx: &Ctx, detected: DetectedMeeting) -> Result<(), String> {
     let prefs = ctx.app.prefs();
     let model_path = prefs.model_path(&ctx.app.paths());
     let system_defaults = languages::system_defaults();
-    let transcriber = Transcriber::new(&model_path, prefs.effective_languages(&system_defaults))
+    let vad_path = prefs.vad_model_path(&ctx.app.paths());
+    let transcriber = Transcriber::new(&model_path, Some(&vad_path), prefs.effective_languages(&system_defaults))
         .ok_or_else(|| format!("The Whisper model could not be loaded: {}", model_path.display()))?;
 
     *ctx.app.capture_error.lock().unwrap() = None;

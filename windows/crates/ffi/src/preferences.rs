@@ -1,5 +1,4 @@
 use muesli_core::preferences::{self, Preferences};
-use muesli_core::whisper_model::WhisperModel;
 
 use crate::paths::PathSet;
 
@@ -11,7 +10,6 @@ pub struct Preferences {
     pub end_delay_seconds: i32,
     pub languages: Option<Vec<String>>,
     pub recent_limit: i32,
-    pub model: WhisperModel,
     pub custom_model_path: Option<String>,
     pub onboarding_done: bool,
     pub transcripts_folder: Option<String>,
@@ -71,7 +69,13 @@ pub fn preferences_custom_model_path(prefs: Preferences) -> Option<String> {
     prefs.custom_model_url().map(|p| p.to_string_lossy().into_owned())
 }
 
-/// The file Whisper will load: the custom model if set, else the selected download.
+/// The voice activity model Whisper needs next to the speech model.
+#[uniffi::export]
+pub fn preferences_vad_model_path(prefs: Preferences, paths: PathSet) -> String {
+    prefs.vad_model_path(&paths).to_string_lossy().into_owned()
+}
+
+/// The file Whisper will load: the custom model if set, else the default download.
 #[uniffi::export]
 pub fn preferences_model_path(prefs: Preferences, paths: PathSet) -> String {
     prefs.model_path(&paths).to_string_lossy().into_owned()

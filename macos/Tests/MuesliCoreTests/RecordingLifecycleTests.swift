@@ -28,12 +28,13 @@ final class RecordingLifecycleTests: IsolatedTestCase {
         XCTAssertTrue(long.contains("…"))
     }
 
-    func testModelIsInstalledOnlyWhenLargeEnough() throws {
-        XCTAssertFalse(WhisperModel.small.isInstalled)
-        try Data("tiny".utf8).write(to: WhisperModel.small.url)
-        XCTAssertFalse(WhisperModel.small.isInstalled)
-        XCTAssertTrue(WhisperModel.file(WhisperModel.small.url, isAtLeast: 1))
-        XCTAssertFalse(WhisperModel.file(dir.appendingPathComponent("nope"), isAtLeast: 0))
+    func testModelFilesAreInstalledOnlyWhenLargeEnough() throws {
+        let file = Paths.support.appendingPathComponent(SpeechModel.info.fileName)
+        XCTAssertFalse(SpeechModel.file(file, isAtLeast: 1))
+        try Data("tiny".utf8).write(to: file)
+        XCTAssertFalse(SpeechModel.file(file, isAtLeast: Int64(SpeechModel.info.approximateBytes / 10 * 9)))
+        XCTAssertTrue(SpeechModel.file(file, isAtLeast: 1))
+        XCTAssertFalse(SpeechModel.file(dir.appendingPathComponent("nope"), isAtLeast: 0))
     }
 
     func testTheClaudeConfigEntryFollowsThePreferences() throws {

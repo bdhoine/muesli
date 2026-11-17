@@ -27,9 +27,11 @@ impl Transcriber {
     }
 }
 
-/// `None` when the file is missing or Whisper cannot load it. `languages` are the codes Whisper
-/// may pick from; with more than one it detects the language of every chunk.
+/// `None` when a file is missing or Whisper cannot load it. `vad_path` is the voice activity model
+/// that keeps Whisper from inventing text for silence. `languages` are the codes Whisper may pick
+/// from; with more than one it detects the language of every chunk that contains speech.
 #[uniffi::export]
-pub fn transcriber_load(model_path: String, languages: Vec<String>) -> Option<Arc<Transcriber>> {
-    muesli_whisper::Transcriber::new(Path::new(&model_path), languages).map(|inner| Arc::new(Transcriber { inner }))
+pub fn transcriber_load(model_path: String, vad_path: String, languages: Vec<String>) -> Option<Arc<Transcriber>> {
+    muesli_whisper::Transcriber::new(Path::new(&model_path), Some(Path::new(&vad_path)), languages)
+        .map(|inner| Arc::new(Transcriber { inner }))
 }

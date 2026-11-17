@@ -30,7 +30,7 @@ enum OnboardingWindow {
 }
 
 private enum Step: Int, CaseIterable {
-    case model, languages, autoStop, assistants, microphone, systemAudio, calendar, notifications
+    case languages, autoStop, assistants, microphone, systemAudio, calendar, notifications
 
     /// The permission this screen asks for, if it is a permission screen.
     var permission: Permission? {
@@ -45,7 +45,6 @@ private enum Step: Int, CaseIterable {
 
     var symbol: String {
         switch self {
-        case .model: "arrow.down.circle.fill"
         case .languages: "globe"
         case .autoStop: "stop.circle.fill"
         case .assistants: "sparkles"
@@ -58,7 +57,7 @@ private enum Step: Int, CaseIterable {
 
     var color: Color {
         switch self {
-        case .model, .microphone, .calendar: .muesliPumpkinSeed
+        case .microphone, .calendar: .muesliPumpkinSeed
         case .languages, .systemAudio, .autoStop: .muesliMuted
         case .assistants, .notifications: .muesliRoast
         }
@@ -66,7 +65,6 @@ private enum Step: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .model: "Pick a speech model"
         case .languages: "Which languages do you speak?"
         case .autoStop: "Stop when the call ends?"
         case .assistants: "Connect an AI assistant?"
@@ -79,7 +77,6 @@ private enum Step: Int, CaseIterable {
 
     var intro: String {
         switch self {
-        case .model: "Muesli transcribes on your Mac. It downloads the model once, then works offline."
         case .languages: "Muesli works out which one is spoken. Fewer languages means fewer mistakes."
         case .autoStop: "Muesli can notice that the other app let go of the microphone and save the transcript for you, or ask you first."
         case .assistants: "Claude and other assistants can read your transcripts. They can never start or stop a recording."
@@ -97,9 +94,8 @@ private struct OnboardingView: View {
     let state: AppState
     let finish: () -> Void
     @State private var draft: Preferences
-    @State private var step: Step = .model
+    @State private var step: Step = .languages
     @State private var access: Access = .unknown
-    @State private var modelChosen: Bool
     @State private var assistantsChosen = false
     @State private var autoStopChosen = false
 
@@ -107,7 +103,6 @@ private struct OnboardingView: View {
         self.state = state
         self.finish = finish
         _draft = State(initialValue: initial)
-        _modelChosen = State(initialValue: state.model.isInstalled(initial.model))
     }
 
     var body: some View {
@@ -136,7 +131,6 @@ private struct OnboardingView: View {
 
             Group {
                 switch step {
-                case .model: ModelStep(state: state, draft: $draft, chosen: $modelChosen)
                 case .languages: LanguageStep(draft: $draft)
                 case .autoStop: AutoStopStep(draft: $draft, chosen: $autoStopChosen)
                 case .assistants: AssistantStep(state: state, draft: $draft, chosen: $assistantsChosen)
@@ -165,7 +159,7 @@ private struct OnboardingView: View {
                     .frame(width: 7, height: 7)
             }
             Spacer()
-            if step != .model {
+            if step != .languages {
                 Button("Back") { move(-1) }.controlSize(.large)
             }
             if step.permission != nil, access == .unknown {
@@ -200,7 +194,6 @@ private struct OnboardingView: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .keyboardShortcut(.defaultAction)
-        .disabled(step == .model && !modelChosen)
     }
 
     private var primaryTitle: String {
@@ -252,47 +245,6 @@ private struct ChoiceCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-}
-
-private struct ModelStep: View {
-    let state: AppState
-    @Binding var draft: Preferences
-    @Binding var chosen: Bool
-
-    var body: some View {
-        VStack(spacing: 10) {
-            ForEach(WhisperModel.allCases) { m in
-                ChoiceCard(title: "\(m.title) · \(ByteCountFormatter.string(fromByteCount: m.approximateBytes, countStyle: .file))",
-                           detail: m.summary + (m == .small ? " (recommended)" : ""),
-                           selected: chosen && draft.model == m) { choose(m) }
-            }
-            if chosen { progress.padding(.top, 8) }
-        }
-    }
-
-    @ViewBuilder private var progress: some View {
-        switch state.model.phase {
-        case .downloading(let m, let received, let total):
-            ModelProgressView(model: m, received: received, total: total)
-        case .ready:
-            Label("Ready. You can carry on.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-        case .failed(let message):
-            VStack(spacing: 6) {
-                Text(message).font(.callout).foregroundStyle(.red)
-                Button("Try Again") { state.model.download(draft.model) }
-            }
-        case .missing:
-            EmptyView()
-        }
-    }
-
-    private func choose(_ m: WhisperModel) {
-        chosen = true
-        if draft.model != m { draft.model = m }
-        state.update(draft)
-        if state.model.isDownloading, state.model.downloading != m { state.model.cancel() }
-        if !state.model.isInstalled(m) { state.model.download(m) }
     }
 }
 

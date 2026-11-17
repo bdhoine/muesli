@@ -5,7 +5,8 @@ use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muesli_core::{Paths, Preferences, WhisperModel};
+use muesli_core::whisper_model::{DEFAULT_MODEL, LEGACY_FILES, VAD_MODEL};
+use muesli_core::{Paths, Preferences};
 use muesli_whisper::{download, DownloadError, DownloadSpec, ModelManager, Phase};
 
 /// Serves `body` once with the given status line and optional lying Content-Length.
@@ -70,52 +71,95 @@ fn a_cancelled_download_leaves_no_partial_file() {
     assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
 }
 
-#[test]
-fn manager_reports_missing_downloading_and_ready() {
-    let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::new(dir.path(), dir.path().join("t"));
-    let manager = ModelManager::new(paths.clone(), Preferences::default());
-    assert_eq!(manager.phase(), Phase::Missing(WhisperModel::Small));
-    assert!(!manager.is_ready());
+fn manager(dir: &std::path::Path, prefs: Preferences) -> (ModelManager, Paths) {
+    let paths = Paths::new(dir, dir.join("t"));
+    (ModelManager::new(paths.clone(), prefs), paths)
+}
 
-    let url = serve("200 OK", vec![9u8; 3_000_000], None);
-    let mut spec = spec(url, dir.path(), 2_000_000);
-    spec.dest = WhisperModel::Small.path(&paths);
-    manager.download_spec(WhisperModel::Small, spec, || {});
-    assert!(manager.is_downloading() || manager.is_ready());
-    manager.wait();
-    // The test file is far smaller than a real model, so it does not count as installed.
-    assert_eq!(manager.phase(), Phase::Missing(WhisperModel::Small));
+fn spec_to(url: String, dest: std::path::PathBuf, bytes: u64) -> DownloadSpec {
+    DownloadSpec { url, dest, min_bytes: 1, approximate_bytes: bytes }
 }
 
 #[test]
-fn a_custom_model_replaces_the_download() {
+fn what_is_missing_is_the_voice_model_first_and_then_the_speech_model() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::new(dir.path(), dir.path().join("t"));
+    let (m, _) = manager(dir.path(), Preferences::default());
+    assert_eq!(m.phase(), Phase::Missing);
+    let urls: Vec<String> = m.missing_downloads().into_iter().map(|s| s.url).collect();
+    assert_eq!(urls, [VAD_MODEL.url, DEFAULT_MODEL.url]);
+}
+
+#[test]
+fn the_speech_model_is_only_ready_together_with_the_voice_model() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m, paths) = manager(dir.path(), Preferences::default());
+    std::fs::write(DEFAULT_MODEL.path(&paths), vec![0u8; DEFAULT_MODEL.minimum_valid_bytes() as usize]).unwrap();
+    assert_eq!(m.phase(), Phase::Missing); // the small voice file is still missing
+    assert_eq!(m.missing_downloads().len(), 1);
+    std::fs::write(VAD_MODEL.path(&paths), vec![0u8; VAD_MODEL.minimum_valid_bytes() as usize]).unwrap();
+    assert_eq!(m.phase(), Phase::Ready(DEFAULT_MODEL.path(&paths)));
+    assert!(m.is_ready() && m.missing_downloads().is_empty());
+}
+
+#[test]
+fn a_custom_model_replaces_the_speech_download_but_not_the_voice_model() {
+    let dir = tempfile::tempdir().unwrap();
     let custom = dir.path().join("mine.bin");
     let mut prefs = Preferences::default();
     prefs.custom_model_path = Some(custom.to_string_lossy().into_owned());
-    let manager = ModelManager::new(paths, prefs.clone());
-    assert!(matches!(manager.phase(), Phase::Failed(_)));
+    let (m, paths) = manager(dir.path(), prefs);
+    assert!(matches!(m.phase(), Phase::Failed(_))); // the file is not there yet
     std::fs::write(&custom, b"model").unwrap();
-    assert_eq!(manager.phase(), Phase::Ready(custom));
-    manager.download_selected_if_needed(|| {});
-    assert!(!manager.is_downloading()); // a custom model never triggers a download
+    assert_eq!(m.phase(), Phase::Missing); // still needs the voice model
+    assert_eq!(m.missing_downloads().len(), 1);
+    assert_eq!(m.missing_downloads()[0].url, VAD_MODEL.url);
+    std::fs::write(VAD_MODEL.path(&paths), vec![0u8; VAD_MODEL.minimum_valid_bytes() as usize]).unwrap();
+    assert_eq!(m.phase(), Phase::Ready(custom));
+    m.ensure_ready(|| {});
+    assert!(!m.is_downloading());
+}
+
+#[test]
+fn downloads_run_in_order_and_progress_spans_all_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m, paths) = manager(dir.path(), Preferences::default());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    let probe = m.clone();
+    let specs = vec![
+        spec_to(serve("200 OK", vec![1u8; 1_000_000], None), VAD_MODEL.path(&paths), 1_000_000),
+        spec_to(serve("200 OK", vec![2u8; 2_000_000], None), DEFAULT_MODEL.path(&paths), 2_000_000),
+    ];
+    m.download_all(specs, move || {
+        if let Some(p) = probe.download_progress() {
+            sink.lock().unwrap().push(p);
+        }
+    });
+    assert!(matches!(m.phase(), Phase::Downloading { total: 3_000_000, .. }));
+    m.wait();
+    let seen = seen.lock().unwrap();
+    assert!(seen.windows(2).all(|w| w[0].0 <= w[1].0), "progress never goes backwards: {seen:?}");
+    assert_eq!(seen.last().unwrap().1, 3_000_000);
+    assert_eq!(std::fs::metadata(VAD_MODEL.path(&paths)).unwrap().len(), 1_000_000);
+    assert_eq!(std::fs::metadata(DEFAULT_MODEL.path(&paths)).unwrap().len(), 2_000_000);
 }
 
 #[test]
 fn failures_are_remembered_until_the_next_attempt() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::new(dir.path(), dir.path().join("t"));
-    let manager = ModelManager::new(paths.clone(), Preferences::default());
-    let mut s = spec(serve("500 Internal Server Error", vec![], None), dir.path(), 1);
-    s.dest = WhisperModel::Small.path(&paths);
-    manager.download_spec(WhisperModel::Small, s, || {});
-    manager.wait();
-    assert!(matches!(manager.phase(), Phase::Failed(m) if m.contains("500")));
+    let (m, paths) = manager(dir.path(), Preferences::default());
+    let url = serve("500 Internal Server Error", vec![], None);
+    m.download_all(vec![spec_to(url, VAD_MODEL.path(&paths), 1)], || {});
+    m.wait();
+    assert!(matches!(m.phase(), Phase::Failed(e) if e.contains("500")));
+    assert!(m.last_error().unwrap().contains("500"));
+    let url = serve("200 OK", vec![1u8; 1000], None);
+    m.download_all(vec![spec_to(url, VAD_MODEL.path(&paths), 1000)], || {});
+    assert_eq!(m.last_error(), None); // a new attempt clears the old error
+    m.wait();
 }
 
-/// A slow server: sends the body in pieces so a download can be replaced while it runs.
+/// A slow server: sends the body in pieces so a download can be cancelled while it runs.
 fn serve_slowly(body_len: usize) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/model.bin", listener.local_addr().unwrap());
@@ -136,50 +180,38 @@ fn serve_slowly(body_len: usize) -> String {
 }
 
 #[test]
-fn starting_another_model_replaces_the_running_download() {
+fn cancel_takes_effect_at_once_and_leaves_nothing_behind() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::new(dir.path(), dir.path().join("t"));
-    let mut prefs = Preferences::default();
-    let manager = ModelManager::new(paths.clone(), prefs.clone());
-
-    let mut slow = spec(serve_slowly(5_000_000), dir.path(), 1);
-    slow.dest = WhisperModel::Small.path(&paths);
-    manager.download_spec(WhisperModel::Small, slow, || {});
+    let (m, paths) = manager(dir.path(), Preferences::default());
+    m.download_all(vec![spec_to(serve_slowly(5_000_000), DEFAULT_MODEL.path(&paths), 5_000_000)], || {});
     std::thread::sleep(std::time::Duration::from_millis(60));
-    assert!(matches!(manager.phase(), Phase::Downloading { model: WhisperModel::Small, .. }));
-
-    // The user picks Medium while Small is still coming in: no waiting, no timer.
-    prefs.model = WhisperModel::Medium;
-    manager.apply(prefs);
-    let mut fast = spec(serve("200 OK", vec![2u8; 2_000_000], None), dir.path(), 1);
-    fast.dest = WhisperModel::Medium.path(&paths);
-    manager.download_spec(WhisperModel::Medium, fast, || {});
-    assert!(matches!(manager.phase(), Phase::Downloading { model: WhisperModel::Medium, .. }));
-    manager.wait();
-    assert_eq!(std::fs::metadata(WhisperModel::Medium.path(&paths)).unwrap().len(), 2_000_000);
-    std::thread::sleep(std::time::Duration::from_millis(150)); // let the cancelled one clean up
-    assert!(!WhisperModel::Small.path(&paths).exists());
-    let leftovers: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".part")).collect();
-    assert!(leftovers.is_empty());
+    assert!(m.is_downloading());
+    m.cancel();
+    assert!(!m.is_downloading());
+    assert_eq!(m.phase(), Phase::Missing);
+    std::thread::sleep(std::time::Duration::from_millis(200)); // let the cancelled thread clean up
+    assert!(std::fs::read_dir(dir.path()).unwrap().flatten().all(|e| !e.file_name().to_string_lossy().contains("ggml")));
+    // A new download can start right after a cancel.
+    m.download_all(vec![spec_to(serve("200 OK", vec![1u8; 1000], None), VAD_MODEL.path(&paths), 1000)], || {});
+    m.wait();
+    assert!(VAD_MODEL.path(&paths).exists());
 }
 
 #[test]
-fn cancel_takes_effect_at_once() {
+fn a_second_start_while_downloading_does_nothing() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::new(dir.path(), dir.path().join("t"));
-    let manager = ModelManager::new(paths.clone(), Preferences::default());
-    let mut slow = spec(serve_slowly(5_000_000), dir.path(), 1);
-    slow.dest = WhisperModel::Small.path(&paths);
-    manager.download_spec(WhisperModel::Small, slow, || {});
-    manager.cancel();
-    assert!(!manager.is_downloading());
-    assert_eq!(manager.phase(), Phase::Missing(WhisperModel::Small));
+    let (m, paths) = manager(dir.path(), Preferences::default());
+    m.download_all(vec![spec_to(serve_slowly(1_000_000), VAD_MODEL.path(&paths), 1_000_000)], || {});
+    m.download_all(vec![spec_to("http://127.0.0.1:9/none".into(), DEFAULT_MODEL.path(&paths), 1)], || {});
+    m.wait();
+    assert!(m.last_error().is_none());
+    assert!(VAD_MODEL.path(&paths).exists());
 }
 
 #[test]
 fn partial_files_from_an_interrupted_run_are_cleared() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("ggml-small.bin.123-0.part"), b"half").unwrap();
+    std::fs::write(dir.path().join("ggml-large-v3-turbo-q5_0.bin.123-0.part"), b"half").unwrap();
     std::fs::write(dir.path().join("config.json"), b"{}").unwrap();
     let _ = ModelManager::new(Paths::new(dir.path(), dir.path().join("t")), Preferences::default());
     let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name()).collect();
@@ -187,72 +219,11 @@ fn partial_files_from_an_interrupted_run_are_cleared() {
 }
 
 #[test]
-fn a_picked_model_becomes_active_only_when_it_is_on_disk() {
+fn old_model_files_can_be_listed_and_removed() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::new(dir.path(), dir.path().join("t"));
-    let manager = ModelManager::new(paths.clone(), Preferences::default());
-    let switched = Arc::new(Mutex::new(Vec::new()));
-    let sink = switched.clone();
-    manager.set_on_switch(move |m| sink.lock().unwrap().push(m));
-
-    let url = serve_slowly(1_000_000);
-    let dest = WhisperModel::Medium.path(&paths);
-    manager.select_with(WhisperModel::Medium, std::time::Duration::from_millis(40), || {}, move |_| DownloadSpec {
-        url: url.clone(),
-        dest: dest.clone(),
-        min_bytes: 1,
-        approximate_bytes: 1_000_000,
-    });
-    assert_eq!(manager.wanted(), Some(WhisperModel::Medium));
-    assert!(!manager.is_downloading()); // still inside the delay
-    assert!(switched.lock().unwrap().is_empty());
-    std::thread::sleep(std::time::Duration::from_millis(120));
-    assert!(manager.is_downloading());
-    assert!(switched.lock().unwrap().is_empty()); // the active model is untouched while it downloads
-    manager.wait();
-    assert_eq!(*switched.lock().unwrap(), vec![WhisperModel::Medium]);
-    assert_eq!(manager.wanted(), None);
-}
-
-#[test]
-fn picking_again_within_the_delay_downloads_nothing() {
-    let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::new(dir.path(), dir.path().join("t"));
-    let manager = ModelManager::new(paths.clone(), Preferences::default());
-    let started = Arc::new(Mutex::new(0));
-    let count = started.clone();
-    let spec = move |m: WhisperModel| {
-        *count.lock().unwrap() += 1;
-        DownloadSpec { url: "http://127.0.0.1:9/none".into(), dest: m.path(&paths), min_bytes: 1, approximate_bytes: 1 }
-    };
-    let delay = std::time::Duration::from_millis(80);
-    manager.select_with(WhisperModel::Large, delay, || {}, spec.clone());
-    manager.select_with(WhisperModel::Small, delay, || {}, spec); // back to the active model: an accidental pick
-    assert_eq!(manager.wanted(), None);
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    assert_eq!(*started.lock().unwrap(), 0);
-    assert!(!manager.is_downloading());
-}
-
-#[test]
-fn a_failed_pick_keeps_the_active_model() {
-    let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::new(dir.path(), dir.path().join("t"));
-    let manager = ModelManager::new(paths.clone(), Preferences::default());
-    let switched = Arc::new(Mutex::new(false));
-    let sink = switched.clone();
-    manager.set_on_switch(move |_| *sink.lock().unwrap() = true);
-    let url = serve("500 Internal Server Error", vec![], None);
-    let dest = WhisperModel::Medium.path(&paths);
-    manager.select_with(WhisperModel::Medium, std::time::Duration::ZERO, || {}, move |_| DownloadSpec {
-        url: url.clone(),
-        dest: dest.clone(),
-        min_bytes: 1,
-        approximate_bytes: 1,
-    });
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    manager.wait();
-    assert!(!*switched.lock().unwrap());
-    assert_eq!(manager.wanted(), None);
-    assert!(manager.last_error().unwrap().contains("500"));
+    let (m, _) = manager(dir.path(), Preferences::default());
+    std::fs::write(dir.path().join(LEGACY_FILES[1]), vec![0u8; 7]).unwrap();
+    assert_eq!(m.legacy_models().1, 7);
+    assert_eq!(m.remove_legacy_models(), 1);
+    assert_eq!(m.legacy_models(), (vec![], 0));
 }

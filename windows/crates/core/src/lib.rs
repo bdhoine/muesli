@@ -23,7 +23,7 @@ pub use models::{AudioChunk, DetectedMeeting, Meeting, MeetingState, TranscriptS
 pub use paths::Paths;
 pub use preferences::Preferences;
 pub use status::AppStatus;
-pub use whisper_model::WhisperModel;
+pub use whisper_model::ModelSpec;
 
 /// The version of the Windows app: the Cargo workspace version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

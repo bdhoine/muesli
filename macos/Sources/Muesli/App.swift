@@ -56,13 +56,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         publish()
         bridge.apply(settings)
         model.apply(settings)
-        model.onSwitch = { [weak self] picked in
-            guard let self else { return }
-            var new = settings
-            new.model = picked
-            update(new)
-        }
-        if !model.isReady, !model.isDownloading { model.downloadSelectedIfNeeded() }
+        model.ensureReady()                                        // downloads what is missing
         if !settings.onboardingDone {
             OnboardingWindow.show(self)
         } else if model.isDownloading {
@@ -143,7 +137,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         if let missing = await Permissions.missingForRecording() {
             setStatus(.permissionMissing(missing)); return
         }
-        guard let transcriber = Transcriber(modelURL: settings.modelURL, languages: settings.effectiveLanguages) else {
+        guard let transcriber = Transcriber(modelURL: settings.modelURL, vadURL: settings.vadModelURL, languages: settings.effectiveLanguages) else {
             setStatus(.error("Whisper model could not be loaded: \(settings.modelURL.lastPathComponent)")); return
         }
         guard status == .idle else { return }                      // something else started while we were waiting

@@ -2,42 +2,39 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muesli_core::whisper_model::file_is_at_least;
-use muesli_core::{Paths, Preferences, WhisperModel};
+use muesli_core::whisper_model::{file_is_at_least, DEFAULT_MODEL, VAD_MODEL};
+use muesli_core::{Paths, Preferences};
 
-use crate::download::{download, DownloadSpec};
+use crate::download::{download, DownloadError, DownloadSpec};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Phase {
-    Missing(WhisperModel),
-    Downloading { model: WhisperModel, received: u64, total: u64 },
+    /// Something has to be downloaded and nothing is running yet.
+    Missing,
+    /// `received` and `total` count bytes over everything that is being downloaded.
+    Downloading { received: u64, total: u64 },
+    /// The speech model to load.
     Ready(PathBuf),
     Failed(String),
 }
 
-/// One running download. Each has its own cancel flag, so cancelling one never stops the next.
+/// One running download of everything that is missing. Each has its own cancel flag, so
+/// cancelling one never stops the next.
 struct Job {
-    model: WhisperModel,
     received: u64,
     total: u64,
     cancel: Arc<AtomicBool>,
 }
-
-type OnSwitch = Arc<dyn Fn(WhisperModel) + Send + Sync>;
 
 #[derive(Default)]
 struct Inner {
     settings: Preferences,
     job: Option<Job>,
     last_error: Option<String>,
-    /// The model picked in Settings that is not active yet: it becomes active once it is on disk.
-    wanted: Option<WhisperModel>,
-    /// Bumped on every pick, so a delayed download knows when it was overtaken.
-    pick: u64,
-    on_switch: Option<OnSwitch>,
 }
 
-/// Knows which Whisper model Muesli should use, whether it is on disk, and downloads it.
+/// Knows which files Muesli needs (the speech model, or the user's own file, and the voice
+/// activity model), whether they are on disk, and downloads what is missing.
 /// Recording is only allowed while `is_ready()`. Cheap to clone; clones share state.
 #[derive(Clone)]
 pub struct ModelManager {
@@ -63,23 +60,20 @@ impl ModelManager {
 
     pub fn phase(&self) -> Phase {
         let inner = self.inner.lock().unwrap();
-        if let Some(custom) = inner.settings.custom_model_url() {
-            return if file_is_at_least(&custom, 1) {
-                Phase::Ready(custom)
-            } else {
-                Phase::Failed(format!("The chosen model file was not found: {}", custom.display()))
-            };
+        let custom = inner.settings.custom_model_url();
+        if let Some(custom) = custom.as_ref().filter(|c| !file_is_at_least(c, 1)) {
+            return Phase::Failed(format!("The chosen model file was not found: {}", custom.display()));
         }
-        let model = inner.settings.model;
-        if let Some(job) = inner.job.as_ref().filter(|j| j.model == model) {
-            return Phase::Downloading { model, received: job.received, total: job.total };
+        if let Some(job) = &inner.job {
+            return Phase::Downloading { received: job.received, total: job.total };
         }
-        if model.is_installed(&self.paths) {
-            return Phase::Ready(model.path(&self.paths));
+        let model_ok = custom.is_some() || DEFAULT_MODEL.is_installed(&self.paths);
+        if model_ok && VAD_MODEL.is_installed(&self.paths) {
+            return Phase::Ready(inner.settings.model_path(&self.paths));
         }
         match &inner.last_error {
             Some(e) => Phase::Failed(e.clone()),
-            None => Phase::Missing(model),
+            None => Phase::Missing,
         }
     }
 
@@ -91,190 +85,97 @@ impl ModelManager {
         self.inner.lock().unwrap().job.is_some()
     }
 
-    pub fn is_installed(&self, model: WhisperModel) -> bool {
-        model.is_installed(&self.paths)
-    }
-
-    /// What the tray and onboarding show while a download runs: text and a 0..1 fraction.
+    /// What the tray and menu show while a download runs: text and a 0..1 fraction.
     pub fn activity(&self) -> Option<(String, Option<f64>)> {
         let inner = self.inner.lock().unwrap();
-        let (model, received, total) = inner.job.as_ref().map(|j| (j.model, j.received, j.total))?;
-        let fraction = (total > 0).then(|| (received as f64 / total as f64).min(1.0));
-        Some((format!("Downloading the {} Whisper model", model.title()), fraction))
+        let job = inner.job.as_ref()?;
+        let fraction = (job.total > 0).then(|| (job.received as f64 / job.total as f64).min(1.0));
+        Some((format!("Downloading the {} speech model", DEFAULT_MODEL.title), fraction))
     }
 
-    /// Called (from a background thread) when a picked model is ready to become the active one.
-    pub fn set_on_switch(&self, f: impl Fn(WhisperModel) + Send + Sync + 'static) {
-        self.inner.lock().unwrap().on_switch = Some(Arc::new(f));
-    }
-
-    /// The pick that is not active yet, if any.
-    pub fn wanted(&self) -> Option<WhisperModel> {
-        self.inner.lock().unwrap().wanted
-    }
-
-    /// The running download: model, bytes received, total bytes.
-    pub fn download_progress(&self) -> Option<(WhisperModel, u64, u64)> {
-        self.inner.lock().unwrap().job.as_ref().map(|j| (j.model, j.received, j.total))
+    /// The running download: bytes received, total bytes.
+    pub fn download_progress(&self) -> Option<(u64, u64)> {
+        self.inner.lock().unwrap().job.as_ref().map(|j| (j.received, j.total))
     }
 
     pub fn last_error(&self) -> Option<String> {
         self.inner.lock().unwrap().last_error.clone()
     }
 
-    /// A pick in Settings. The active model stays in use until the picked one is on disk; a
-    /// missing one is downloaded after `delay`, so a slip of the mouse downloads nothing.
-    pub fn select(&self, model: WhisperModel, delay: std::time::Duration, on_change: impl Fn() + Send + Clone + 'static) {
-        let paths = self.paths.clone();
-        self.select_with(model, delay, on_change, move |m| DownloadSpec {
-            url: m.download_url(),
-            dest: m.path(&paths),
-            min_bytes: m.minimum_valid_bytes(),
-            approximate_bytes: m.approximate_bytes(),
-        });
-    }
-
-    pub fn select_with(
-        &self,
-        model: WhisperModel,
-        delay: std::time::Duration,
-        on_change: impl Fn() + Send + Clone + 'static,
-        spec_for: impl Fn(WhisperModel) -> DownloadSpec + Send + 'static,
-    ) {
-        use muesli_core::whisper_model::ModelSwitch;
-        let installed: Vec<WhisperModel> = WhisperModel::ALL.into_iter().filter(|m| self.is_installed(*m)).collect();
-        let (decision, pick, on_switch) = {
-            let mut inner = self.inner.lock().unwrap();
-            inner.pick += 1;
-            let downloading = inner.job.as_ref().map(|j| j.model);
-            let decision = ModelSwitch::decide(inner.settings.model, model, &installed, downloading);
-            match decision {
-                ModelSwitch::Nothing | ModelSwitch::SwitchNow => {
-                    // Drop a pick that was still on its way, and its download.
-                    if let Some(old) = inner.wanted.take() {
-                        if inner.job.as_ref().is_some_and(|j| j.model == old) {
-                            if let Some(job) = inner.job.take() {
-                                job.cancel.store(true, Ordering::Relaxed);
-                            }
-                        }
-                    }
-                }
-                ModelSwitch::Wait => inner.wanted = Some(model),
-                ModelSwitch::Download => {
-                    inner.wanted = Some(model);
-                    inner.last_error = None;
-                }
-            }
-            (decision, inner.pick, inner.on_switch.clone())
-        };
-        match decision {
-            ModelSwitch::SwitchNow => {
-                if let Some(f) = on_switch {
-                    f(model);
-                }
-            }
-            ModelSwitch::Download => {
-                let me = self.clone();
-                let changed = on_change.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(delay);
-                    {
-                        let inner = me.inner.lock().unwrap();
-                        if inner.pick != pick || inner.wanted != Some(model) {
-                            return; // picked something else in the meantime
-                        }
-                    }
-                    me.download_spec(model, spec_for(model), changed);
+    /// What is missing: the voice activity model, then the speech model unless the user chose a file.
+    pub fn missing_downloads(&self) -> Vec<DownloadSpec> {
+        let custom = self.inner.lock().unwrap().settings.custom_model_url().is_some();
+        let mut specs = Vec::new();
+        for (model, needed) in [(VAD_MODEL, true), (DEFAULT_MODEL, !custom)] {
+            if needed && !model.is_installed(&self.paths) {
+                specs.push(DownloadSpec {
+                    url: model.url.to_string(),
+                    dest: model.path(&self.paths),
+                    min_bytes: model.minimum_valid_bytes(),
+                    approximate_bytes: model.approximate_bytes,
                 });
             }
-            _ => {}
         }
-        on_change();
+        specs
     }
 
-    /// Deletes downloaded models other than the active one. Returns how many were removed.
-    pub fn remove_unused(&self) -> usize {
-        let active = self.inner.lock().unwrap().settings.model;
-        let (models, _) = muesli_core::whisper_model::unused_models(active, &self.paths);
-        for m in &models {
-            self.delete(*m);
+    /// Downloads whatever is missing on a background thread (nothing, when all is there or a
+    /// download already runs). `on_change` runs on progress and when it ends.
+    pub fn ensure_ready(&self, on_change: impl Fn() + Send + 'static) {
+        self.download_all(self.missing_downloads(), on_change);
+    }
+
+    /// `ensure_ready` for an explicit list of files (tests point it at a local server).
+    pub fn download_all(&self, specs: Vec<DownloadSpec>, on_change: impl Fn() + Send + 'static) {
+        if specs.is_empty() {
+            return;
         }
-        models.len()
-    }
-
-    /// Downloads the selected model unless it is there already.
-    pub fn download_selected_if_needed(&self, on_change: impl Fn() + Send + 'static) {
-        let (model, custom) = {
-            let i = self.inner.lock().unwrap();
-            (i.settings.model, i.settings.custom_model_url().is_some())
-        };
-        if !custom && !self.is_installed(model) {
-            self.download(model, on_change);
-        }
-    }
-
-    /// Starts a download on a background thread. `on_change` runs on progress and when it ends.
-    pub fn download(&self, model: WhisperModel, on_change: impl Fn() + Send + 'static) {
-        let spec = DownloadSpec {
-            url: model.download_url(),
-            dest: model.path(&self.paths),
-            min_bytes: model.minimum_valid_bytes(),
-            approximate_bytes: model.approximate_bytes(),
-        };
-        self.download_spec(model, spec, on_change);
-    }
-
-    /// Starts a download, replacing any download of another model that is still running.
-    pub fn download_spec(&self, model: WhisperModel, spec: DownloadSpec, on_change: impl Fn() + Send + 'static) {
         let cancel = Arc::new(AtomicBool::new(false));
+        let total: u64 = specs.iter().map(|s| s.approximate_bytes).sum();
         {
             let mut inner = self.inner.lock().unwrap();
-            match &inner.job {
-                Some(job) if job.model == model => return, // already on its way
-                Some(job) => job.cancel.store(true, Ordering::Relaxed),
-                None => {}
+            if inner.job.is_some() {
+                return; // already on its way
             }
             inner.last_error = None;
-            inner.job = Some(Job { model, received: 0, total: spec.approximate_bytes, cancel: cancel.clone() });
+            inner.job = Some(Job { received: 0, total, cancel: cancel.clone() });
         }
         let me = self.clone();
         std::thread::spawn(move || {
             // Only the job that owns this cancel flag may touch the shared state.
             let mine = |inner: &Inner| inner.job.as_ref().is_some_and(|j| Arc::ptr_eq(&j.cancel, &cancel));
-            let result = download(
-                &spec,
-                &mut |received, total| {
-                    let mut inner = me.inner.lock().unwrap();
-                    if mine(&inner) {
-                        if let Some(job) = inner.job.as_mut() {
-                            job.received = received;
-                            job.total = total;
+            let mut done_before = 0u64;
+            let mut result = Ok(());
+            for spec in &specs {
+                result = download(
+                    spec,
+                    &mut |received, _| {
+                        let mut inner = me.inner.lock().unwrap();
+                        if mine(&inner) {
+                            if let Some(job) = inner.job.as_mut() {
+                                job.received = done_before + received;
+                            }
+                            drop(inner);
+                            on_change();
                         }
-                        drop(inner);
-                        on_change();
-                    }
-                },
-                &cancel,
-            );
-            let switch = {
+                    },
+                    &cancel,
+                );
+                if result.is_err() {
+                    break;
+                }
+                done_before += spec.approximate_bytes;
+            }
+            {
                 let mut inner = me.inner.lock().unwrap();
                 if !mine(&inner) {
-                    return; // replaced by a newer download, which reports for itself
+                    return; // cancelled and possibly replaced: the newer job reports for itself
                 }
                 inner.job = None;
-                let picked = inner.wanted == Some(model);
-                if picked {
-                    inner.wanted = None; // on disk: switch now; failed: keep the active model
-                }
-                let ok = result.is_ok();
                 inner.last_error = match result {
-                    Ok(()) | Err(crate::DownloadError::Cancelled) => None,
+                    Ok(()) | Err(DownloadError::Cancelled) => None,
                     Err(e) => Some(e.to_string()),
                 };
-                if picked && ok { inner.on_switch.clone() } else { None }
-            };
-            if let Some(f) = switch {
-                f(model);
             }
             on_change();
         });
@@ -283,15 +184,20 @@ impl ModelManager {
     /// Cancels the running download, if any. Takes effect at once for `phase()`.
     pub fn cancel(&self) {
         let mut inner = self.inner.lock().unwrap();
-        inner.pick += 1; // also stops a pick that is still waiting out its delay
-        inner.wanted = None;
         if let Some(job) = inner.job.take() {
             job.cancel.store(true, Ordering::Relaxed);
         }
     }
 
-    pub fn delete(&self, model: WhisperModel) {
-        let _ = std::fs::remove_file(model.path(&self.paths));
+    /// Old model files (earlier versions let the user pick Small, Medium or Large) and the space
+    /// removing them frees.
+    pub fn legacy_models(&self) -> (Vec<PathBuf>, u64) {
+        muesli_core::whisper_model::legacy_models(&self.paths)
+    }
+
+    /// Deletes the old model files. Returns how many were removed.
+    pub fn remove_legacy_models(&self) -> usize {
+        muesli_core::whisper_model::remove_legacy_models(&self.paths)
     }
 
     /// Blocks until a running download ends (tests and shutdown).

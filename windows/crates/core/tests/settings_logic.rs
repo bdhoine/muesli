@@ -3,8 +3,7 @@ mod common;
 
 use common::Env;
 use muesli_core::assistants::{ClaudeDesktopExtension, ExtensionState};
-use muesli_core::whisper_model::{unused_models, ModelSwitch};
-use muesli_core::{Preferences, WhisperModel};
+use muesli_core::Preferences;
 
 fn s(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
@@ -39,27 +38,6 @@ fn saved_languages_round_trip_and_stay_out_of_old_files() {
     let p = Preferences { saved_languages: Some(s(&["fr"])), ..Default::default() };
     p.save(&env.paths).unwrap();
     assert_eq!(Preferences::load(&env.paths).saved_languages, Some(s(&["fr"])));
-}
-
-#[test]
-fn model_switch_decision() {
-    use WhisperModel::*;
-    assert_eq!(ModelSwitch::decide(Small, Small, &[Small], None), ModelSwitch::Nothing);
-    assert_eq!(ModelSwitch::decide(Small, Medium, &[Small, Medium], None), ModelSwitch::SwitchNow);
-    assert_eq!(ModelSwitch::decide(Small, Medium, &[Small], None), ModelSwitch::Download);
-    assert_eq!(ModelSwitch::decide(Small, Medium, &[Small], Some(Medium)), ModelSwitch::Wait);
-    assert_eq!(ModelSwitch::decide(Small, Medium, &[Small], Some(Large)), ModelSwitch::Download);
-}
-
-#[test]
-fn unused_models_are_the_installed_ones_that_are_not_active() {
-    let env = Env::new();
-    std::fs::create_dir_all(&env.paths.models).unwrap();
-    assert_eq!(unused_models(WhisperModel::Small, &env.paths), (vec![], 0));
-    // Real models are large; only the rule is checked here.
-    let big = vec![0u8; 16];
-    std::fs::write(WhisperModel::Medium.path(&env.paths), &big).unwrap();
-    assert!(unused_models(WhisperModel::Small, &env.paths).0.is_empty()); // too small to count as installed
 }
 
 #[test]

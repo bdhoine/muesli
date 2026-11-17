@@ -3,7 +3,10 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use muesli_core::{languages, AudioChunk, TranscriptSegment};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperVadContext, WhisperVadContextParams,
+    WhisperVadParams,
+};
 
 /// On-device transcription with whisper.cpp. Chunks are consumed one at a time, so a single
 /// Whisper state is never used concurrently.
@@ -11,7 +14,28 @@ pub struct Transcriber {
     context: WhisperContext,
     languages: Vec<String>,
     state: Mutex<whisper_rs::WhisperState>,
+    vad: Option<Vad>,
 }
+
+/// Voice activity detection. Whisper invents text ("Thank you.", subtitle credits) for silence and
+/// noise, so audio without speech is never decoded and silence inside a chunk is cut out.
+struct Vad {
+    model: String,
+    context: Mutex<WhisperVadContext>,
+}
+
+/// Speech needs 250 ms, a pause needs half a second to split it, and every part of speech keeps
+/// 200 ms around it so word edges survive.
+fn vad_params() -> WhisperVadParams {
+    let mut p = WhisperVadParams::new();
+    p.set_threshold(0.5);
+    p.set_min_speech_duration(250);
+    p.set_min_silence_duration(500);
+    p.set_speech_pad(200);
+    p
+}
+
+const SAMPLE_RATE: usize = 16_000;
 
 #[derive(Debug)]
 pub struct TranscribeError(pub String);
@@ -23,27 +47,73 @@ impl std::fmt::Display for TranscribeError {
 }
 
 impl Transcriber {
-    /// `None` when the file is missing or Whisper cannot load it.
-    pub fn new(model: &Path, languages: Vec<String>) -> Option<Self> {
+    /// `None` when a file is missing or Whisper cannot load it.
+    ///
+    /// `vad_model` is the Silero voice activity model. Pass `None` only to see what Whisper does
+    /// without it (tests): real recordings need it.
+    pub fn new(model: &Path, vad_model: Option<&Path>, languages: Vec<String>) -> Option<Self> {
         if !model.exists() {
             return None;
         }
+        let vad = match vad_model {
+            Some(path) => {
+                let model = path.to_str()?.to_string();
+                let context = WhisperVadContext::new(&model, WhisperVadContextParams::default()).ok()?;
+                Some(Vad { model, context: Mutex::new(context) })
+            }
+            None => None,
+        };
         let context = WhisperContext::new_with_params(model.to_str()?, WhisperContextParameters::default()).ok()?;
         let state = context.create_state().ok()?;
-        Some(Self { context, languages, state: Mutex::new(state) })
+        Some(Self { context, languages, state: Mutex::new(state), vad })
+    }
+
+    /// The parts of `samples` that contain speech, or `None` when voice detection is off or fails
+    /// (then everything is decoded, as without it).
+    fn speech(&self, samples: &[f32]) -> Option<Vec<f32>> {
+        let vad = self.vad.as_ref()?;
+        let mut context = vad.context.lock().unwrap();
+        let segments = context.segments_from_samples(vad_params(), samples).ok()?;
+        let mut speech = Vec::new();
+        for segment in segments {
+            // Segment times are in centiseconds.
+            let from = (segment.start * 0.01 * SAMPLE_RATE as f32) as usize;
+            let to = ((segment.end * 0.01 * SAMPLE_RATE as f32) as usize).min(samples.len());
+            if from < to {
+                speech.extend_from_slice(&samples[from..to]);
+            }
+        }
+        Some(speech)
     }
 
     pub fn transcribe(&self, chunk: &AudioChunk) -> Result<Vec<TranscriptSegment>, TranscribeError> {
         if chunk.samples.is_empty() {
             return Ok(Vec::new());
         }
+        // No speech: nothing to transcribe, and nothing for Whisper to make up.
+        let speech = self.speech(&chunk.samples);
+        if speech.as_ref().is_some_and(|s| s.is_empty()) {
+            return Ok(Vec::new());
+        }
         let mut state = self.state.lock().unwrap();
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8)) as i32;
-        let language = self.detect_language(&mut state, &chunk.samples, threads);
+        // The language is judged on the speech alone, not on the noise around it.
+        let language = self.detect_language(&mut state, speech.as_deref().unwrap_or(&chunk.samples), threads);
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(threads);
         params.set_language(Some(&language));
+        // Each chunk stands alone: carrying text over invites repetition loops.
+        params.set_no_context(true);
+        params.set_suppress_blank(true);
+        params.set_suppress_nst(true);
+        params.set_no_speech_thold(0.6);
+        if let Some(vad) = &self.vad {
+            // Cuts silence inside the chunk; whisper.cpp maps the timestamps back to the chunk.
+            params.set_vad_model_path(Some(&vad.model));
+            params.enable_vad(true);
+            params.set_vad_params(vad_params());
+        }
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_special(false);
