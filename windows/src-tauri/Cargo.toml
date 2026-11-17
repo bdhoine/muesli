@@ -3,6 +3,7 @@ name = "muesli-app"
 description = "Muesli: on-device meeting transcription for the menu bar and system tray."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [lib]
 name = "muesli_app_lib"

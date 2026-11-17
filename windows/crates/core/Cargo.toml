@@ -3,6 +3,7 @@ name = "muesli-core"
 description = "Muesli's platform-neutral core: models, store, preferences, detection logic. Port of Swift MuesliCore."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

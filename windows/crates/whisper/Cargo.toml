@@ -3,6 +3,7 @@ name = "muesli-whisper"
 description = "Muesli's speech model manager (download, validation) and whisper.cpp transcriber."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [features]
 default = ["transcribe"]

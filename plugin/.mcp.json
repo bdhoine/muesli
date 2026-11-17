@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "muesli": {
+      "command": "/Applications/Muesli.app/Contents/MacOS/muesli-mcp",
+      "args": []
+    }
+  }
+}

@@ -3,6 +3,7 @@ name = "muesli-import"
 description = "Transcribes audio files: decode, chunk, transcribe, save as a meeting."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [features]
 default = []

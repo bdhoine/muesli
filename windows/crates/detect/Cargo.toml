@@ -3,6 +3,7 @@ name = "muesli-detect"
 description = "Meeting detection: samples the system and feeds the decisions in muesli-core."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 muesli-core = { path = "../core" }

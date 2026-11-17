@@ -30,8 +30,9 @@ jobs:
         run: cargo test -p muesli-core -p muesli-mcp -p muesli-detect -p muesli-audio -p muesli-system -p muesli-import
 
   icons:
-    name: Windows app icons match assets/brand
+    name: Generated files are current (icons, plugin)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/sync-icons.py --check
+      - run: python3 scripts/sync-plugin.py --check

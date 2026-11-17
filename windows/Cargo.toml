@@ -5,3 +5,4 @@ members = ["crates/core", "crates/mcp", "crates/whisper", "crates/audio", "crate
 [workspace.package]
 version = "0.0.1"
 edition = "2021"
+license = "MIT"

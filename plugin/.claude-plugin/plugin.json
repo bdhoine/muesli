@@ -1,0 +1,15 @@
+{
+  "name": "muesli",
+  "displayName": "Muesli",
+  "version": "0.0.1",
+  "description": "Read and manage the meeting transcripts of Muesli, an on-device meeting transcriber for macOS: recording status, the list of meetings, full transcripts, renaming speakers and meetings.",
+  "author": { "name": "Barry d'Hoine", "url": "https://github.com/bdhoine" },
+  "homepage": "https://github.com/bdhoine/muesli",
+  "repository": "https://github.com/bdhoine/muesli",
+  "license": "MIT",
+  "keywords": ["meetings", "transcripts", "transcription", "whisper", "macos", "local"],
+  "icon": "./icon.png",
+  "documentationUrl": "https://github.com/bdhoine/muesli#muesli-and-ai-assistants",
+  "supportUrl": "https://github.com/bdhoine/muesli/issues",
+  "privacyPolicyUrl": "https://github.com/bdhoine/muesli#private-by-design"
+}

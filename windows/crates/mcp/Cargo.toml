@@ -3,6 +3,7 @@ name = "muesli-mcp"
 description = "Muesli's MCP server (stdio). Port of the Swift muesli-mcp."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [lib]
 name = "muesli_mcp"

@@ -1,0 +1,12 @@
+{
+  "name": "muesli",
+  "owner": { "name": "Barry d'Hoine", "url": "https://github.com/bdhoine" },
+  "metadata": { "description": "Muesli, an on-device meeting transcriber, and its plugin for Claude." },
+  "plugins": [
+    {
+      "name": "muesli",
+      "source": "./plugin",
+      "description": "Read and manage the meeting transcripts of Muesli, an on-device meeting transcriber for macOS."
+    }
+  ]
+}

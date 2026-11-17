@@ -3,6 +3,7 @@ name = "muesli-system"
 description = "Muesli's dealings with the operating system that need no audio: notifications with answer buttons and permission status."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 tauri-winrt-notification = "0.8"

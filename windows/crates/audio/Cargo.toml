@@ -3,6 +3,7 @@ name = "muesli-audio"
 description = "Microphone and system-audio capture for Muesli, as 16 kHz mono f32 chunks."
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [features]
 default = ["capture"]

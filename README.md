@@ -90,6 +90,8 @@ Assistants can read transcripts and manage finished meetings: rename them, set a
 
 Setup steps are in [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md).
 
+**Plugin.** The `plugin/` folder is a Claude plugin (macOS only for now) that starts the `muesli-mcp` server of the installed app and teaches Claude how to use its tools. In Claude Code: `/plugin install muesli --marketplace bdhoine/muesli`. See [plugin/README.md](plugin/README.md).
+
 ## Install
 
 Muesli supports **macOS 14.4 or later** and **Windows 10/11 (64-bit)**. There are no downloads yet, so for now you build it yourself.
@@ -158,3 +160,7 @@ Muesli is young. Transcription works and has been tested on real meetings. The S
 ## Contributing
 
 Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers building, testing and how the code is organised.
+
+## License
+
+[MIT](LICENSE).
