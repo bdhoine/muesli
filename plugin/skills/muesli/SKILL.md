@@ -1,11 +1,11 @@
 ---
 name: muesli
-description: "Use when the user asks about their meetings, calls or transcripts recorded with Muesli, such as whether it is recording, what was said, summaries and action items of a meeting, or renaming a meeting, its attendees or a speaker."
+description: "Use when the user asks about their meetings, calls or transcripts recorded with Muesli, such as whether it is recording, what was said, a summary or the action items of a meeting, or renaming a meeting, its attendees or a speaker."
 ---
 
 # Muesli transcripts
 
-Muesli is an on-device meeting transcriber. This plugin gives you its seven tools through the local `muesli-mcp` server. Everything runs on the user's Mac; nothing is sent anywhere except what you read into this conversation.
+Muesli is an on-device meeting transcriber. This plugin gives you its seven tools through the local `muesli-mcp` server. Everything stays on the user's Mac.
 
 ## Tools
 
@@ -15,10 +15,25 @@ Muesli is an on-device meeting transcriber. This plugin gives you its seven tool
 - `rename_transcript`, `set_attendees`, `rename_speaker`: change a finished meeting.
 - `delete_transcript`: moves a finished meeting's files to the Trash.
 
-## How to use them
+## Reading a meeting
 
-1. Call `get_status` first when the user asks "is it recording" or about the last meeting.
-2. A transcript is complete only when its `state` is `ready` and it is not `partial`. Say so when you summarise something that is still `recording` or `finalizing`, and offer to look again later. You cannot be notified when it finishes.
-3. Speakers are "You" (the microphone) and "Others" (system audio) for live calls. A meeting with `source: "file"` came from an audio file and has a single speaker, "Speaker". Offer `rename_speaker` when the user names a person.
-4. Quote the transcript when you give action items, and keep summaries to what was said.
-5. Ask the user to confirm before `delete_transcript`. It cannot start or stop a recording, and neither can you.
+1. Call `get_status` first when the user asks whether it is recording or about the last meeting.
+2. A transcript is complete only when its `state` is `ready` and it is not `partial`. Say so when you summarise a meeting that is still `recording` or `finalizing`, and offer to look again later.
+3. Speakers are "You" (the microphone) and "Others" (system audio) in live calls. A meeting with `source: "file"` came from an audio file and has one speaker, "Speaker".
+4. Read the whole transcript before you write anything. Use the segment times to tell where a topic starts and ends.
+
+## Summarising a meeting
+
+Whenever you summarise a meeting, also make the meeting itself easier to find and read:
+
+1. **Name the meeting.** If the title is generic ("Meeting", "Call", "Teams call", a file name or a date), give it a title that says what it was about, such as "Q3 budget review" or "Weekly sync: onboarding", with `rename_transcript`.
+2. **Identify the people.** From what is said (introductions, people addressed by name, roles, company names, who answers whom), work out who took part. Set the attendee list with `set_attendees`, and replace "Others" or "Speaker" by a real name with `rename_speaker` when one person is clearly behind a label. When a label covers several people, leave it and describe who said what in the summary.
+3. **Use the right words.** Speech recognition mishears names, product names, numbers and technical terms. In the summary, write them as the context shows they should be written, and use one spelling throughout. The stored transcript is not changed by this.
+4. **Only change what the transcript supports.** If you are not sure who someone is or what the meeting was about, say so in the summary instead of guessing, and leave the title, attendees and speaker names as they are.
+5. **Tell the user** which title, attendees and speaker names you set, in one line after the summary, so they can correct them.
+
+Write the summary with the template in [summary-template.md](summary-template.md), so every meeting is summarised in the same shape. Quote the transcript sparingly and only for exact wording that matters, such as a decision or a commitment. Keep to what was said.
+
+## Deleting
+
+Ask the user to confirm before `delete_transcript`. You cannot start or stop a recording.

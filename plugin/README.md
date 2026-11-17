@@ -39,6 +39,8 @@ The plugin starts one program, the `muesli-mcp` server that ships inside the ins
 
 Claude cannot start or stop a recording.
 
+The plugin's skill also tells Claude how to summarise a meeting: give a generic meeting a proper title, set the attendees and real speaker names when the conversation makes them clear, and write the summary in a fixed shape (purpose, key points, decisions, action items, open questions, next steps) from `skills/muesli/summary-template.md`.
+
 ## Privacy
 
 Transcription happens on your computer and audio is never stored. What Claude reads from a transcript is sent to Anthropic as part of your conversation, like anything else you share with Claude. Tell the people you meet with that you are transcribing. The full statement is in the [repository README](https://github.com/bdhoine/muesli#private-by-design).
