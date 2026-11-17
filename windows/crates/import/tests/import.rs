@@ -161,3 +161,64 @@ fn cancelling_part_way_keeps_what_was_transcribed() {
     assert_eq!(all[0].partial, Some(true));
     assert!(!all[0].transcript.is_empty());
 }
+
+#[test]
+fn an_interrupted_import_carries_on_instead_of_starting_a_second_meeting() {
+    let (dir, paths) = paths();
+    let wav = dir.path().join("long.wav");
+    silence_wav(&wav, 100); // chunks at 0, 30, 60 and a 10 s tail at 90
+
+    // first run: cancelled once the first chunk is done
+    let cancel = AtomicBool::new(false);
+    let first = stub();
+    let err = import_file(&wav, &first, &paths, &cancel, |_| cancel.store(true, std::sync::atomic::Ordering::Relaxed)).unwrap_err();
+    assert_eq!(err, ImportError::Cancelled);
+    assert_eq!(MeetingStore::new(&paths).all().len(), 1);
+
+    // second run: only what is left is transcribed, and it all ends up in the same meeting
+    let second = stub();
+    let meeting = import_file(&wav, &second, &paths, &AtomicBool::new(false), |_| {}).unwrap();
+    let offsets: Vec<f64> = second.seen.lock().unwrap().iter().map(|(o, _)| *o).collect();
+    assert_eq!(offsets, [30.0, 60.0, 90.0], "the first chunk is not transcribed again");
+    assert_eq!(meeting.transcript.iter().map(|s| s.start).collect::<Vec<_>>(), [0.0, 30.0, 60.0, 90.0]);
+    let all = MeetingStore::new(&paths).all();
+    assert_eq!(all.len(), 1, "one meeting for the file");
+    assert_eq!(all[0].state, MeetingState::Ready);
+    assert_eq!(all[0].partial, None);
+    let files = std::fs::read_dir(paths.transcripts_dir()).unwrap().count();
+    assert_eq!(files, 2, "one .md and one .json: the partial export was replaced, not left behind");
+}
+
+#[test]
+fn several_partial_meetings_of_one_file_collapse_into_the_furthest() {
+    let (dir, paths) = paths();
+    let wav = dir.path().join("long.wav");
+    silence_wav(&wav, 100);
+    let store = MeetingStore::new(&paths);
+    let modified: chrono::DateTime<chrono::Utc> = std::fs::metadata(&wav).unwrap().modified().unwrap().into();
+    for ends in [30.0, 90.0, 60.0] {
+        let mut m = muesli_core::Meeting::new("long", "file");
+        m.started_at = modified;
+        m.state = MeetingState::Ready;
+        m.partial = Some(true);
+        m.transcript = vec![TranscriptSegment { start: 0.0, end: ends, speaker: "Speaker".into(), text: "x".into() }];
+        store.save(&m);
+    }
+    let stt = stub();
+    import_file(&wav, &stt, &paths, &AtomicBool::new(false), |_| {}).unwrap();
+    assert_eq!(store.all().len(), 1);
+    // the furthest ended at 90 s: only the chunk from 90 s on was left to do
+    assert_eq!(stt.seen.lock().unwrap().iter().map(|(o, _)| *o).collect::<Vec<_>>(), [90.0]);
+}
+
+#[test]
+fn a_finished_import_of_the_same_file_is_left_alone() {
+    let (dir, paths) = paths();
+    let wav = dir.path().join("long.wav");
+    silence_wav(&wav, 40);
+    let a = import_file(&wav, &stub(), &paths, &AtomicBool::new(false), |_| {}).unwrap();
+    // importing again (the file was replaced by a copy with the same date) makes a new meeting
+    let b = import_file(&wav, &stub(), &paths, &AtomicBool::new(false), |_| {}).unwrap();
+    assert_ne!(a.id, b.id);
+    assert_eq!(MeetingStore::new(&paths).all().len(), 2);
+}

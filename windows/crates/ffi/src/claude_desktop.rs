@@ -12,6 +12,12 @@ pub enum ExtensionState {
     Outdated { installed: String, bundled: String },
 }
 
+/// Writes where this install's `muesli-mcp` is into the support folder (`mcp-path`), for the plugin.
+#[uniffi::export]
+pub fn helper_path_record(paths: crate::paths::PathSet, helper: String) {
+    let _ = muesli_core::assistants::record_helper_path(&paths, std::path::Path::new(&helper));
+}
+
 /// `~/Library/Application Support/Claude` on macOS.
 #[uniffi::export]
 pub fn claude_default_directory() -> String {

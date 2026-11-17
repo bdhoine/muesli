@@ -55,6 +55,7 @@ final class AppState: NSObject, UNUserNotificationCenterDelegate {
         heartbeat = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.syncWithStore() }
         }
+        if let helper = BridgeController.helperURL { helperPathRecord(paths: Paths.current, helper: helper.path) }   // the Claude plugin finds muesli-mcp through this
         files.canRun = { [weak self] in self.map { $0.status == .idle && $0.model.isReady } ?? false }
         files.transcriber = { [weak self] in self?.sharedTranscriber() }
         files.onFinished = { [weak self] m in

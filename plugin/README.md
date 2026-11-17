@@ -6,9 +6,9 @@ This plugin connects Claude to [Muesli](https://github.com/bdhoine/muesli), an o
 
 ## Before you install
 
-- Install the Muesli app for macOS 14.4 or later (see the [repository](https://github.com/bdhoine/muesli)) in `/Applications`.
+- Install the Muesli app (macOS 14.4 or later, or Windows 10/11; see the [repository](https://github.com/bdhoine/muesli)) and open it once.
 - In Muesli, open **Settings → AI Assistants** and switch on access for assistants.
-- This version supports macOS only. A Windows plugin is not available yet, because a plugin's MCP command cannot name a different path per operating system.
+- Install [Node.js](https://nodejs.org) if you do not have it. The plugin starts a small launcher script with `node`, because a plugin's MCP command cannot differ per operating system, and the launcher finds Muesli's server on macOS and on Windows.
 - A local MCP server loads in Claude Code and in Cowork sessions that run on your computer. Claude Chat ignores local servers.
 
 ## Install
@@ -23,7 +23,7 @@ In the Claude desktop app, open **Customize → Plugins**, choose **Add → Add 
 
 ## What it runs
 
-The plugin starts one program, the `muesli-mcp` server that ships inside the installed app: `/Applications/Muesli.app/Contents/MacOS/muesli-mcp`. It talks to Claude over standard input and output. It opens no network connection and no port, downloads nothing and installs nothing. It reads Muesli's files in `~/Library/Application Support/Muesli` and your transcripts folder, and it can rename and delete transcripts there. The plugin itself contains no code to run, only this configuration, one skill with instructions for Claude, and an icon.
+The plugin starts `node server/muesli-mcp.js`, a short script (about 80 lines, in this folder) that finds the `muesli-mcp` server inside the installed app and runs it, passing standard input and output through. It looks in this order: the path in the `MUESLI_MCP` environment variable, the file `mcp-path` in Muesli's support folder (the app writes its own location there every time it starts), then the usual install folders (`/Applications/Muesli.app` on macOS; `%LOCALAPPDATA%\Muesli`, `%LOCALAPPDATA%\Programs\Muesli` and `%ProgramFiles%\Muesli` on Windows). The server talks to Claude over standard input and output only. It opens no network connection and no port, downloads nothing and installs nothing. It reads Muesli's files in the support folder (`~/Library/Application Support/Muesli` on macOS, `%APPDATA%\Muesli` on Windows) and your transcripts folder, and it can rename and delete transcripts there. Apart from the launcher, the plugin contains only this configuration, one skill with instructions for Claude, and an icon.
 
 ## Tools
 
@@ -35,7 +35,7 @@ The plugin starts one program, the `muesli-mcp` server that ships inside the ins
 | `rename_transcript` | Changes a finished meeting's title |
 | `set_attendees` | Replaces a finished meeting's attendee list |
 | `rename_speaker` | Renames a speaker label, for example "Others" to a person's name |
-| `delete_transcript` | Moves a finished meeting to the Trash. Claude asks you first |
+| `delete_transcript` | Moves a finished meeting to the Trash or Recycle Bin. Claude asks you first |
 
 Claude cannot start or stop a recording.
 

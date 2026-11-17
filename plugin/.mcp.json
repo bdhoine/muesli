@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "muesli": {
-      "command": "/Applications/Muesli.app/Contents/MacOS/muesli-mcp",
-      "args": []
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/muesli-mcp.js"]
     }
   }
 }

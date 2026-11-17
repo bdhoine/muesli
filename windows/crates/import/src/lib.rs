@@ -65,12 +65,25 @@ pub fn import_file(
     let store = MeetingStore::new(paths);
     let modified: DateTime<Utc> = std::fs::metadata(path).and_then(|m| m.modified()).unwrap_or_else(|_| SystemTime::now()).into();
 
-    let mut meeting = Meeting::new(title_for(path), SOURCE);
+    let title = title_for(path);
+    // An import that was cut off (the app quit or crashed) left a partial meeting of this file:
+    // carry on from where it stopped instead of starting a second meeting from the beginning.
+    let (mut meeting, mut offset) = match take_over_stale(&store, paths, &title, modified) {
+        Some(stale) => {
+            let resume_at = resume_offset(&stale);
+            (stale, resume_at)
+        }
+        None => (Meeting::new(&title, SOURCE), 0.0),
+    };
     meeting.started_at = modified;
+    meeting.state = MeetingState::Recording;
+    meeting.partial = None;
+    meeting.ended_at = None;
     store.save(&meeting); // visible as "recording" while it runs; a crash is recovered at the next start
 
+    let skip_samples = (offset * SAMPLE_RATE as f64) as usize; // audio that is already transcribed
+    let mut seen = 0usize;
     let mut pending: Vec<f32> = Vec::new();
-    let mut offset = 0.0f64;
     let mut failure: Option<ImportError> = None;
 
     let transcribe_chunk = |samples: Vec<f32>, meeting: &mut Meeting, offset: &mut f64| -> Result<(), ImportError> {
@@ -86,6 +99,22 @@ pub fn import_file(
         if failure.is_some() {
             return;
         }
+        let block = if seen >= skip_samples {
+            block
+        } else if seen + block.len() <= skip_samples {
+            let before = seen / (CHUNK_SECONDS * SAMPLE_RATE);
+            seen += block.len();
+            if seen / (CHUNK_SECONDS * SAMPLE_RATE) != before {
+                // once per skipped chunk, not per decoded block: a block is a few milliseconds of audio
+                progress(p.total_seconds.filter(|t| *t > 0.0).map(|t| (seen as f64 / SAMPLE_RATE as f64 / t).min(1.0)));
+            }
+            return;
+        } else {
+            let from = skip_samples - seen;
+            seen = skip_samples;
+            &block[from..]
+        };
+        seen += block.len();
         pending.extend_from_slice(block);
         while pending.len() >= CHUNK_SECONDS * SAMPLE_RATE {
             let chunk: Vec<f32> = pending.drain(..CHUNK_SECONDS * SAMPLE_RATE).collect();
@@ -116,12 +145,60 @@ pub fn import_file(
     match outcome {
         Ok(seconds) => {
             progress(Some(1.0));
+            // A resumed import may have exported its partial transcript under the old start time.
+            let partial_stem = Store::file_stem(&meeting);
             meeting.started_at = modified - Duration::milliseconds((seconds * 1000.0) as i64);
             store.finish(&mut meeting, modified);
+            let stem = Store::file_stem(&meeting);
+            if stem != partial_stem {
+                for ext in ["md", "json"] {
+                    let _ = std::fs::remove_file(paths.transcripts_dir().join(format!("{partial_stem}.{ext}")));
+                }
+            }
             Ok(meeting)
         }
         Err(e) => fail(&store, meeting, e),
     }
+}
+
+/// Where a resumed import carries on: the first 30 s chunk after the one the last transcribed
+/// segment belongs to. (A segment ending exactly on a chunk boundary belongs to the chunk before it.)
+fn resume_offset(meeting: &Meeting) -> f64 {
+    let Some(last_end) = meeting.transcript.iter().map(|s| s.end).reduce(f64::max) else { return 0.0 };
+    let chunk = CHUNK_SECONDS as f64;
+    (((last_end - 0.001).max(0.0) / chunk).floor() + 1.0) * chunk
+}
+
+/// Finds what an interrupted import of this file left: partial meetings (and empty failed ones)
+/// with the same title that start at the file's date (to the second, the precision they are stored with), which only unfinished imports do.
+/// Returns the one that got furthest and removes the others, so the file ends up as one meeting.
+fn take_over_stale(store: &MeetingStore, paths: &Paths, title: &str, modified: DateTime<Utc>) -> Option<Meeting> {
+    let mut stale: Vec<Meeting> = store
+        .all()
+        .into_iter()
+        .filter(|m| m.source == SOURCE && m.title == title && m.started_at.timestamp() == modified.timestamp())
+        .filter(|m| {
+            m.partial == Some(true)
+                || matches!(m.state, MeetingState::Recording | MeetingState::Finalizing)
+                || (m.state == MeetingState::Failed && m.transcript.is_empty())
+        })
+        .collect();
+    let progress = |m: &Meeting| m.transcript.iter().map(|s| s.end).fold(0.0, f64::max);
+    stale.sort_by(|a, b| progress(a).total_cmp(&progress(b)));
+    let best = stale.pop()?;
+    let keep_stem = Store::file_stem(&best);
+    for other in stale {
+        if let Some(file) = store.url(&other.id) {
+            let _ = std::fs::remove_file(file);
+        }
+        let stem = Store::file_stem(&other);
+        if stem != keep_stem {
+            for ext in ["md", "json"] {
+                let _ = std::fs::remove_file(paths.transcripts_dir().join(format!("{stem}.{ext}")));
+            }
+        }
+    }
+    Some(best)
 }
 
 /// Keeps what was transcribed (a partial meeting). With nothing transcribed a cancelled import

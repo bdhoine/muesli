@@ -47,6 +47,7 @@ pub fn apply(app: &App, prefs: &Preferences) {
         *app.claude_status.lock().unwrap() = "muesli-mcp is missing next to the app.".into();
         return;
     };
+    let _ = muesli_core::assistants::record_helper_path(&app.paths(), &helper); // the Claude plugin finds muesli-mcp through this
     let dir = ClaudeDesktopConfig::default_directory();
     *app.claude_status.lock().unwrap() =
         ClaudeDesktopConfig::sync(prefs, &helper, extension_state().is_installed(), &dir);

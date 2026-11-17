@@ -11,6 +11,16 @@ use crate::json::{to_pretty_sorted, write_atomic};
 /// The name the server is listed under in assistants.
 pub const SERVER_NAME: &str = "muesli";
 
+/// File in the support folder that holds the absolute path of this install's `muesli-mcp`. Both
+/// apps rewrite it on every start, so anything that has to start the server (the Claude plugin)
+/// finds it wherever Muesli was installed, on macOS and on Windows.
+pub const HELPER_POINTER: &str = "mcp-path";
+
+/// Records where `muesli-mcp` is (see `HELPER_POINTER`).
+pub fn record_helper_path(paths: &crate::Paths, helper: &Path) -> std::io::Result<()> {
+    crate::json::write_atomic(&paths.support.join(HELPER_POINTER), &helper.to_string_lossy())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssistantClient {
     ClaudeCode,

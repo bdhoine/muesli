@@ -6,7 +6,7 @@
     {
       "name": "muesli",
       "source": "./plugin",
-      "description": "Read and manage the meeting transcripts of Muesli, an on-device meeting transcriber for macOS."
+      "description": "Read and manage the meeting transcripts of Muesli, an on-device meeting transcriber for macOS and Windows."
     }
   ]
 }
