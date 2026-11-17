@@ -650,6 +650,7 @@ private struct PermissionSettings: View {
                     Button("Allow…") {
                         Task {
                             await permission.request()
+                            NSApp.activate(ignoringOtherApps: true)      // the macOS dialog took the focus
                             await refresh()
                         }
                     }

@@ -173,7 +173,7 @@ Install Rust with `brew install rustup && rustup default stable` (macOS) or from
 - **Use libraries for the hard parts**: `rubato` (resampling), `cpal` (audio devices), `whisper-rs`, `uuid`, `tempfile` (atomic writes), `trash`. Do not hand-roll replacements.
 - **Try the UI without the app**: serve `windows/ui` and open `index.html?mock=1&window=onboarding` (or `settings`, `prompt`).
 - **Check capture on a real machine**: `cargo run -p muesli-audio --example probe -- 8`. Check the resampler by ear or with Whisper: `--example resample_wav -- in.wav out.wav`. Transcribe real speech: the ignored test in `crates/whisper/tests/transcribe.rs`.
-- **Windows without a PC**: `.github/workflows/ci.yml` runs the tests on macOS, Windows and Linux. It is started by hand for now (Actions tab, or `gh workflow run CI`), because macOS minutes are costly on a private repository; **Build app** (`app.yml`) builds the installers. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code; `src-tauri` and `whisper` need CI.
+- **Windows without a PC**: `.github/workflows/ci.yml` runs the tests on Windows and Linux. It is started by hand (Actions tab, or `gh workflow run CI`). There are no macOS jobs because GitHub's macOS runners are not available to this private repository: run `swift test` and `macos/build.sh` locally; **Build app** (`app.yml`) builds the installers. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code; `src-tauri` and `whisper` need CI.
 
 ## Permissions and code signing
 
@@ -187,6 +187,43 @@ tccutil reset AudioCapture com.github.bdhoine.muesli
 ```
 
 Signing with a real certificate avoids this. `build.sh` uses the first "Apple Development" or "Developer ID Application" certificate in your keychain (override with `SIGN_IDENTITY="..." ./build.sh`). To get a free Apple Development certificate: Xcode → Settings → Accounts → add your Apple ID → Manage Certificates → + → Apple Development. After the first signed build, reset and grant the permissions once more; they then survive rebuilds.
+
+## Resetting the app for testing
+
+To see first launch again (onboarding, permission prompts, model download), quit Muesli, then reset what it keeps. Every step is optional; do only the ones you need.
+
+**macOS**
+
+```bash
+# 1. Preferences (incl. the onboarding flag), state and meetings; keeps the models, so no 574 MB download
+find ~/Library/Application\ Support/Muesli -mindepth 1 -maxdepth 1 ! -name 'ggml-*.bin' -exec rm -rf {} +
+# 2. Also forget the models (forces the download again)
+rm -rf ~/Library/Application\ Support/Muesli
+# 3. Only needed if you ran a version before 0.0.2 (it kept the transcripts folder here)
+defaults delete com.github.bdhoine.muesli
+# 4. Permissions, so macOS asks again
+tccutil reset Microphone com.github.bdhoine.muesli
+tccutil reset AudioCapture com.github.bdhoine.muesli
+tccutil reset Calendar com.github.bdhoine.muesli
+# or every privacy grant at once (microphone, system audio, calendar, ...)
+tccutil reset All com.github.bdhoine.muesli
+```
+
+`tccutil` only clears privacy grants, and the app must be quit first. Two grants live elsewhere: notifications (System Settings → Notifications → Muesli; macOS cannot reset them from the command line, and the entry disappears once you delete the app) and the login item (System Settings → General → Login Items, switch Muesli off).
+
+- Finished transcripts live in `~/Documents/MeetingTranscripts/` (or the folder in `config.json`) and are not touched; remove them by hand for a clean slate. Meetings there are imported again on the next launch, so delete them if you want an empty list.
+- Muesli registers itself as a login item again at every launch, so switch it off after a test run if you do not want it to start at login.
+- For a throwaway run that never touches your real data, start the app with `MUESLI_SUPPORT_DIR=/tmp/muesli-test TRANSCRIPT_DIR=/tmp/muesli-test/transcripts open -n macos/Muesli.app` (or run the binary directly). Permissions are still tied to the app, so step 4 applies.
+- To test the model download without waiting, remove only `ggml-large-v3-turbo-q5_0.bin` and `ggml-silero-v5.1.2.bin`; the app downloads whatever is missing at launch.
+
+**Windows** (PowerShell, with the app closed)
+
+```powershell
+Remove-Item -Recurse -Force "$env:APPDATA\Muesli"        # config, state, meetings
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Muesli"   # models (forces the download again)
+```
+
+Windows has no system calendar and needs no system-audio permission, so there are no permissions to reset; only the microphone setting under Settings → Privacy & security → Microphone remembers the app. This was not run on Windows.
 
 ## Conventions
 

@@ -23,6 +23,13 @@ enum OnboardingWindow {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    /// Brings the window back to the front, e.g. after a macOS permission dialog took the focus.
+    static func refocus() {
+        guard let window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
     static func close() {
         window?.close()
         window = nil
@@ -146,6 +153,10 @@ private struct OnboardingView: View {
         .frame(width: 520, height: 600)
         .onChange(of: draft) { state.update(draft) }
         .task(id: step) { access = await step.permission?.status() ?? .unknown }
+        // The answer may change outside the app (System Settings), so look again on return.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await recheck() }
+        }
         .animation(.easeInOut(duration: 0.2), value: step)
     }
 
@@ -178,6 +189,7 @@ private struct OnboardingView: View {
                 Task {
                     let answer = await permission.request()
                     access = answer == .unknown ? .denied : answer       // answered, but not with a yes
+                    OnboardingWindow.refocus()                           // the macOS dialog took the focus
                 }
             } else {
                 advance()
@@ -199,6 +211,14 @@ private struct OnboardingView: View {
     private var primaryTitle: String {
         if let permission = step.permission, access == .unknown { return "Allow \(permission.name)" }
         return step == .notifications ? "Start using Muesli" : "Continue"
+    }
+
+    /// Picks up a change made in System Settings. `.unknown` is ignored: it also means "macOS will
+    /// not say" (system audio), which must not undo an answer we already have.
+    private func recheck() async {
+        guard let permission = step.permission else { return }
+        let now = await permission.status()
+        if now != .unknown { access = now }
     }
 
     private func move(_ delta: Int) {

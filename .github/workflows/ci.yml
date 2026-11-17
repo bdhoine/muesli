@@ -1,7 +1,8 @@
 name: CI
 
-# Started by hand for now (Actions tab, or `gh workflow run CI`): the macOS jobs are costly on a
-# private repository. Put `push` and `pull_request` back here to run it automatically.
+# Started by hand (Actions tab, or `gh workflow run CI`). There are no macOS jobs: GitHub's macOS
+# runners are not available to this private repository, so the Swift app is tested locally
+# (`cd macos && swift test`). Put `push` and `pull_request` back here to run it automatically.
 on:
   workflow_dispatch:
 
@@ -12,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest]
     defaults:
       run:
         working-directory: windows
@@ -22,24 +23,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: windows
-      - if: matrix.os != 'ubuntu-latest'
+      - if: matrix.os == 'windows-latest'
         run: cargo test --workspace
       # Linux has no app (no WebKitGTK here) and no audio capture; test the portable crates.
       - if: matrix.os == 'ubuntu-latest'
         run: cargo test -p muesli-core -p muesli-mcp -p muesli-detect -p muesli-audio -p muesli-system
 
-  swift:
-    name: Swift (macOS)
-    runs-on: macos-14
+  icons:
+    name: Windows app icons match assets/brand
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: windows
-      - name: Build the shared Rust core for Swift
-        run: scripts/build-ffi.sh
-      - run: swift test
-        working-directory: macos
-      - name: Windows app icons match assets/brand
-        run: python3 scripts/sync-icons.py --check
+      - run: python3 scripts/sync-icons.py --check

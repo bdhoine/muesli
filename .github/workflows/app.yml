@@ -1,6 +1,7 @@
 name: Build app
 
-# Builds the installers (macOS .dmg, Windows .msi/.exe) as downloadable artifacts.
+# Builds the Windows installers (.msi/.exe) as downloadable artifacts. macOS is built locally with
+# macos/build.sh: GitHub's macOS runners are not available to this private repository.
 on:
   workflow_dispatch:
   push:
@@ -14,7 +15,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: macOS (Apple Silicon), os: macos-14, target: aarch64-apple-darwin }
           - { name: Windows (x64), os: windows-latest, target: x86_64-pc-windows-msvc }
     defaults:
       run:
@@ -43,6 +43,5 @@ jobs:
         with:
           name: muesli-${{ matrix.target }}
           path: |
-            windows/target/${{ matrix.target }}/release/bundle/**/*.dmg
             windows/target/${{ matrix.target }}/release/bundle/**/*.msi
             windows/target/${{ matrix.target }}/release/bundle/nsis/*.exe
