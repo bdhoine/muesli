@@ -40,10 +40,12 @@ def main():
     if data.get("version") != version:
         problems.append(f"plugin.json version is {data.get('version')}, the workspace version is {version}")
         if not check:
-            data["version"] = version
+            # change only the version line, so the file keeps its hand-written layout
+            with open(manifest) as f:
+                text = f.read()
+            text = re.sub(r'("version"\s*:\s*)"[^"]*"', r'\g<1>"' + version + '"', text, count=1)
             with open(manifest, "w") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-                f.write("\n")
+                f.write(text)
 
     for target, source in COPIES.items():
         if not os.path.exists(target) or not same(target, source):

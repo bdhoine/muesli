@@ -3,6 +3,6 @@ resolver = "2"
 members = ["crates/core", "crates/mcp", "crates/whisper", "crates/audio", "crates/import", "crates/ffi", "crates/detect", "crates/system", "src-tauri"]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT"

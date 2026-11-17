@@ -4,7 +4,7 @@
   if (!new URLSearchParams(location.search).has("mock")) return;
   const listeners = [];
   const state = {
-    version: "0.0.1", platform: "windows", status: { kind: "idle" },
+    version: "0.0.2", platform: "windows", status: { kind: "idle" },
     prefs: { mcpEnabled: false, claudeDesktopConfigEntry: false, autoStop: false, endDelaySeconds: 60, recentLimit: 5, onboardingDone: false, dropFolderCleanup: "keep" },
     effectiveLanguages: ["nl", "en"], systemLanguages: ["nl", "en"],
     supportedLanguages: ["en", "nl", "fr", "de", "es", "it", "pt", "ja", "zh"].map((code) => ({ code, name: code })),
