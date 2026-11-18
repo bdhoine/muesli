@@ -1,7 +1,7 @@
 name: Build app
 
-# Builds the Windows installers (.msi/.exe) as downloadable artifacts. macOS is built locally with
-# macos/build.sh: GitHub's macOS runners are not available to this private repository.
+# Builds the installers as downloadable artifacts: the macOS app (Muesli.app in a zip, signed ad hoc
+# because CI has no certificate, so macOS asks before it opens it) and the Windows installers (.msi/.exe).
 on:
   workflow_dispatch:
   push:
@@ -45,3 +45,30 @@ jobs:
           path: |
             windows/target/${{ matrix.target }}/release/bundle/**/*.msi
             windows/target/${{ matrix.target }}/release/bundle/nsis/*.exe
+
+  macos:
+    name: macOS (Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows
+      - name: Build Muesli.app
+        run: macos/build.sh
+      - name: Check what was built
+        run: |
+          test -x macos/Muesli.app/Contents/MacOS/Muesli
+          test -x macos/Muesli.app/Contents/MacOS/muesli-mcp
+          test -f macos/Muesli.app/Contents/Resources/Muesli.mcpb
+          codesign --verify --deep macos/Muesli.app
+          macos/Muesli.app/Contents/MacOS/muesli-mcp --version
+      - name: Zip the app
+        run: ditto -c -k --keepParent macos/Muesli.app macos/Muesli-macos-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: muesli-aarch64-apple-darwin
+          path: macos/Muesli-macos-arm64.zip
