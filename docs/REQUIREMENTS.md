@@ -44,7 +44,7 @@ Lifecycle
 
 Detection
 
-- A4. The detector keeps a current "meeting in progress" value for as long as the signal holds (calendar event running, mic in use), not only at the moment it prompts. This value is reported whether or not the user chose to record.
+- A4. The detector keeps a current "meeting in progress" value for as long as the signal holds (calendar event running, mic in use), not only at the moment it prompts. This value is reported whether or not the user chose to record. A meeting is suggested only once: a calendar event once per event, a call (mic in use by another app) once however long it lasts, whether the prompt was dismissed, ignored or accepted. A call counts as new only after the microphone was free for the end delay (default 60 s), and an audio call that overruns its calendar meeting is not suggested again.
 - A5. The detector keeps running during a recording and detects the end of a call (mic released for a configurable period, default 60 s). On end it prompts to stop, or stops automatically if the user enabled that setting.
 
 Storage

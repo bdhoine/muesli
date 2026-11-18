@@ -31,6 +31,10 @@ pub struct DetectionLogic {
     seen_events: std::collections::HashSet<String>,
     mic_hot_since: Option<DateTime<Utc>>,
     last_audio_prompt: Option<DateTime<Utc>>,
+    /// The call going on now was already suggested (or recorded, or is a calendar meeting that was
+    /// suggested), so it is not suggested again. Cleared once the mic has been free for `end_delay`.
+    call_handled: bool,
+    mic_free_since: Option<DateTime<Utc>>,
     call_heard_while_recording: bool,
     mic_quiet_since: Option<DateTime<Utc>>,
     end_reported: bool,
@@ -46,6 +50,8 @@ impl Default for DetectionLogic {
             seen_events: Default::default(),
             mic_hot_since: None,
             last_audio_prompt: None,
+            call_handled: false,
+            mic_free_since: None,
             call_heard_while_recording: false,
             mic_quiet_since: None,
             end_reported: false,
@@ -81,6 +87,18 @@ impl DetectionLogic {
             Some(false) => self.mic_hot_since = None,
             None => {}
         }
+        // The same call is handled once, however long it lasts and however often it is muted or
+        // dismissed: only a mic that stays free for `end_delay` makes the next call a new one.
+        match mic_busy {
+            Some(true) => self.mic_free_since = None,
+            Some(false) => {
+                let free_since = *self.mic_free_since.get_or_insert(now);
+                if now - free_since >= self.end_delay {
+                    self.call_handled = false;
+                }
+            }
+            None => {}
+        }
         let call_active = self.mic_hot_since.is_some_and(|since| now - since > self.mic_warmup);
         let audio = DetectedMeeting::new(
             if teams_running { "Teams call" } else { "Call" },
@@ -95,6 +113,9 @@ impl DetectionLogic {
             events.push(DetectionEvent::InProgressChanged);
         }
 
+        if (recording || calendar.is_some()) && call_active {
+            self.call_handled = true; // recording it, or it is the calendar meeting that was suggested
+        }
         if recording {
             // Only recordings in which another app used the mic can "end"; an in-person
             // meeting recorded manually never triggers this.
@@ -121,8 +142,9 @@ impl DetectionLogic {
             if self.seen_events.insert(event_id) {
                 events.push(DetectionEvent::Suggest(meeting));
             }
-        } else if call_active && self.last_audio_prompt.is_none_or(|t| now - t > self.audio_prompt_cooldown) {
+        } else if call_active && !self.call_handled && self.last_audio_prompt.is_none_or(|t| now - t > self.audio_prompt_cooldown) {
             self.last_audio_prompt = Some(now);
+            self.call_handled = true;
             events.push(DetectionEvent::Suggest(audio));
         }
         events

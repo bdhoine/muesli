@@ -50,14 +50,26 @@ final class DetectionTests: XCTestCase {
         XCTAssertEqual(suggestions(tick(mic: true, teams: true)), [DetectedMeeting(title: "Teams call", source: "teams")])
     }
 
-    func testAudioSuggestionIsNotRepeatedWithinTenMinutes() {
+    func testACallIsSuggestedOnceHoweverLongItLasts() {
         for _ in 0..<3 { _ = tick(mic: true) }
-        XCTAssertEqual(suggestions(tick(mic: true)).count, 1)
-        _ = tick(mic: false)                                       // call ends, a new one starts
+        var total = suggestions(tick(mic: true)).count
+        for _ in 0..<240 { total += suggestions(tick(mic: true)).count }      // 20 minutes, past the cooldown
+        XCTAssertEqual(total, 1)
+    }
+
+    func testAMuteDoesNotMakeItANewCall() {
+        for _ in 0..<4 { _ = tick(mic: true) }
+        for _ in 0..<5 { _ = tick(mic: false) }                    // 25 s, shorter than the end delay
         var again = 0
-        for _ in 0..<100 { again += suggestions(tick(mic: true)).count }      // 500 s
+        for _ in 0..<300 { again += suggestions(tick(mic: true)).count }
         XCTAssertEqual(again, 0)
-        for _ in 0..<30 { again += suggestions(tick(mic: true)).count }       // past 600 s
+    }
+
+    func testANewCallAfterTheMicWasFreeIsSuggestedAgain() {
+        for _ in 0..<4 { _ = tick(mic: true) }
+        for _ in 0..<13 { _ = tick(mic: false) }                   // longer than the 60 s end delay
+        var again = 0
+        for _ in 0..<140 { again += suggestions(tick(mic: true)).count }      // and past the 600 s cooldown
         XCTAssertEqual(again, 1)
     }
 

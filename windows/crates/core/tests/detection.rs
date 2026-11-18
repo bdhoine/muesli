@@ -80,22 +80,89 @@ fn teams_running_changes_the_label() {
 }
 
 #[test]
-fn audio_suggestion_is_not_repeated_within_ten_minutes() {
+fn a_call_is_suggested_once_however_long_it_lasts() {
     let mut h = Harness::new();
-    for _ in 0..3 {
+    let mut total = 0;
+    for _ in 0..4 {
+        total += suggestions(&h.mic(true)).len();
+    }
+    for _ in 0..720 {
+        total += suggestions(&h.mic(true)).len(); // an hour, far beyond the ten minute cooldown
+    }
+    assert_eq!(total, 1);
+}
+
+#[test]
+fn muting_for_a_moment_does_not_make_it_a_new_call() {
+    let mut h = Harness::new();
+    for _ in 0..4 {
         h.mic(true);
     }
-    assert_eq!(suggestions(&h.mic(true)).len(), 1);
-    h.mic(false);
+    for _ in 0..5 {
+        h.mic(false); // 25 s of silence: shorter than the end delay
+    }
     let mut again = 0;
-    for _ in 0..100 {
+    for _ in 0..300 {
         again += suggestions(&h.mic(true)).len();
     }
     assert_eq!(again, 0);
-    for _ in 0..30 {
-        again += suggestions(&h.mic(true)).len();
+}
+
+#[test]
+fn a_new_call_after_the_mic_was_free_is_suggested_again() {
+    let mut h = Harness::new();
+    for _ in 0..4 {
+        h.mic(true);
+    }
+    for _ in 0..13 {
+        h.mic(false); // more than the 60 s end delay
+    }
+    let mut again = 0;
+    for _ in 0..140 {
+        again += suggestions(&h.mic(true)).len(); // and beyond the ten minute cooldown
     }
     assert_eq!(again, 1);
+}
+
+#[test]
+fn a_call_that_was_recorded_and_stopped_is_not_suggested_again() {
+    let mut h = Harness::new();
+    for _ in 0..4 {
+        h.mic(true);
+    }
+    for _ in 0..10 {
+        h.rec(true);
+    }
+    let mut again = 0;
+    for _ in 0..300 {
+        again += suggestions(&h.mic(true)).len(); // recording stopped, the call goes on
+    }
+    assert_eq!(again, 0);
+}
+
+#[test]
+fn a_calendar_meeting_that_runs_over_is_not_suggested_again_as_a_call() {
+    let mut h = Harness::new();
+    let s = sync();
+    let mut total = 0;
+    for _ in 0..6 {
+        total += suggestions(&h.tick(false, Some(s.clone()), Some(true), false)).len();
+    }
+    for _ in 0..300 {
+        total += suggestions(&h.tick(false, None, Some(true), false)).len(); // the event is over, the call is not
+    }
+    assert_eq!(total, 1, "only the calendar suggestion");
+}
+
+#[test]
+fn a_meeting_nobody_joined_is_suggested_once() {
+    let mut h = Harness::new();
+    let s = sync();
+    let mut total = 0;
+    for _ in 0..200 {
+        total += suggestions(&h.tick(false, Some(s.clone()), Some(false), false)).len(); // never joined, never dismissed
+    }
+    assert_eq!(total, 1);
 }
 
 #[test]

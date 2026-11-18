@@ -77,13 +77,17 @@ The app never opens a socket and nothing is exposed to the network. Everything a
 `DetectionLogic` (Rust, `crates/core/src/detection.rs`) holds the rules; `MeetingDetector` samples the system every 5 seconds and feeds it.
 
 - A calendar event counts as a meeting when it has more than one attendee or mentions a known meeting host. It is suggested once per event.
-- Mic activity counts as a call once another app has used a microphone for more than 10 seconds. Audio-only suggestions are at most 10 minutes apart.
+- Mic activity counts as a call once another app has used a microphone for more than 10 seconds. Audio-only suggestions are at most 10 minutes apart, and a call is suggested once however long it lasts: it counts as handled once suggested (or recorded, or covered by a suggested calendar event), and only a microphone that stays free for the end delay (default 60 s, so a mute does not count) makes the next call a new one.
 - During a recording, once another app has used the mic and then released it for `endDelaySeconds` (default 60), the call counts as ended. A recording in which no other app used the mic never ends by itself.
 - Telling Muesli's own mic use from other apps' uses the CoreAudio process list, which needs macOS 14.2. Before that, the detector cannot judge the mic while Muesli records.
 
 ### Meeting lifecycle
 
 `recording → finalizing → ready`, or `failed`. The meeting is saved to the store when recording starts and again after every transcribed chunk, so a crash loses at most the audio not yet transcribed. On launch, `MeetingStore.recoverInterrupted()` turns leftovers into `ready` with `partial: true`, or `failed` when nothing was transcribed. It then runs `MeetingStore.importTranscripts()`, which copies any `.json` in the transcripts folder whose id is not in the store yet (meetings recorded before the store existed), so `list_transcripts` sees them; it never overwrites a stored meeting.
+
+## Changelog
+
+`CHANGELOG.md` follows Keep a Changelog and lists only what a user can see or use. Add a line under `[Unreleased]` with every such change. To release: bump the version in `windows/Cargo.toml`, run `python3 scripts/sync-plugin.py`, update the fixtures that carry the version (`fixtures/mcp/expected.jsonl`), rename `[Unreleased]` to the version and date, add a new empty `[Unreleased]` and update the compare links.
 
 ## Claude plugin
 

@@ -157,6 +157,10 @@ If recording reports that a permission is off, choose **Open Privacy Settings** 
 
 Muesli is young. Transcription works and has been tested on real meetings. The Settings window, end-of-call detection and the AI assistant connection are new and have had less testing. Details are in [CONTRIBUTING.md](CONTRIBUTING.md#what-is-verified).
 
+## Changelog
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
+
 ## Contributing
 
 Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers building, testing and how the code is organised.
