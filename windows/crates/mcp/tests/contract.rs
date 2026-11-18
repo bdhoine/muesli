@@ -26,7 +26,8 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// Numbers by value (`4` and `4.0` are the same), tool result text parsed when it is JSON,
-/// and the platform's name for the trash mapped back to the macOS wording.
+/// and the platform's name for the trash (Recycle Bin on Windows, just Trash on Linux) mapped back
+/// to the macOS wording.
 fn normalise(v: Value) -> Value {
     match v {
         Value::Number(n) => serde_json::json!(n.as_f64().unwrap()),
@@ -45,7 +46,7 @@ fn normalise(v: Value) -> Value {
                 })
                 .collect(),
         ),
-        Value::String(s) => Value::String(s.replace("Recycle Bin", "macOS Trash")),
+        Value::String(s) => Value::String(s.replace("Recycle Bin", "macOS Trash").replace("the Trash", "the macOS Trash")),
         other => other,
     }
 }
