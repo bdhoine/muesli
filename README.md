@@ -117,7 +117,7 @@ Move `macos/Muesli.app` to Applications and open it.
 
 ### Windows
 
-The installer is built by GitHub Actions: on the repository's **Actions** tab, run the **Build app** workflow and download the `muesli-x86_64-pc-windows-msvc` artifact. It is not code-signed yet, so Windows SmartScreen asks you to confirm. To build it yourself you need [Rust](https://rustup.rs), the Visual Studio C++ build tools and CMake:
+The installer is built by GitHub Actions: on the repository's **Actions** tab, run the **Build installers** workflow and download the `muesli-x86_64-pc-windows-msvc` artifact (the same run also builds the macOS app, in the `muesli-aarch64-apple-darwin` artifact). It is not code-signed yet, so Windows SmartScreen asks you to confirm. To build it yourself you need [Rust](https://rustup.rs), the Visual Studio C++ build tools and CMake:
 
 ```bash
 git clone https://github.com/bdhoine/muesli.git

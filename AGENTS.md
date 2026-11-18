@@ -22,5 +22,5 @@ Muesli is an on-device meeting transcriber for **macOS and Windows**. It records
 
 ## Verifying
 - Swift: `cd macos && swift test`, then `macos/build.sh` and run `macos/Muesli.app`.
-- Rust: `cd windows && cargo test --workspace`; from a Mac, `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code. `src-tauri` and `whisper` only compile for Windows in CI (`.github/workflows/ci.yml`); installers come from `app.yml`. Both workflows are started by hand, so nothing checks a push automatically: run the tests locally before pushing.
+- Rust: `cd windows && cargo test --workspace`; from a Mac, `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code. `src-tauri` and `whisper` only compile for Windows in CI (`.github/workflows/ci.yml`); installers come from `app.yml` (workflows **Tests** and **Build installers**, which also run on macOS). Both workflows are started by hand, so nothing checks a push automatically: run the tests locally before pushing.
 - Say plainly what was not run on Windows. `docs/PLATFORMS.md` section 3 records what has been verified there (so far: a recording, tested by the maintainer).

@@ -1,18 +1,22 @@
-name: CI
+name: Tests
+run-name: Tests on ${{ github.ref_name }} (${{ github.sha }})
 
-# Started by hand (Actions tab, or `gh workflow run CI`). Put `push` and `pull_request` here to run
+# Started by hand (Actions tab, or `gh workflow run Tests`). Put `push` and `pull_request` here to run
 # it automatically. Rust runs on macOS, Windows and Linux; the Swift app is tested on macOS.
 on:
   workflow_dispatch:
 
 jobs:
   rust:
-    name: Rust (${{ matrix.os }})
+    name: Rust tests, ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - { os: macos-latest, label: macOS }
+          - { os: windows-latest, label: Windows }
+          - { os: ubuntu-latest, label: "Linux (portable crates only)" }
     defaults:
       run:
         working-directory: windows
@@ -29,7 +33,7 @@ jobs:
         run: cargo test -p muesli-core -p muesli-mcp -p muesli-detect -p muesli-audio -p muesli-system -p muesli-import
 
   swift:
-    name: Swift (macOS)
+    name: Swift tests, macOS app
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +49,7 @@ jobs:
         working-directory: macos
 
   icons:
-    name: Generated files are current (icons, plugin)
+    name: Generated files up to date (icons, plugin, launcher)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

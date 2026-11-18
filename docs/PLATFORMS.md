@@ -27,7 +27,7 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 |---|---|---|---|
 | Meeting title without a calendar | From the calendar | "Call" / "Teams call" | Read the title of the Teams or Zoom meeting window. Windows only, and fragile across app versions. |
 | GPU transcription | yes | no | Build `whisper-rs` with Vulkan as an optional second installer; needs the Vulkan SDK in CI. |
-| Windows on ARM build | not applicable | x64 only (runs emulated on ARM PCs) | Add an `aarch64-pc-windows-msvc` job to the Build app workflow. |
+| Windows on ARM build | not applicable | x64 only (runs emulated on ARM PCs) | Add an `aarch64-pc-windows-msvc` job to the Build installers workflow. |
 | Code signing | Apple Development certificate (local builds) | none; SmartScreen warns | A code-signing certificate and a signing step in CI. For macOS distribution: Developer ID and notarisation. |
 | Showing the download percentage in the menu | yes | no (shown in the windows) | Rebuilding a tray menu closes it if open; needs an in-place item update. |
 
