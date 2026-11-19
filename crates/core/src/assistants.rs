@@ -32,8 +32,7 @@ pub enum AssistantClient {
 }
 
 impl AssistantClient {
-    pub const ALL: [AssistantClient; 6] =
-        [Self::ClaudeCode, Self::Codex, Self::GeminiCli, Self::VsCode, Self::Cursor, Self::Other];
+    pub const ALL: [AssistantClient; 6] = [Self::ClaudeCode, Self::Codex, Self::GeminiCli, Self::VsCode, Self::Cursor, Self::Other];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -53,7 +52,9 @@ impl AssistantClient {
             Self::Codex => format!("Run this in {terminal}. Codex saves it in ~/.codex/config.toml."),
             Self::GeminiCli => format!("Run this in {terminal}. It adds Muesli for your user in ~/.gemini/settings.json."),
             Self::VsCode => format!("Run this in {terminal}, then use Muesli from Copilot Chat in agent mode."),
-            Self::Cursor => "Add this to ~/.cursor/mcp.json, next to any servers already there. Or use Cursor Settings → MCP → Add new server.".into(),
+            Self::Cursor => {
+                "Add this to ~/.cursor/mcp.json, next to any servers already there. Or use Cursor Settings → MCP → Add new server.".into()
+            }
             Self::Other => "Muesli speaks MCP over stdio. Most clients accept this in their configuration file.".into(),
         }
     }
@@ -126,9 +127,7 @@ impl ClaudeDesktopConfig {
             return format!("Could not read {}; left it untouched. Add the server by hand.", file_name(&file));
         };
         let has_legacy = Self::LEGACY_KEYS.iter().any(|k| servers.contains_key(*k));
-        if !has_legacy
-            && servers.get(Self::KEY).and_then(|e| e.get("command")).and_then(Value::as_str) == Some(command.as_str())
-        {
+        if !has_legacy && servers.get(Self::KEY).and_then(|e| e.get("command")).and_then(Value::as_str) == Some(command.as_str()) {
             return "Registered with Claude Desktop.".into();
         }
         for legacy in Self::LEGACY_KEYS {

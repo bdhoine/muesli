@@ -69,17 +69,14 @@ pub fn run() {
             Ok(())
         });
 
-    builder
-        .build(tauri::generate_context!())
-        .expect("error while building Muesli")
-        .run(|_handle, event| {
-            // Closing the last window must not quit a tray app.
-            if let RunEvent::ExitRequested { api, code, .. } = event {
-                if code.is_none() {
-                    api.prevent_exit();
-                }
+    builder.build(tauri::generate_context!()).expect("error while building Muesli").run(|_handle, event| {
+        // Closing the last window must not quit a tray app.
+        if let RunEvent::ExitRequested { api, code, .. } = event {
+            if code.is_none() {
+                api.prevent_exit();
             }
-        });
+        }
+    });
 }
 
 fn boot(ctx: &Ctx) {
@@ -92,9 +89,8 @@ fn boot(ctx: &Ctx) {
     let store = MeetingStore::new(&paths);
     store.recover_interrupted();
     store.import_transcripts(&app.paths().transcripts);
-    *app.last_ready.lock().unwrap() = store
-        .latest_ready()
-        .map(|m| muesli_core::status::LastReady { id: m.id, title: m.title, ended_at: m.ended_at });
+    *app.last_ready.lock().unwrap() =
+        store.latest_ready().map(|m| muesli_core::status::LastReady { id: m.id, title: m.title, ended_at: m.ended_at });
     bridge::apply(app, &app.prefs());
 
     let _ = muesli_system::register_app(prompt::APP_ID, "Muesli"); // so Windows shows prompts under our name

@@ -71,18 +71,13 @@ impl<'a> MeetingEditor<'a> {
 
     pub fn set_attendees(&self, id: &str, attendees: &[String]) -> Result<Meeting, EditError> {
         let mut seen = std::collections::HashSet::new();
-        let clean: Vec<String> = attendees
-            .iter()
-            .map(|a| single_line(a))
-            .filter(|a| !a.is_empty() && seen.insert(a.to_lowercase()))
-            .collect();
+        let clean: Vec<String> =
+            attendees.iter().map(|a| single_line(a)).filter(|a| !a.is_empty() && seen.insert(a.to_lowercase())).collect();
         if clean.len() > MAX_ATTENDEES {
             return Err(EditError::Invalid(format!("At most {MAX_ATTENDEES} attendees.")));
         }
         if clean.iter().any(|a| a.chars().count() > MAX_TITLE_LENGTH) {
-            return Err(EditError::Invalid(format!(
-                "An attendee name is longer than {MAX_TITLE_LENGTH} characters."
-            )));
+            return Err(EditError::Invalid(format!("An attendee name is longer than {MAX_TITLE_LENGTH} characters.")));
         }
         self.edit(id, |m| {
             m.attendees = clean;
@@ -96,9 +91,7 @@ impl<'a> MeetingEditor<'a> {
             return Err(EditError::Invalid("The new speaker name cannot be empty.".into()));
         }
         if clean.chars().count() > MAX_SPEAKER_LENGTH {
-            return Err(EditError::Invalid(format!(
-                "The speaker name is longer than {MAX_SPEAKER_LENGTH} characters."
-            )));
+            return Err(EditError::Invalid(format!("The speaker name is longer than {MAX_SPEAKER_LENGTH} characters.")));
         }
         self.edit(id, |m| {
             let mut speakers: Vec<String> = m.transcript.iter().map(|s| s.speaker.clone()).collect();
@@ -144,9 +137,7 @@ impl<'a> MeetingEditor<'a> {
         let old_stem = self.folder.join(Store::file_stem(&old));
         let new_stem = self.folder.join(Store::file_stem(&m));
         if new_stem != old_stem && !owned_by(&m.id, &new_stem) && exists(&new_stem) {
-            return Err(EditError::Invalid(
-                "Another transcript that started in the same minute already has that title.".into(),
-            ));
+            return Err(EditError::Invalid("Another transcript that started in the same minute already has that title.".into()));
         }
 
         self.store.save(&m);
@@ -170,10 +161,7 @@ fn exists(stem: &Path) -> bool {
 }
 
 fn owned_by(id: &str, stem: &Path) -> bool {
-    fs::read_to_string(stem.with_extension("json"))
-        .ok()
-        .and_then(|t| json::from_str::<Meeting>(&t))
-        .is_some_and(|other| other.id == id)
+    fs::read_to_string(stem.with_extension("json")).ok().and_then(|t| json::from_str::<Meeting>(&t)).is_some_and(|other| other.id == id)
 }
 
 /// Replaces every line break with a space and trims blanks at both ends.

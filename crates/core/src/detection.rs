@@ -12,8 +12,7 @@ pub enum DetectionEvent {
     CallEnded,
 }
 
-pub const MEETING_HOSTS: [&str; 5] =
-    ["teams.microsoft.com", "teams.live.com", "zoom.us", "meet.google.com", "webex.com"];
+pub const MEETING_HOSTS: [&str; 5] = ["teams.microsoft.com", "teams.live.com", "zoom.us", "meet.google.com", "webex.com"];
 
 /// The decisions behind meeting detection, free of OS APIs so they can be tested.
 /// A platform sampler reads the system every few seconds and feeds `tick`.
@@ -100,10 +99,7 @@ impl DetectionLogic {
             None => {}
         }
         let call_active = self.mic_hot_since.is_some_and(|since| now - since > self.mic_warmup);
-        let audio = DetectedMeeting::new(
-            if teams_running { "Teams call" } else { "Call" },
-            if teams_running { "teams" } else { "audio" },
-        );
+        let audio = DetectedMeeting::new(if teams_running { "Teams call" } else { "Call" }, if teams_running { "teams" } else { "audio" });
 
         // What is going on right now. The calendar gives the better title.
         let current: Option<DetectedMeeting> =

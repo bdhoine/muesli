@@ -15,9 +15,7 @@ pub mod iso_date {
 
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<DateTime<Utc>, D::Error> {
         let text = String::deserialize(d)?;
-        DateTime::parse_from_rfc3339(&text)
-            .map(|d| d.with_timezone(&Utc))
-            .map_err(serde::de::Error::custom)
+        DateTime::parse_from_rfc3339(&text).map(|d| d.with_timezone(&Utc)).map_err(serde::de::Error::custom)
     }
 }
 
@@ -34,12 +32,7 @@ pub mod iso_date_opt {
 
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<DateTime<Utc>>, D::Error> {
         let text = Option::<String>::deserialize(d)?;
-        text.map(|t| {
-            DateTime::parse_from_rfc3339(&t)
-                .map(|d| d.with_timezone(&Utc))
-                .map_err(serde::de::Error::custom)
-        })
-        .transpose()
+        text.map(|t| DateTime::parse_from_rfc3339(&t).map(|d| d.with_timezone(&Utc)).map_err(serde::de::Error::custom)).transpose()
     }
 }
 

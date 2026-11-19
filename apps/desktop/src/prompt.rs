@@ -39,8 +39,7 @@ pub fn suggest_stop(ctx: &Ctx) {
 
 fn ask(ctx: &Ctx, kind: &str, question: Question) {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    *ctx.app.prompt.lock().unwrap() =
-        Some(Prompt { id, kind: kind.into(), title: question.title.clone(), body: question.body.clone() });
+    *ctx.app.prompt.lock().unwrap() = Some(Prompt { id, kind: kind.into(), title: question.title.clone(), body: question.body.clone() });
     let answer_ctx = ctx.clone();
     if muesli_system::ask(APP_ID, &question, move |accept| answer(&answer_ctx, Some(id), accept)).is_err() {
         windows::show(&ctx.handle, "prompt"); // no notification with buttons here: our own window

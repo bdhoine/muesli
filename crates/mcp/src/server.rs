@@ -43,10 +43,7 @@ impl Server {
         };
         match json {
             Value::Array(batch) => {
-                let replies: Vec<Value> = batch
-                    .iter()
-                    .filter_map(|m| m.as_object().and_then(|m| self.handle_one(m)))
-                    .collect();
+                let replies: Vec<Value> = batch.iter().filter_map(|m| m.as_object().and_then(|m| self.handle_one(m))).collect();
                 (!replies.is_empty()).then(|| encode(&Value::Array(replies)))
             }
             Value::Object(message) => self.handle_one(&message).map(|v| encode(&v)),
@@ -58,11 +55,7 @@ impl Server {
     fn handle_one(&self, msg: &Map<String, Value>) -> Option<Value> {
         let id = msg.get("id").filter(|id| !id.is_null())?.clone(); // notification otherwise
         let Some(method) = msg.get("method").and_then(Value::as_str) else {
-            return if msg.contains_key("result") || msg.contains_key("error") {
-                None
-            } else {
-                Some(error(id, -32600, "Invalid request"))
-            };
+            return if msg.contains_key("result") || msg.contains_key("error") { None } else { Some(error(id, -32600, "Invalid request")) };
         };
         let empty = Map::new();
         let params = msg.get("params").and_then(Value::as_object).unwrap_or(&empty);
@@ -70,12 +63,15 @@ impl Server {
             "initialize" => {
                 let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("");
                 let version = if PROTOCOL_VERSIONS.contains(&asked) { asked } else { PROTOCOL_VERSIONS[0] };
-                Some(result(id, json!({
-                    "protocolVersion": version,
-                    "capabilities": { "tools": {} },
-                    "serverInfo": { "name": "muesli", "title": "Muesli", "version": VERSION },
-                    "instructions": crate::tools::instructions(),
-                })))
+                Some(result(
+                    id,
+                    json!({
+                        "protocolVersion": version,
+                        "capabilities": { "tools": {} },
+                        "serverInfo": { "name": "muesli", "title": "Muesli", "version": VERSION },
+                        "instructions": crate::tools::instructions(),
+                    }),
+                ))
             }
             "ping" => Some(result(id, json!({}))),
             "tools/list" => Some(result(id, json!({ "tools": Tools::definitions() }))),

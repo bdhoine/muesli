@@ -13,9 +13,7 @@ pub fn show(handle: &AppHandle, label: &str) {
         "transcribe" => ("Transcribing Audio", 460.0, 320.0),
         _ => ("Muesli Settings", 820.0, 600.0),
     };
-    let mut builder = WebviewWindowBuilder::new(handle, label, WebviewUrl::App("index.html".into()))
-        .title(title)
-        .inner_size(width, height);
+    let mut builder = WebviewWindowBuilder::new(handle, label, WebviewUrl::App("index.html".into())).title(title).inner_size(width, height);
     if label == "prompt" {
         builder = builder.decorations(false).always_on_top(true).resizable(false).skip_taskbar(true).focused(false);
         if let Ok(Some(monitor)) = handle.primary_monitor() {

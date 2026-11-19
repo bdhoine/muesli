@@ -19,8 +19,8 @@ pub mod store;
 pub mod whisper_model;
 
 pub use chunker::AudioChunker;
-pub use import::{AudioCleanup, DropFolder};
 pub use detection::{DetectionEvent, DetectionLogic};
+pub use import::{AudioCleanup, DropFolder};
 pub use models::{AudioChunk, DetectedMeeting, Meeting, MeetingState, TranscriptSegment};
 pub use paths::Paths;
 pub use preferences::Preferences;

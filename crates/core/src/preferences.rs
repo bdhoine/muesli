@@ -91,14 +91,13 @@ impl Preferences {
     /// The languages Whisper may pick from: the chosen ones, else the system defaults.
     pub fn effective_languages(&self, system_defaults: &[String]) -> Vec<String> {
         let chosen = languages::unique(
-            self.languages
-                .iter()
-                .flatten()
-                .map(|l| languages::base_code(l))
-                .filter(|l| languages::is_supported(l))
-                .collect(),
+            self.languages.iter().flatten().map(|l| languages::base_code(l)).filter(|l| languages::is_supported(l)).collect(),
         );
-        if chosen.is_empty() { system_defaults.to_vec() } else { chosen }
+        if chosen.is_empty() {
+            system_defaults.to_vec()
+        } else {
+            chosen
+        }
     }
 
     /// A model file the user chose themselves; it replaces the downloadable models.
@@ -122,10 +121,7 @@ impl Preferences {
 
     /// A missing or unreadable file gives the defaults (and a first-launch onboarding).
     pub fn load(paths: &Paths) -> Self {
-        std::fs::read_to_string(paths.config())
-            .ok()
-            .and_then(|text| json::from_str(&text))
-            .unwrap_or_default()
+        std::fs::read_to_string(paths.config()).ok().and_then(|text| json::from_str(&text)).unwrap_or_default()
     }
 
     pub fn save(&self, paths: &Paths) -> std::io::Result<()> {

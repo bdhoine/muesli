@@ -29,10 +29,7 @@ fn audit_sees_the_tool_and_the_meeting_id() {
         .with_audit(move |tool, id| sink.lock().unwrap().push((tool.to_string(), id.map(String::from))));
     call(&server, "rename_transcript", json!({"id": "a", "title": "x"}));
     call(&server, "get_status", json!({}));
-    assert_eq!(
-        *seen.lock().unwrap(),
-        vec![("rename_transcript".to_string(), Some("a".to_string())), ("get_status".to_string(), None)]
-    );
+    assert_eq!(*seen.lock().unwrap(), vec![("rename_transcript".to_string(), Some("a".to_string())), ("get_status".to_string(), None)]);
 }
 
 #[test]

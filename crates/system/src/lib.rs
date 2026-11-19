@@ -37,9 +37,8 @@ mod imp {
     /// Makes `app_id` known to Windows under `display_name`, so toasts are shown under Muesli's
     /// name and not PowerShell's. Safe to call on every start.
     pub fn register_app(app_id: &str, display_name: &str) -> Result<(), String> {
-        let key = windows_registry::CURRENT_USER
-            .create(format!("Software\\Classes\\AppUserModelId\\{app_id}"))
-            .map_err(|e| e.to_string())?;
+        let key =
+            windows_registry::CURRENT_USER.create(format!("Software\\Classes\\AppUserModelId\\{app_id}")).map_err(|e| e.to_string())?;
         key.set_string("DisplayName", display_name).map_err(|e| e.to_string())
     }
 

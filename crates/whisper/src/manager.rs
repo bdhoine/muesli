@@ -12,7 +12,10 @@ pub enum Phase {
     /// Something has to be downloaded and nothing is running yet.
     Missing,
     /// `received` and `total` count bytes over everything that is being downloaded.
-    Downloading { received: u64, total: u64 },
+    Downloading {
+        received: u64,
+        total: u64,
+    },
     /// The speech model to load.
     Ready(PathBuf),
     Failed(String),

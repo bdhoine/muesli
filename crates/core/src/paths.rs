@@ -27,14 +27,9 @@ impl Paths {
         let support = std::env::var_os("MUESLI_SUPPORT_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("Muesli"));
-        let transcripts = std::env::var("TRANSCRIPT_DIR")
-            .map(|p| expand_tilde(&p))
-            .unwrap_or_else(|_| {
-                dirs::document_dir()
-                    .or_else(dirs::home_dir)
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join("MeetingTranscripts")
-            });
+        let transcripts = std::env::var("TRANSCRIPT_DIR").map(|p| expand_tilde(&p)).unwrap_or_else(|_| {
+            dirs::document_dir().or_else(dirs::home_dir).unwrap_or_else(|| PathBuf::from(".")).join("MeetingTranscripts")
+        });
         let overridden = std::env::var_os("MUESLI_SUPPORT_DIR").is_some();
         let models = match dirs::data_local_dir() {
             Some(local) if cfg!(windows) && !overridden => local.join("Muesli"),

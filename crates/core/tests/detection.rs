@@ -17,7 +17,13 @@ impl Harness {
         Self { logic: DetectionLogic::default(), t: Utc.timestamp_opt(1_800_000_000, 0).unwrap() }
     }
 
-    fn tick(&mut self, recording: bool, calendar: Option<(DetectedMeeting, String)>, mic: Option<bool>, teams: bool) -> Vec<DetectionEvent> {
+    fn tick(
+        &mut self,
+        recording: bool,
+        calendar: Option<(DetectedMeeting, String)>,
+        mic: Option<bool>,
+        teams: bool,
+    ) -> Vec<DetectionEvent> {
         self.t += Duration::seconds(5);
         self.logic.tick(self.t, recording, calendar, mic, teams)
     }
@@ -32,10 +38,7 @@ impl Harness {
 }
 
 fn suggestions(events: &[DetectionEvent]) -> Vec<DetectedMeeting> {
-    events
-        .iter()
-        .filter_map(|e| if let DetectionEvent::Suggest(m) = e { Some(m.clone()) } else { None })
-        .collect()
+    events.iter().filter_map(|e| if let DetectionEvent::Suggest(m) = e { Some(m.clone()) } else { None }).collect()
 }
 
 #[test]
@@ -160,7 +163,8 @@ fn a_meeting_nobody_joined_is_suggested_once() {
     let s = sync();
     let mut total = 0;
     for _ in 0..200 {
-        total += suggestions(&h.tick(false, Some(s.clone()), Some(false), false)).len(); // never joined, never dismissed
+        total += suggestions(&h.tick(false, Some(s.clone()), Some(false), false)).len();
+        // never joined, never dismissed
     }
     assert_eq!(total, 1);
 }

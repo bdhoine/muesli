@@ -20,10 +20,7 @@ fn terminal_commands_name_the_server_and_helper() {
 #[test]
 fn paths_with_spaces_and_quotes_stay_one_shell_word() {
     let odd = "/Users/me/My Apps/Bob's/muesli-mcp";
-    assert_eq!(
-        AssistantClient::Codex.snippet_for(odd, false),
-        r#"codex mcp add muesli -- '/Users/me/My Apps/Bob'\''s/muesli-mcp'"#
-    );
+    assert_eq!(AssistantClient::Codex.snippet_for(odd, false), r#"codex mcp add muesli -- '/Users/me/My Apps/Bob'\''s/muesli-mcp'"#);
     // PowerShell doubles the single quote.
     assert_eq!(
         AssistantClient::Codex.snippet_for(r"C:\Users\Bob's Apps\muesli-mcp.exe", true),

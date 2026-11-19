@@ -22,12 +22,7 @@ impl AudioChunker {
         Self::with_options(30.0, 16_000.0, &["You", "Others"], emit)
     }
 
-    pub fn with_options(
-        chunk_seconds: f64,
-        rate: f64,
-        speakers: &[&str],
-        emit: impl Fn(AudioChunk) + Send + Sync + 'static,
-    ) -> Self {
+    pub fn with_options(chunk_seconds: f64, rate: f64, speakers: &[&str], emit: impl Fn(AudioChunk) + Send + Sync + 'static) -> Self {
         let buffers = speakers.iter().map(|s| (s.to_string(), Vec::new())).collect();
         let emitted = speakers.iter().map(|s| (s.to_string(), 0.0)).collect();
         Self { emit: Box::new(emit), chunk_seconds, rate, inner: Mutex::new(Inner { buffers, emitted }) }

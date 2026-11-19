@@ -54,12 +54,7 @@ pub struct AudioCapture {
 impl AudioCapture {
     /// `on_error` is called (from an audio thread) when a stream breaks for good.
     pub fn new(emit: impl Fn(AudioChunk) + Send + Sync + 'static, on_error: impl Fn(String) + Send + Sync + 'static) -> Self {
-        Self {
-            chunker: Arc::new(AudioChunker::new(emit)),
-            on_error: Arc::new(on_error),
-            streams: Vec::new(),
-            workers: Vec::new(),
-        }
+        Self { chunker: Arc::new(AudioChunker::new(emit)), on_error: Arc::new(on_error), streams: Vec::new(), workers: Vec::new() }
     }
 
     /// Starts both streams. If either fails, nothing is left running.

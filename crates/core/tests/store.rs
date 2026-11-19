@@ -171,10 +171,8 @@ fn interrupted_recording_is_saved_as_partial() {
     assert_eq!(back.transcript.iter().map(|s| s.text.as_str()).collect::<Vec<_>>(), ["Earlier", "Later"]);
     assert_eq!(back.ended_at, Some(m.started_at + Duration::seconds(58)));
 
-    let exported: Vec<_> = Store::recent(&env.paths.transcripts, 5)
-        .into_iter()
-        .filter(|p| p.to_string_lossy().contains("Crashed-call"))
-        .collect();
+    let exported: Vec<_> =
+        Store::recent(&env.paths.transcripts, 5).into_iter().filter(|p| p.to_string_lossy().contains("Crashed-call")).collect();
     assert_eq!(exported.len(), 1);
     assert!(std::fs::read_to_string(&exported[0]).unwrap().contains("- Partial: recording was interrupted"));
     assert_eq!(store.load("fine").unwrap().partial, None);

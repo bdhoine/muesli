@@ -60,13 +60,12 @@ impl Store {
         Self::recent(folder, limit)
             .into_iter()
             .map(|md| {
-                let meeting: Option<Meeting> = fs::read_to_string(md.with_extension("json"))
-                    .ok()
-                    .and_then(|t| json::from_str(&t));
+                let meeting: Option<Meeting> = fs::read_to_string(md.with_extension("json")).ok().and_then(|t| json::from_str(&t));
                 RecentTranscript {
-                    title: meeting.as_ref().map(|m| m.title.clone()).unwrap_or_else(|| {
-                        md.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
-                    }),
+                    title: meeting
+                        .as_ref()
+                        .map(|m| m.title.clone())
+                        .unwrap_or_else(|| md.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()),
                     started_at: meeting.as_ref().map_or_else(|| DateTime::<Utc>::from(modified(&md)), |m| m.started_at),
                     ended_at: meeting.and_then(|m| m.ended_at),
                     path: md,
@@ -152,9 +151,7 @@ impl<'a> MeetingStore<'a> {
 
     /// `None` for ids that could escape the folder: only letters, digits and dashes, up to 64.
     pub fn url(&self, id: &str) -> Option<PathBuf> {
-        let ok = !id.is_empty()
-            && id.chars().count() <= 64
-            && id.chars().all(|c| c.is_alphanumeric() || c == '-');
+        let ok = !id.is_empty() && id.chars().count() <= 64 && id.chars().all(|c| c.is_alphanumeric() || c == '-');
         ok.then(|| self.paths.meetings().join(format!("{id}.json")))
     }
 
@@ -196,9 +193,7 @@ impl<'a> MeetingStore<'a> {
             } else {
                 m.transcript.sort_by(|a, b| a.start.total_cmp(&b.start));
                 let last_end = m.transcript.iter().map(|s| s.end).fold(0.0, f64::max);
-                m.ended_at = m
-                    .ended_at
-                    .or(Some(m.started_at + chrono::Duration::milliseconds((last_end * 1000.0) as i64)));
+                m.ended_at = m.ended_at.or(Some(m.started_at + chrono::Duration::milliseconds((last_end * 1000.0) as i64)));
                 m.state = MeetingState::Ready;
                 m.partial = Some(true);
                 Store::save(&m, self.paths.transcripts_dir());
@@ -252,9 +247,6 @@ impl<'a> MeetingStore<'a> {
     }
 
     pub fn latest_ready(&self) -> Option<Meeting> {
-        self.all()
-            .into_iter()
-            .filter(|m| m.state == MeetingState::Ready)
-            .max_by_key(|m| m.ended_at.unwrap_or(m.started_at))
+        self.all().into_iter().filter(|m| m.state == MeetingState::Ready).max_by_key(|m| m.ended_at.unwrap_or(m.started_at))
     }
 }

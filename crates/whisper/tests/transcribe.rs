@@ -26,8 +26,7 @@ fn read_wav(path: &std::path::Path) -> Vec<f32> {
 
 fn transcriber(with_vad: bool) -> Transcriber {
     let vad = env("MUESLI_TEST_VAD");
-    Transcriber::new(&env("MUESLI_TEST_MODEL"), with_vad.then_some(vad.as_path()), vec!["en".into(), "nl".into()])
-        .expect("models load")
+    Transcriber::new(&env("MUESLI_TEST_MODEL"), with_vad.then_some(vad.as_path()), vec!["en".into(), "nl".into()]).expect("models load")
 }
 
 fn text(t: &Transcriber, samples: Vec<f32>, offset: f64) -> (String, Vec<(f64, f64)>) {

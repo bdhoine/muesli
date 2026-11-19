@@ -48,8 +48,7 @@ pub fn instructions() -> String {
 
 impl Tools {
     pub const READ_NAMES: [&'static str; 3] = ["get_status", "list_transcripts", "get_transcript"];
-    pub const MANAGE_NAMES: [&'static str; 4] =
-        ["rename_transcript", "set_attendees", "rename_speaker", "delete_transcript"];
+    pub const MANAGE_NAMES: [&'static str; 4] = ["rename_transcript", "set_attendees", "rename_speaker", "delete_transcript"];
 
     pub fn is_tool(name: &str) -> bool {
         Self::READ_NAMES.contains(&name) || Self::MANAGE_NAMES.contains(&name)
@@ -78,9 +77,7 @@ impl Tools {
         let update = json!({ "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false });
         let destructive = json!({ "readOnlyHint": false, "destructiveHint": true, "idempotentHint": false, "openWorldHint": false });
         let id_property = json!({ "type": "string", "description": "Meeting id from list_transcripts or get_status." });
-        let schema = |properties: Value, required: Value| {
-            json!({ "type": "object", "properties": properties, "required": required, "additionalProperties": false })
-        };
+        let schema = |properties: Value, required: Value| json!({ "type": "object", "properties": properties, "required": required, "additionalProperties": false });
         json!([
             {
                 "name": "get_status",
@@ -220,11 +217,7 @@ impl Tools {
             };
         }
         // Stale or missing heartbeat: never claim a recording is running.
-        let last = MeetingStore::new(&self.paths).latest_ready().map(|m| LastReady {
-            id: m.id,
-            title: m.title,
-            ended_at: m.ended_at,
-        });
+        let last = MeetingStore::new(&self.paths).latest_ready().map(|m| LastReady { id: m.id, title: m.title, ended_at: m.ended_at });
         StatusOut {
             app_running: false,
             app_state: "notRunning".into(),
@@ -241,9 +234,7 @@ impl Tools {
     fn list_transcripts(&self, args: &Map<String, Value>) -> Result<String, ToolError> {
         let mut meetings = MeetingStore::new(&self.paths).all();
         if let Some(s) = args.get("since").and_then(Value::as_str) {
-            let since = parse_date(s).ok_or_else(|| {
-                ToolError::new("since must be an ISO 8601 date-time, e.g. 2026-11-13T09:00:00Z")
-            })?;
+            let since = parse_date(s).ok_or_else(|| ToolError::new("since must be an ISO 8601 date-time, e.g. 2026-11-13T09:00:00Z"))?;
             meetings.retain(|m| m.started_at >= since);
         }
         if let Some(s) = args.get("state").and_then(Value::as_str) {
@@ -265,16 +256,11 @@ impl Tools {
         let to = number(args.get("toSeconds"));
         let as_json = args.get("format").and_then(Value::as_str) == Some("json");
 
-        let mut wanted: Vec<TranscriptSegment> = m
-            .transcript
-            .iter()
-            .filter(|s| s.start >= from && to.is_none_or(|to| s.start < to))
-            .cloned()
-            .collect();
+        let mut wanted: Vec<TranscriptSegment> =
+            m.transcript.iter().filter(|s| s.start >= from && to.is_none_or(|to| s.start < to)).cloned().collect();
         wanted.sort_by(|a, b| a.start.total_cmp(&b.start));
-        let (segments, next) = page(&wanted, RESPONSE_CAP, |s| {
-            if as_json { s.text.chars().count() + 80 } else { Store::line(s).chars().count() }
-        });
+        let (segments, next) =
+            page(&wanted, RESPONSE_CAP, |s| if as_json { s.text.chars().count() + 80 } else { Store::line(s).chars().count() });
 
         if as_json {
             return Ok(json_text(&TranscriptOut {
@@ -446,5 +432,9 @@ fn parse_date(s: &str) -> Option<DateTime<Utc>> {
 
 /// Swift prints a whole `Double` with one decimal (`30.0`).
 fn swift_double(v: f64) -> String {
-    if v.fract() == 0.0 { format!("{v:.1}") } else { v.to_string() }
+    if v.fract() == 0.0 {
+        format!("{v:.1}")
+    } else {
+        v.to_string()
+    }
 }

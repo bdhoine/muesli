@@ -4,9 +4,9 @@ use std::mem::size_of;
 use std::ptr::NonNull;
 
 use objc2_core_audio::{
-    kAudioHardwarePropertyProcessObjectList, kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal,
-    kAudioObjectSystemObject, kAudioProcessPropertyIsRunningInput, kAudioProcessPropertyPID, AudioObjectGetPropertyData,
-    AudioObjectGetPropertyDataSize, AudioObjectID, AudioObjectPropertyAddress,
+    kAudioHardwarePropertyProcessObjectList, kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal, kAudioObjectSystemObject,
+    kAudioProcessPropertyIsRunningInput, kAudioProcessPropertyPID, AudioObjectGetPropertyData, AudioObjectGetPropertyDataSize,
+    AudioObjectID, AudioObjectPropertyAddress,
 };
 
 pub struct Mac {
@@ -14,11 +14,7 @@ pub struct Mac {
 }
 
 fn address(selector: u32) -> AudioObjectPropertyAddress {
-    AudioObjectPropertyAddress {
-        mSelector: selector,
-        mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain,
-    }
+    AudioObjectPropertyAddress { mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain }
 }
 
 impl Mac {
@@ -30,7 +26,14 @@ impl Mac {
         unsafe {
             let list = address(kAudioHardwarePropertyProcessObjectList);
             let mut size = 0u32;
-            if AudioObjectGetPropertyDataSize(kAudioObjectSystemObject as AudioObjectID, NonNull::from(&list), 0, std::ptr::null(), NonNull::from(&mut size)) != 0 {
+            if AudioObjectGetPropertyDataSize(
+                kAudioObjectSystemObject as AudioObjectID,
+                NonNull::from(&list),
+                0,
+                std::ptr::null(),
+                NonNull::from(&mut size),
+            ) != 0
+            {
                 return None; // older macOS: cannot tell
             }
             let count = size as usize / size_of::<AudioObjectID>();

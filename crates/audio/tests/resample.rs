@@ -1,9 +1,7 @@
 use muesli_audio::{downmix_to_mono, Resampler};
 
 fn sine(rate: u32, hz: f64, seconds: f64) -> Vec<f32> {
-    (0..(rate as f64 * seconds) as usize)
-        .map(|i| (2.0 * std::f64::consts::PI * hz * i as f64 / rate as f64).sin() as f32 * 0.5)
-        .collect()
+    (0..(rate as f64 * seconds) as usize).map(|i| (2.0 * std::f64::consts::PI * hz * i as f64 / rate as f64).sin() as f32 * 0.5).collect()
 }
 
 fn rms(x: &[f32]) -> f32 {

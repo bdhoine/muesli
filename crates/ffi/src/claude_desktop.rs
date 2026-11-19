@@ -3,7 +3,6 @@ use std::path::Path;
 use muesli_core::assistants::{self, ClaudeDesktopConfig, ClaudeDesktopExtension, ExtensionState};
 use muesli_core::Preferences;
 
-
 #[uniffi::remote(Enum)]
 pub enum ExtensionState {
     ClaudeMissing,

@@ -67,11 +67,7 @@ pub fn check_reachable(url: &str) -> Reach {
 
 /// Downloads into `<dest>.part`, then moves the file into place only when it is complete.
 /// `progress(received, total)` is called about once per megabyte.
-pub fn download(
-    spec: &DownloadSpec,
-    progress: &mut dyn FnMut(u64, u64),
-    cancel: &AtomicBool,
-) -> Result<(), DownloadError> {
+pub fn download(spec: &DownloadSpec, progress: &mut dyn FnMut(u64, u64), cancel: &AtomicBool) -> Result<(), DownloadError> {
     // A name of its own, so a download that was replaced cannot disturb its successor's file.
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -85,12 +81,7 @@ pub fn download(
     result
 }
 
-fn run(
-    spec: &DownloadSpec,
-    part: &std::path::Path,
-    progress: &mut dyn FnMut(u64, u64),
-    cancel: &AtomicBool,
-) -> Result<(), DownloadError> {
+fn run(spec: &DownloadSpec, part: &std::path::Path, progress: &mut dyn FnMut(u64, u64), cancel: &AtomicBool) -> Result<(), DownloadError> {
     if let Some(dir) = spec.dest.parent() {
         std::fs::create_dir_all(dir).map_err(|e| DownloadError::Failed(e.to_string()))?;
     }

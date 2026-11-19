@@ -22,7 +22,13 @@ fn ctx(handle: &AppHandle, app: &Shared) -> Ctx {
 }
 
 fn platform() -> &'static str {
-    if cfg!(target_os = "macos") { "macos" } else if cfg!(windows) { "windows" } else { "linux" }
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        "linux"
+    }
 }
 
 // What the UI gets from `get_state`. One struct per section, so the contract is in one place.
@@ -248,9 +254,7 @@ pub struct Reachability {
 #[tauri::command]
 pub async fn check_connection(app: Shared<'_>) -> Result<Vec<Reachability>, String> {
     let model = app.model.clone();
-    let found = tauri::async_runtime::spawn_blocking(move || model.check_connection())
-        .await
-        .map_err(|e| e.to_string())?;
+    let found = tauri::async_runtime::spawn_blocking(move || model.check_connection()).await.map_err(|e| e.to_string())?;
     Ok(found.into_iter().map(|r| Reachability { url: r.url, ok: r.ok, detail: r.detail }).collect())
 }
 
@@ -321,7 +325,11 @@ pub fn pick_and_queue(handle: &AppHandle, app: Arc<App>) {
     let handle = handle.clone();
     // The dialog blocks, so it gets a thread of its own.
     std::thread::spawn(move || {
-        let Some(files) = handle.dialog().file().set_title("Choose audio files to transcribe").add_filter("Audio", &extensions).blocking_pick_files() else { return };
+        let Some(files) =
+            handle.dialog().file().set_title("Choose audio files to transcribe").add_filter("Audio", &extensions).blocking_pick_files()
+        else {
+            return;
+        };
         let paths: Vec<PathBuf> = files.into_iter().filter_map(|f| f.into_path().ok()).collect();
         if paths.is_empty() {
             return;

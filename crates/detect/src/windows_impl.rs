@@ -1,12 +1,11 @@
 //! Windows: another app is "using the microphone" when the default capture device has an active
 //! audio session that belongs to a different process.
 
+use windows::core::Interface;
 use windows::Win32::Media::Audio::{
-    eCapture, eConsole, AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator,
-    MMDeviceEnumerator,
+    eCapture, eConsole, AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator, MMDeviceEnumerator,
 };
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED};
-use windows::core::Interface;
 
 pub struct Windows {
     own_pid: u32,

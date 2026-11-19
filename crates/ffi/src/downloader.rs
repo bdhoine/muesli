@@ -13,10 +13,17 @@ pub enum ModelPhase {
     /// Something has to be downloaded and nothing is running yet.
     Missing,
     /// Bytes over everything that is being downloaded.
-    Downloading { received: u64, total: u64 },
+    Downloading {
+        received: u64,
+        total: u64,
+    },
     /// Everything is there; `path` is the speech model to load.
-    Ready { path: String },
-    Failed { message: String },
+    Ready {
+        path: String,
+    },
+    Failed {
+        message: String,
+    },
 }
 
 impl From<Phase> for ModelPhase {

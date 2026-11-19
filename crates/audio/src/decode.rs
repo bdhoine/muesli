@@ -47,11 +47,7 @@ pub struct Progress {
 
 /// Decodes `path`, calling `on_block(samples, progress)` with mono 16 kHz blocks in order.
 /// Returns the number of seconds decoded. Stops with `Cancelled` when `cancel` is set.
-pub fn decode_file(
-    path: &Path,
-    cancel: &AtomicBool,
-    mut on_block: impl FnMut(&[f32], Progress),
-) -> Result<f64, DecodeError> {
+pub fn decode_file(path: &Path, cancel: &AtomicBool, mut on_block: impl FnMut(&[f32], Progress)) -> Result<f64, DecodeError> {
     let file = File::open(path).map_err(|e| DecodeError::Unsupported(e.to_string()))?;
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
     let mut hint = Hint::new();

@@ -24,10 +24,7 @@ pub fn store_save(meeting: Meeting, folder: String) -> String {
 
 #[uniffi::export]
 pub fn store_recent(folder: String, limit: u32) -> Vec<String> {
-    Store::recent(Path::new(&folder), limit as usize)
-        .into_iter()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect()
+    Store::recent(Path::new(&folder), limit as usize).into_iter().map(|p| p.to_string_lossy().into_owned()).collect()
 }
 
 #[uniffi::export]

@@ -105,7 +105,9 @@ impl AppStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Activity {
     /// `preparing` is true while a speech model is being downloaded.
-    Idle { preparing: bool },
+    Idle {
+        preparing: bool,
+    },
     Recording,
     Finalizing,
     /// Transcribing an audio file while nothing is being recorded.

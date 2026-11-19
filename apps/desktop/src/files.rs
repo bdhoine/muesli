@@ -199,7 +199,11 @@ fn work(ctx: &Ctx) {
         if transcriber.is_none() {
             let prefs = ctx.app.prefs();
             let paths = ctx.app.paths();
-            transcriber = Transcriber::new(&prefs.model_path(&paths), Some(&prefs.vad_model_path(&paths)), prefs.effective_languages(&languages::system_defaults()));
+            transcriber = Transcriber::new(
+                &prefs.model_path(&paths),
+                Some(&prefs.vad_model_path(&paths)),
+                prefs.effective_languages(&languages::system_defaults()),
+            );
         }
         let Some(model) = transcriber.as_ref() else {
             finish_failed(ctx, &next, "The speech model could not be loaded.".into());

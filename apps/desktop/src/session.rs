@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use muesli_audio::AudioCapture;
+use muesli_core::status::LastReady;
 use muesli_core::store::MeetingStore;
 use muesli_core::{languages, AudioChunk, DetectedMeeting, Meeting, MeetingState};
-use muesli_core::status::LastReady;
 use muesli_whisper::Transcriber;
 
 use crate::ctx::Ctx;
@@ -95,8 +95,7 @@ fn run_start(ctx: &Ctx, detected: DetectedMeeting) -> Result<(), String> {
     }
 
     let title = meeting.lock().unwrap().title.clone();
-    *ctx.app.session.lock().unwrap() =
-        Some(Session { meeting, stop_audio: stop_tx, consumer: Some(consumer), audio: Some(audio) });
+    *ctx.app.session.lock().unwrap() = Some(Session { meeting, stop_audio: stop_tx, consumer: Some(consumer), audio: Some(audio) });
     ctx.set_status(Status::Recording { title });
     Ok(())
 }

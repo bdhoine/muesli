@@ -172,7 +172,10 @@ fn corrupt_status_file_reads_as_not_running() {
 #[test]
 fn activity_maps_to_state_json() {
     use muesli_core::status::Activity;
-    let s = |a: Activity| { let x = AppStatus::for_activity(&a); (x.app_state, x.error) };
+    let s = |a: Activity| {
+        let x = AppStatus::for_activity(&a);
+        (x.app_state, x.error)
+    };
     assert_eq!(s(Activity::Idle { preparing: false }), ("idle".into(), None));
     assert_eq!(s(Activity::Idle { preparing: true }), ("preparing".into(), None));
     assert_eq!(s(Activity::Recording), ("recording".into(), None));

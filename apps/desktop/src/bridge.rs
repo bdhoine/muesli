@@ -19,9 +19,7 @@ pub fn helper_path() -> Option<PathBuf> {
 /// The Claude Desktop extension bundled with the app, if any.
 pub fn extension_path() -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    [dir.join("Muesli.mcpb"), dir.join("../Resources/Muesli.mcpb"), dir.join("resources/Muesli.mcpb")]
-        .into_iter()
-        .find(|p| p.exists())
+    [dir.join("Muesli.mcpb"), dir.join("../Resources/Muesli.mcpb"), dir.join("resources/Muesli.mcpb")].into_iter().find(|p| p.exists())
 }
 
 /// Whether the Claude desktop app is installed. On Windows the installer's folder is checked,
@@ -49,6 +47,5 @@ pub fn apply(app: &App, prefs: &Preferences) {
     };
     let _ = muesli_core::assistants::record_helper_path(&app.paths(), &helper); // the Claude plugin finds muesli-mcp through this
     let dir = ClaudeDesktopConfig::default_directory();
-    *app.claude_status.lock().unwrap() =
-        ClaudeDesktopConfig::sync(prefs, &helper, extension_state().is_installed(), &dir);
+    *app.claude_status.lock().unwrap() = ClaudeDesktopConfig::sync(prefs, &helper, extension_state().is_installed(), &dir);
 }

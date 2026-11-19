@@ -4,8 +4,7 @@ use std::sync::Mutex;
 
 use muesli_core::{languages, AudioChunk, TranscriptSegment};
 use whisper_rs::{
-    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperVadContext, WhisperVadContextParams,
-    WhisperVadParams,
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperVadContext, WhisperVadContextParams, WhisperVadParams,
 };
 
 /// On-device transcription with whisper.cpp. Chunks are consumed one at a time, so a single
