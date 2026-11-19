@@ -6,6 +6,9 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 /// Opens (or focuses) a window.
 pub fn show(handle: &AppHandle, window: Window) {
     let label = window.label();
+    if window != Window::Prompt {
+        dock(handle, true);
+    }
     if let Some(existing) = handle.get_webview_window(label) {
         let _ = existing.show();
         let _ = existing.set_focus();
@@ -38,5 +41,25 @@ pub fn show(handle: &AppHandle, window: Window) {
 pub fn close(handle: &AppHandle, window: Window) {
     if let Some(w) = handle.get_webview_window(window.label()) {
         let _ = w.close();
+    }
+}
+
+/// macOS: Muesli has a Dock icon only while one of its windows is open (the small prompt window
+/// does not count). Elsewhere nothing to do.
+pub fn dock(handle: &AppHandle, visible: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let policy = if visible { tauri::ActivationPolicy::Regular } else { tauri::ActivationPolicy::Accessory };
+        let _ = handle.set_activation_policy(policy);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (handle, visible);
+}
+
+/// After a window closed: hide the Dock icon when no real window is left.
+pub fn closed(handle: &AppHandle, label: &str) {
+    let others = handle.webview_windows().into_keys().filter(|l| l != label && l != Window::Prompt.label()).count();
+    if others == 0 {
+        dock(handle, false);
     }
 }

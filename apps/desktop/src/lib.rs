@@ -12,7 +12,7 @@ use std::time::Duration;
 use muesli_core::ports::{Platform, Tray};
 use muesli_core::{languages, Paths};
 use muesli_engine::{Engine, Intent, Options, Window};
-use tauri::{DragDropEvent, RunEvent, State, WindowEvent};
+use tauri::{DragDropEvent, Manager, RunEvent, State, WindowEvent};
 
 use crate::host::TauriHost;
 
@@ -69,11 +69,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![view, intent])
         // Audio files dropped on Muesli's window are transcribed, like files dropped on the
         // menu bar icon (macOS). Windows' tray icons cannot take drops; see docs/PLATFORMS.md.
-        .on_window_event(move |_, event| {
-            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+        .on_window_event(move |window, event| match event {
+            WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) => {
                 let (engine, paths) = (for_drops.clone(), paths.clone());
                 std::thread::spawn(move || engine.intent(Intent::TranscribeFiles { paths }));
             }
+            WindowEvent::Destroyed => windows::closed(window.app_handle(), window.label()),
+            _ => {}
         })
         .setup(move |app| {
             #[cfg(target_os = "macos")]

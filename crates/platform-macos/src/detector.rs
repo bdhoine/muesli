@@ -1,5 +1,5 @@
 //! Meeting detection on macOS: the Core Audio process list says which processes are running input
-//! (macOS 14.2+), and a Teams process means a Teams call. Calendar meetings come in milestone 6.
+//! (macOS 14.2+), a Teams process means a Teams call, and EventKit gives the calendar meeting.
 
 use std::sync::Mutex;
 
@@ -29,8 +29,12 @@ impl Default for MacDetector {
 }
 
 impl MeetingDetector for MacDetector {
-    fn sample(&self, _now: DateTime<Utc>) -> DetectionSample {
-        DetectionSample { calendar: None, mic_busy: self.mic_busy(), teams_running: self.processes.lock().unwrap().teams_running() }
+    fn sample(&self, now: DateTime<Utc>) -> DetectionSample {
+        DetectionSample {
+            calendar: crate::calendar::meeting_now(now),
+            mic_busy: self.mic_busy(),
+            teams_running: self.processes.lock().unwrap().teams_running(),
+        }
     }
 }
 
