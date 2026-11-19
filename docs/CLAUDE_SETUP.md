@@ -1,8 +1,8 @@
 # Connecting Muesli to an AI assistant
 
-Muesli ships a small MCP server, `muesli-mcp`, inside the app bundle. An assistant such as Claude uses it to ask whether Muesli is recording, to list transcripts and read them, and to manage finished meetings: rename them, set attendees, rename speakers ("Others" → "Ann") and delete them. Deleted files go to the Trash (macOS) or the Recycle Bin (Windows).
+Muesli ships a small MCP server, `muesli-mcp`, inside the app bundle. An assistant such as Claude uses it to ask whether Muesli is transcribing, to list transcripts and read them, and to manage finished meetings: rename them, set attendees, rename speakers ("Others" → "Ann") and delete them. Deleted files go to the Trash (macOS) or the Recycle Bin (Windows).
 
-This works the same on macOS and Windows; only the paths differ. Everything stays on your computer. The assistant starts `muesli-mcp` itself and talks to it over stdio. The app never opens a socket and nothing is exposed to the network. A transcript the assistant reads is sent to its provider, for example to Anthropic for Claude. Assistants cannot start or stop a recording, and cannot change a meeting that is still being recorded.
+This works the same on macOS and Windows; only the paths differ. Everything stays on your computer. The assistant starts `muesli-mcp` itself and talks to it over stdio. The app never opens a socket and nothing is exposed to the network. A transcript the assistant reads is sent to its provider, for example to Anthropic for Claude. Assistants cannot start or stop transcribing, and cannot change a meeting that is still being transcribed.
 
 ## Switch it on
 

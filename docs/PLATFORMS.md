@@ -1,10 +1,14 @@
-# macOS and Windows: how the two apps differ
+# macOS and Windows: how the two platforms differ
 
-Muesli has two apps that are both here to stay: the macOS app (Swift, `macos/`) and the Windows app (Rust and Tauri: `crates/`, `apps/desktop`, `ui/`). They share the file formats and the MCP tools (the Rust core `crates/core` and `crates/mcp` is shared; `fixtures/` freezes the formats and replies, checked by tests) and should offer the same features. This page records every difference and why it exists:
+Muesli is one app on both platforms: the same Tauri shell (`apps/desktop`), the same web UI (`ui/`, with a macOS and a Windows skin) and the same Rust crates. Everything the app decides lives in `crates/engine` and is tested once. What differs is behind the ports (`crates/core/src/ports.rs`): `platform-macos` and `platform-windows` implement them for their OS, and the platform's own words (Trash / Recycle Bin, Finder / Explorer, Mac / PC, menu bar / system tray, Start at login / Start when I sign in) come from `PlatformWords`.
+
+Until milestone 6 of the 2026-11 refinement, macOS shipped a separate SwiftUI app (`macos/`). It is retired and kept only until the Tauri app has been verified on a real Mac.
+
+This page records every difference and why it exists:
 
 1. differences the platform itself imposes, which will stay;
 2. differences that could be closed and are not yet;
-3. what has not been verified on real hardware.
+3. what has been verified on real hardware.
 
 ## 1. Imposed by the platform
 
@@ -13,13 +17,15 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 | Area | macOS | Windows | Why |
 |---|---|---|---|
 | Calendar detection | Reads the system calendar (EventKit): every account added in System Settings, one permission. Gives meeting start, title and attendees. | None. Meetings are noticed from the microphone and Teams only, and are titled "Call" or "Teams call". | Windows has no local, system-wide calendar that a desktop app can read. Calendars live inside each mail client or in the cloud. Classic Outlook can be scripted (COM), but the new Outlook that replaces it cannot, and neither covers Google or other calendars. Microsoft Graph would work for Microsoft 365 only, and needs a registered cloud app, a sign-in and a network connection, which contradicts "no account, nothing leaves your computer". The Windows appointment store API is meant for packaged Store apps and is not filled by the new Outlook either. Consequence: on Windows a meeting without call audio (in person) is never suggested; start it by hand. |
-| Permission for the other side's audio | "System Audio Recording Only" permission, asked once | No permission exists | Windows lets any desktop app record what a device plays (WASAPI loopback) without asking. macOS guards it. |
-| Checking that permission | Read through a private macOS framework; if unavailable Muesli just tries | Not applicable | macOS has no public call that tells whether system audio recording is allowed. |
-| Permissions in the first-launch assistant | Microphone, system audio, calendar, notifications: four screens | Microphone only | Follows from the rows above. Windows asks nothing for notifications, and for the microphone it has a system-wide switch rather than a prompt for desktop apps, so the screen opens the microphone once and links to the privacy settings. |
-| Where the app lives | Menu bar | System tray (notification area) | Platform convention. |
+| Permission for the other side's audio | "System Audio Recording Only" permission, asked once | No permission exists | Windows lets any desktop app capture what a device plays (WASAPI loopback) without asking. macOS guards it. |
+| Checking that permission | No public API: Muesli asks by opening the tap and then shows it as allowed for that session | Not applicable | macOS has no public call that tells whether system audio recording is allowed. (The Swift app read it through a private framework; the Rust app does not.) |
+| Permissions in setup | Microphone and system audio (required), calendar and notifications (optional), on one screen | Microphone only, with a note that call audio needs no permission and a link to the privacy settings | Follows from the rows above. Windows has a system-wide microphone switch rather than a prompt for desktop apps, so "Allow…" opens the microphone once. |
+| Where the app lives | Menu bar; a Dock icon only while a Muesli window is open | System tray (notification area) | Platform convention. |
 | Clicking the icon | A click shows the menu | A left click opens Muesli's window, a right click shows the menu | Platform convention for tray apps. |
-| Dropping audio files on the icon | The menu bar icon takes dropped files | Not possible: drop them on Muesli's window instead (works on both) | A notification-area icon on Windows (`Shell_NotifyIcon`) cannot be a drop target; there is no API for it. |
-| Deleted transcripts | Trash | Recycle Bin | Platform convention. Both can be restored. |
+| Dropping audio files on the icon | Not done yet (see section 2); drop them on Muesli's window | Not possible: drop them on Muesli's window instead | A notification-area icon on Windows (`Shell_NotifyIcon`) cannot be a drop target; there is no API for it. |
+| Deleted transcripts | Trash (NSFileManager, so Put Back works) | Recycle Bin | Platform convention. Both can be restored; Muesli's own Undo works for a few seconds on both. |
+| Questions ("Start transcribing?", "Stop and save?") | Notification with two buttons (UNUserNotificationCenter) | Toast with two buttons | Both fall back to Muesli's own prompt window when notifications are off or cannot be shown. A Windows toast is answered through an in-process event, which works because Muesli is always running. |
+| Start at login | SMAppService (System Settings → General → Login Items) | The `Run` key in the registry | Platform API. |
 | Where models are stored | `~/Library/Application Support/Muesli` | `%LOCALAPPDATA%\Muesli` (everything else in `%APPDATA%\Muesli`) | Windows roams `%APPDATA%` between PCs in company domains; multi-gigabyte files must not roam. macOS has no such split. |
 | Speech model acceleration | GPU (Metal), always available on Apple Silicon | CPU | Every supported Mac has the same GPU API. On Windows it depends on the graphics card and its drivers (Vulkan or CUDA), so one build cannot rely on it. See section 2. |
 
@@ -27,32 +33,28 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 
 | Area | macOS | Windows | What it would take |
 |---|---|---|---|
+| Dropping audio files on the menu bar icon | no | not possible (section 1) | Register the tray-icon crate's status item button for file URLs and add `draggingEntered:` / `performDragOperation:` to its view class at runtime (objc2), then send `TranscribeFiles`. |
+| System audio permission status across launches | shown as "Not asked yet" until the first probe of each session | not applicable | Read TCC through the private framework again, or remember the last successful capture. |
 | Meeting title without a calendar | From the calendar | "Call" / "Teams call" | Read the title of the Teams or Zoom meeting window. Windows only, and fragile across app versions. |
 | GPU transcription | yes | no | Build `whisper-rs` with Vulkan as an optional second installer; needs the Vulkan SDK in CI. |
+| Tray icon on a dark taskbar | template image, tinted by macOS | the black template mark, hard to see on a dark taskbar | A light variant (or the coloured tile) as a brand asset, picked by the taskbar theme. |
 | Windows on ARM build | not applicable | x64 only (runs emulated on ARM PCs) | Add an `aarch64-pc-windows-msvc` job to the Build installers workflow. |
-| Code signing | Apple Development certificate (local builds) | none; SmartScreen warns | A code-signing certificate and a signing step in CI. For macOS distribution: Developer ID and notarisation. |
-| Showing the download percentage in the menu | yes | no (shown in the windows) | Rebuilding a tray menu closes it if open; needs an in-place item update. |
-
-Closed since this page was first written: a broken audio stream is now handled on both (macOS restarts the stream on the new device and saves the transcript if that fails; Windows saves and reports); the transcripts folder can be changed in Settings on both; and the meeting prompts are system notifications with buttons on both.
+| Code signing | ad hoc (CI has no certificate) | none; SmartScreen warns | Developer ID and notarisation for macOS, a code-signing certificate for Windows, and a signing step in CI. |
+| Intel Macs | not built | not applicable | Add `x86_64-apple-darwin` to the Build installers workflow. |
 
 ## 3. Same by design, verification status
 
 | Area | Implementation | Verified |
 |---|---|---|
-| Files: `config.json`, `state.json`, `meetings/`, transcripts | Shared formats | Golden tests against files written by the Swift app |
-| MCP server (7 tools) | The same Rust binary (`crates/mcp`) on both platforms; Trash / Recycle Bin wording differs | 33 recorded requests (from the former Swift server) match the Rust replies; the macOS app now bundles the Rust binary |
-| Whisper transcription | The same Rust code on both (`crates/whisper`, whisper.cpp through `whisper-rs`), same models | Real speech on macOS in both; recording tested on Windows by the maintainer (2026-11-16) |
-| Model download, the one fixed model, custom file, voice activity model | Same (the Rust `ModelManager`, through `muesli-ffi` on macOS) | Tests with a local server; real download on macOS |
-| Microphone | AVAudioEngine / cpal (WASAPI), resampled with rubato | macOS; recording tested on Windows by the maintainer (2026-11-16) |
-| System audio | Core Audio tap / WASAPI loopback | No automated test records a call on either. Recording tested by hand on Windows (2026-11-16); which streams were checked is not recorded here |
-| Device change mid-call | Restart the stream / left to cpal, save on failure | Not exercised on either platform |
-| Call detection: microphone in use | Core Audio process list / WASAPI sessions | macOS; not run on Windows |
-| Call detection: Teams | Bundle id / process name | macOS; not run on Windows |
-| Meeting prompts ("Start transcribing?", "Stop and save?") | Notification with a button on both. Windows: a toast with two buttons (`crates/system`), answered through the toast's in-process event, which works because Muesli is always running; a click on a toast left in the notification centre after Muesli quit does nothing. If the toast cannot be shown, a small window asks instead. | macOS; the Windows toast type-checks but has not been shown or clicked on Windows |
-| Permissions page in Settings | macOS: microphone, system audio, calendar, notifications, start at login, each with Allow or Open System Settings. Windows: microphone (the privacy switches, read from the registry), notifications (the toast setting), start at login (a switch). System audio is not listed on Windows because it needs no permission there. | macOS builds, not seen on screen by the author; Windows reads type-check but have not run on Windows |
-| Claude Desktop section in Settings | Shown only when the Claude app is installed. macOS: by bundle id. Windows: the installer's folder, or Claude's data folder as a fallback because the install location differs between builds. | macOS; the Windows check is unverified |
-| Audio files (drop folder, "Transcribe Audio File…", cleanup) | Same Rust (`crates/audio` decode, `crates/import`, `DropFolder`); only the queue and windows are per app | macOS: real m4a speech, decoding of mp3, m4a, flac, wav and ogg, drop folder and cleanup tests; the app not driven by hand. Windows: type-checks only, never run |
-| Claude plugin for the directory (`plugin/`) | Same plugin: a Node launcher (`plugin/server/muesli-mcp.js`) finds `muesli-mcp` through `mcp-path` in the support folder, which both apps write on start, then the usual install folders | `claude plugin validate`, launcher unit tests (`node --test scripts/plugin-launcher.test.js`, macOS), server connects through the launcher in Claude Code on macOS. Not run on Windows: the Windows paths are only tested as strings, and `mcp-path` is written by the Windows app but the app was not run. The directory's portal blocks the listing (local MCP servers need a Verified organization), so it is installed from this repo. Needs Node.js on both |
-| Onboarding, Settings, auto-stop, Claude Desktop extension and config entry, start at login | Same behaviour | Logic tested; Windows UI only seen in a browser with a mock backend |
+| Behaviour (prompts, timings, main window, Settings, setup, imports) | `crates/engine`, the same on both | Engine tests against the fakes (Linux); UI tests in Chromium against the simulator for both skins (Linux). **Not run in the real app on either platform yet.** |
+| Files: `config.json`, `state.json`, `meetings/`, transcripts | Shared formats; old `config.json` keys are migrated on start | Golden tests against files written by the Swift app; migration tests |
+| MCP server (7 tools) | The same Rust binary (`crates/mcp`) on both; Trash / Recycle Bin wording differs | 33 recorded requests match the replies |
+| Whisper transcription | The same Rust code on both (`crates/whisper`), same models | Real speech on macOS (Swift app); a recording tested on Windows by the maintainer (2026-11-16) |
+| Model download, the one fixed model, voice activity model | `ModelManager` | Tests with a local server; real download on macOS (Swift app) |
+| Microphone, system audio | cpal on both (WASAPI / WASAPI loopback, Core Audio / Core Audio tap), resampled with rubato | Windows: a recording tested by the maintainer (2026-11-16). macOS through cpal: not run. |
+| Call detection: microphone in use, Teams | Core Audio process list / WASAPI sessions; process names | Port contracts on the fakes only; not run natively since the move to ports |
+| Calendar (macOS) | EventKit through objc2 | Not compiled or run yet |
+| Notifications, permissions, Trash, login item | `platform-macos` (objc2) / `platform-windows` | Not compiled for macOS here; the Windows adapters are moved code with small changes, not run |
+| Claude plugin (`plugin/`) | A Node launcher finds `muesli-mcp` through `mcp-path`, which the app writes on start | `claude plugin validate`, launcher unit tests; server connects through the launcher in Claude Code on macOS (Swift app) |
 
-The maintainer has run the Windows app and tested a recording on Windows (2026-11-16); the details of that test are not recorded here. Everything marked "not run on Windows" or "unverified" above is still open.
+Run `cargo test -p muesli-port-contracts --test native` (and `-- --ignored` with a microphone, something playing and a person to click) on each platform to fill this table.

@@ -1,6 +1,6 @@
 # Muesli for Claude
 
-This plugin connects Claude to [Muesli](https://github.com/bdhoine/muesli), an on-device meeting transcriber that lives in the macOS menu bar. Ask Claude whether Muesli is recording, to read a transcript, to summarise a meeting and list its action items, or to rename a meeting, its attendees or a speaker.
+This plugin connects Claude to [Muesli](https://github.com/bdhoine/muesli), an on-device meeting transcriber that lives in the macOS menu bar or the Windows system tray. Ask Claude whether Muesli is transcribing, to read a transcript, to summarise a meeting and list its action items, or to rename a meeting, its attendees or a speaker.
 
 > Muesli is not listed in Anthropic's plugin directory, which accepts local MCP servers only from Verified organizations. Install it from this repository as described below.
 
@@ -37,7 +37,7 @@ The plugin starts `node server/muesli-mcp.js`, a short script (about 80 lines, i
 | `rename_speaker` | Renames a speaker label, for example "Others" to a person's name |
 | `delete_transcript` | Moves a finished meeting to the Trash or Recycle Bin. Claude asks you first |
 
-Claude cannot start or stop a recording.
+Claude cannot start or stop transcribing.
 
 The plugin's skill also tells Claude how to summarise a meeting: give a generic meeting a proper title, set the attendees and real speaker names when the conversation makes them clear, and write the summary in a fixed shape (purpose, key points, decisions, action items, open questions, next steps) from `skills/muesli/summary-template.md`.
 
