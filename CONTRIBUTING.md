@@ -8,14 +8,17 @@ Muesli supports macOS and Windows, and the two apps are peers in this repository
 
 ```
 macos/          The macOS app (Swift): Package.swift, Sources/, Tests/, Info.plist, build.sh
-windows/        The Windows app (Rust and Tauri): crates/, src-tauri/, ui/
+Cargo.toml      The Rust workspace (shared crates and the Tauri app)
+crates/         Shared Rust crates: core, mcp, whisper, audio, import, detect, system, ffi
+apps/desktop/   The Tauri app (Windows)
+ui/             The web UI of the Tauri app
 fixtures/       Frozen file formats and MCP replies, checked by the Rust tests
 assets/brand/   The one source for logo, icons and colours
 scripts/        build-mcpb.py (Claude Desktop extension), build-ffi.sh (Rust core for Swift), sync-icons.py
 docs/           REQUIREMENTS.md, PLATFORMS.md, CLAUDE_SETUP.md
 ```
 
-The sections below describe the macOS app first, then [the Windows app](#the-windows-app-windows). Both are permanent; neither replaces the other.
+The sections below describe the macOS app first, then [the Windows app](#the-windows-app-appsdesktop-crates-ui). Both are permanent; neither replaces the other.
 
 ## Build (macOS app)
 
@@ -28,7 +31,7 @@ open macos/Muesli.app
 
 On first launch Muesli downloads the speech model (Large v3 Turbo, q5_0, 574 MB) and the voice activity model into `~/Library/Application Support/Muesli/`. Set `MUESLI_SUPPORT_DIR` to keep a test copy elsewhere.
 
-`build.sh` runs `swift build -c release` and `cargo build --release -p muesli-mcp --target aarch64-apple-darwin` (the MCP server is the Rust binary from `windows/crates/mcp`, shared with the Windows app, so a Rust toolchain is required), assembles `Muesli.app`, copies `muesli-mcp` next to the main executable, builds `Muesli.icns` from the iconset, packs the Claude Desktop extension `Muesli.mcpb` (manifest from `muesli-mcp --mcpb-manifest`, the 512 px tile icon `extension-icon-512.png` (the app icon without its transparent margin, so Claude Desktop fills its box) and a signed copy of `muesli-mcp`) into `Contents/Resources`, and signs the bundle. Muesli needs a real bundle for notifications and permissions, so run the app, not the bare executable.
+`build.sh` runs `swift build -c release` and `cargo build --release -p muesli-mcp --target aarch64-apple-darwin` (the MCP server is the Rust binary from `crates/mcp`, shared with the Windows app, so a Rust toolchain is required), assembles `Muesli.app`, copies `muesli-mcp` next to the main executable, builds `Muesli.icns` from the iconset, packs the Claude Desktop extension `Muesli.mcpb` (manifest from `muesli-mcp --mcpb-manifest`, the 512 px tile icon `extension-icon-512.png` (the app icon without its transparent margin, so Claude Desktop fills its box) and a signed copy of `muesli-mcp`) into `Contents/Resources`, and signs the bundle. Muesli needs a real bundle for notifications and permissions, so run the app, not the bare executable.
 
 ## Test
 
@@ -37,11 +40,11 @@ cd macos
 swift test
 ```
 
-The Swift tests cover `MuesliCore` and double as a check that the bindings behave: audio chunking, Whisper segment mapping, detection rules, Claude Desktop registration, and through the Rust core the transcript files, meeting store, crash recovery, preferences, `state.json`, paths and the transcripts-folder migration. The Rust logic itself is tested in `windows/crates/core`, `crates/mcp` and `crates/ffi` (`cargo test`). They need no microphone, calendar or network, and each test gets its own temporary data folders.
+The Swift tests cover `MuesliCore` and double as a check that the bindings behave: audio chunking, Whisper segment mapping, detection rules, Claude Desktop registration, and through the Rust core the transcript files, meeting store, crash recovery, preferences, `state.json`, paths and the transcripts-folder migration. The Rust logic itself is tested in `crates/core`, `crates/mcp` and `crates/ffi` (`cargo test`). They need no microphone, calendar or network, and each test gets its own temporary data folders.
 
-`MuesliCore` is Foundation plus the shared Rust core, so `swift build` and `swift test` need macOS and a one-time `scripts/build-ffi.sh` (run by `build.sh` too). That script builds `windows/crates/ffi` into the git-ignored `macos/Frameworks/MuesliFFI.xcframework` and the generated `macos/Sources/MuesliFFI/muesli_ffi.swift` (UniFFI). Logic moves from `MuesliCore` into `windows/crates/core` module by module; Done so far: `Languages`, `WhisperModel`, `AssistantClient`, `Meeting` and `TranscriptSegment`, `Paths`, `Preferences`, `AppStatus`, `Store` and `MeetingStore` (the meeting editor now exists only in Rust, used by `muesli-mcp`). `Meeting`, `Preferences`, `AppStatus` and `WhisperModel` are the generated types themselves; the other Swift types are thin wrappers, so the app code barely changed. Also shared: `DetectionLogic` (a `Detector` object), `AudioChunker` (a `Chunker` with a callback sink), `ClaudeDesktopConfig` and the extension state. Left in Swift on purpose: locale-dependent text (`Languages.displayName`, `RecentTranscript.subtitle`) and `WhisperModel.unused`. Transcription is shared too: `Transcriber.swift` calls the `muesli-whisper` crate (whisper.cpp through `whisper-rs`, with Metal) via `muesli-ffi`, built with the `whisper` feature, which needs `cmake` and the Xcode command line tools. `Package.swift` adds the app target on macOS only and links the system frameworks that whisper.cpp needs.
+`MuesliCore` is Foundation plus the shared Rust core, so `swift build` and `swift test` need macOS and a one-time `scripts/build-ffi.sh` (run by `build.sh` too). That script builds `crates/ffi` into the git-ignored `macos/Frameworks/MuesliFFI.xcframework` and the generated `macos/Sources/MuesliFFI/muesli_ffi.swift` (UniFFI). Logic moves from `MuesliCore` into `crates/core` module by module; Done so far: `Languages`, `WhisperModel`, `AssistantClient`, `Meeting` and `TranscriptSegment`, `Paths`, `Preferences`, `AppStatus`, `Store` and `MeetingStore` (the meeting editor now exists only in Rust, used by `muesli-mcp`). `Meeting`, `Preferences`, `AppStatus` and `WhisperModel` are the generated types themselves; the other Swift types are thin wrappers, so the app code barely changed. Also shared: `DetectionLogic` (a `Detector` object), `AudioChunker` (a `Chunker` with a callback sink), `ClaudeDesktopConfig` and the extension state. Left in Swift on purpose: locale-dependent text (`Languages.displayName`, `RecentTranscript.subtitle`) and `WhisperModel.unused`. Transcription is shared too: `Transcriber.swift` calls the `muesli-whisper` crate (whisper.cpp through `whisper-rs`, with Metal) via `muesli-ffi`, built with the `whisper` feature, which needs `cmake` and the Xcode command line tools. `Package.swift` adds the app target on macOS only and links the system frameworks that whisper.cpp needs.
 
-When you add logic, put it in `windows/crates/core` (and a wrapper in `windows/crates/ffi`) if it can live without AppKit, AVFoundation, EventKit or CoreAudio, and test it there with `cargo test`. `MuesliCore` and the app target stay thin shells.
+When you add logic, put it in `crates/core` (and a wrapper in `crates/ffi`) if it can live without AppKit, AVFoundation, EventKit or CoreAudio, and test it there with `cargo test`. `MuesliCore` and the app target stay thin shells.
 
 ### What is verified
 
@@ -87,7 +90,7 @@ The app never opens a socket and nothing is exposed to the network. Everything a
 
 ## Changelog
 
-`CHANGELOG.md` follows Keep a Changelog and lists only what a user can see or use. Add a line under `[Unreleased]` with every such change. To release: bump the version in `windows/Cargo.toml`, run `python3 scripts/sync-plugin.py`, update the fixtures that carry the version (`fixtures/mcp/expected.jsonl`), rename `[Unreleased]` to the version and date, add a new empty `[Unreleased]` and update the compare links.
+`CHANGELOG.md` follows Keep a Changelog and lists only what a user can see or use. Add a line under `[Unreleased]` with every such change. To release: bump the version in `Cargo.toml` at the repo root, run `python3 scripts/sync-plugin.py`, update the fixtures that carry the version (`fixtures/mcp/expected.jsonl`), rename `[Unreleased]` to the version and date, add a new empty `[Unreleased]` and update the compare links.
 
 ## Claude plugin
 
@@ -130,8 +133,8 @@ Environment variables: `TRANSCRIPT_DIR` overrides the transcripts folder; `MUESL
 | `macos/Sources/Muesli/Bridge.swift` | Claude Desktop extension status and install, or the `Muesli` entry in `claude_desktop_config.json` for accounts that block extensions |
 | `macos/Sources/Muesli/OnboardingView.swift` | First-launch setup window (languages, assistants, permissions) |
 | `macos/Sources/Muesli/Permissions.swift` | Microphone and System Audio Recording checks before recording |
-| `macos/Sources/MuesliCore/` | Swift wrappers around the Rust core (data types, paths, transcript files, meeting store and preferences come from `windows/crates/ffi`), plus transcription languages, audio chunking, detection rules, Claude Desktop extension manifest and install detection (`ClaudeDesktopExtension.swift`), MCP client setup snippets (`AssistantSetup.swift`) |
-| `windows/crates/mcp/` | The MCP server and the `muesli-mcp` executable (Rust, shared by both apps): tools, stdio transport, audit log, `doctor` |
+| `macos/Sources/MuesliCore/` | Swift wrappers around the Rust core (data types, paths, transcript files, meeting store and preferences come from `crates/ffi`), plus transcription languages, audio chunking, detection rules, Claude Desktop extension manifest and install detection (`ClaudeDesktopExtension.swift`), MCP client setup snippets (`AssistantSetup.swift`) |
+| `crates/mcp/` | The MCP server and the `muesli-mcp` executable (Rust, shared by both apps): tools, stdio transport, audit log, `doctor` |
 | `macos/Tests/MuesliCoreTests/` | Unit tests |
 | `macos/Info.plist`, `macos/build.sh` | App bundle metadata and build script |
 | `assets/brand/` | Logo, app icon and menu bar icon |
@@ -141,8 +144,8 @@ Environment variables: `TRANSCRIPT_DIR` overrides the transcripts folder; `MUESL
 ## The MCP server
 
 ```bash
-windows/target/release/muesli-mcp       # stdio (cd windows && cargo build --release -p muesli-mcp)
-windows/target/release/muesli-mcp doctor          # checks preferences, access switch, app heartbeat and meetings
+target/release/muesli-mcp       # stdio (cargo build --release -p muesli-mcp)
+target/release/muesli-mcp doctor          # checks preferences, access switch, app heartbeat and meetings
 ```
 
 It is a hand-written JSON-RPC server, speaking MCP protocol versions up to 2025-06-18. To try it by hand:
@@ -150,7 +153,7 @@ It is a hand-written JSON-RPC server, speaking MCP protocol versions up to 2025-
 ```bash
 export MUESLI_SUPPORT_DIR=/tmp/muesli-dev
 mkdir -p $MUESLI_SUPPORT_DIR && echo '{"mcpEnabled":true}' > $MUESLI_SUPPORT_DIR/config.json
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_status","arguments":{}}}' | windows/target/release/muesli-mcp
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_status","arguments":{}}}' | target/release/muesli-mcp
 ```
 
 Rules to keep:
@@ -159,7 +162,7 @@ Rules to keep:
 - The stdio server refuses tool calls unless access is switched on.
 - Management tool calls are written to `audit.log`.
 
-## The Windows app (`windows/`)
+## The Windows app (`apps/desktop`, `crates/`, `ui/`)
 
 The Windows app is written in Rust with Tauri. It also builds and runs on macOS, so it can be developed and tested from a Mac, but the macOS product is the Swift app. [docs/PLATFORMS.md](docs/PLATFORMS.md) lists how the two differ. Both read and write the same files and expose the same MCP tools, so a change to a file format or a tool must be made in both, and in both test suites.
 
@@ -173,11 +176,10 @@ The Windows app is written in Rust with Tauri. It also builds and runs on macOS,
 | `crates/audio` | Capture with `cpal`: microphone, WASAPI loopback (Windows), Core Audio tap (macOS). Resampling with `rubato`. |
 | `crates/detect` | Samplers: Core Audio process list (macOS), WASAPI sessions (Windows), Teams process |
 | `crates/system` | Dealings with Windows that need no audio: toasts with answer buttons for the meeting prompts, and the permission status shown in Settings |
-| `src-tauri` | The Tauri app: tray, windows, recording session, commands. Keep it thin. |
+| `apps/desktop` | The Tauri app: tray, windows, recording session, commands. Keep it thin. |
 | `ui/` | The web UI (plain JS, no build step): Settings, onboarding, prompt |
 
 ```bash
-cd windows
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p muesli-app            # the app (on a Mac: for development only; it shares the Swift app's data folder)
@@ -186,13 +188,13 @@ cargo run -p muesli-app            # the app (on a Mac: for development only; it
 Install Rust with `brew install rustup && rustup default stable` (macOS) or from rustup.rs (Windows, plus the Visual Studio C++ build tools and CMake).
 
 - **Formats stay compatible.** `fixtures/` at the repo root freezes the formats: `fixtures/core` holds files written by the former Swift encoders, which `crates/core/tests/golden.rs` loads; `fixtures/mcp` holds 33 requests and the frozen replies (recorded from the former Swift server), which `crates/mcp/tests/contract.rs` replays. The MCP server is one Rust implementation for both apps, so a tool change is made once, in `crates/mcp`; update `fixtures/mcp/expected.jsonl` by hand when a reply changes on purpose. The file formats are one Rust implementation too; when one changes on purpose, update `fixtures/core` by hand and keep the golden tests passing.
-- **Icons have one source.** `windows/src-tauri/icons/` is generated from `assets/brand` by `scripts/sync-icons.py`; CI fails if it is out of date. Never edit it by hand.
-- **One version.** The Windows app's version is the workspace version in `windows/Cargo.toml`; the Swift app's is `MuesliInfo.version`. Keep them equal.
+- **Icons have one source.** `apps/desktop/icons/` is generated from `assets/brand` by `scripts/sync-icons.py`; CI fails if it is out of date. Never edit it by hand.
+- **One version.** The Windows app's version is the workspace version in `Cargo.toml` at the repo root; the Swift app's is `MuesliInfo.version`. Keep them equal.
 - **Paths are passed around** as a `Paths` value instead of read from the environment, so tests run in parallel. On Windows, models live in `%LOCALAPPDATA%\Muesli`, everything else in `%APPDATA%\Muesli`.
 - **Use libraries for the hard parts**: `rubato` (resampling), `cpal` (audio devices), `whisper-rs`, `uuid`, `tempfile` (atomic writes), `trash`. Do not hand-roll replacements.
-- **Try the UI without the app**: serve `windows/ui` and open `index.html?mock=1&window=onboarding` (or `settings`, `prompt`).
+- **Try the UI without the app**: serve `ui/` and open `index.html?mock=1&window=onboarding` (or `settings`, `prompt`).
 - **Check capture on a real machine**: `cargo run -p muesli-audio --example probe -- 8`. Check the resampler by ear or with Whisper: `--example resample_wav -- in.wav out.wav`. Transcribe real speech: the ignored test in `crates/whisper/tests/transcribe.rs`.
-- **Windows without a PC**: the **Tests** workflow (`.github/workflows/ci.yml`) runs the Rust tests on macOS, Windows and Linux (portable crates only), the Swift tests on macOS and the checks that generated files (icons, plugin) are current. It is started by hand (Actions tab, or `gh workflow run Tests`). **Build installers** (`app.yml`, `gh workflow run "Build installers"`) builds the Windows installer and `Muesli.app` for macOS (signed ad hoc, since CI has no certificate) and uploads them as artifacts. A macOS job can wait a long time for a runner and is cancelled after 15 minutes in the queue; run it again. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code; `src-tauri` and `whisper` need CI.
+- **Windows without a PC**: the **Tests** workflow (`.github/workflows/ci.yml`) runs the Rust tests on macOS, Windows and Linux (portable crates only), the Swift tests on macOS and the checks that generated files (icons, plugin) are current. It is started by hand (Actions tab, or `gh workflow run Tests`). **Build installers** (`app.yml`, `gh workflow run "Build installers"`) builds the Windows installer and `Muesli.app` for macOS (signed ad hoc, since CI has no certificate) and uploads them as artifacts. A macOS job can wait a long time for a runner and is cancelled after 15 minutes in the queue; run it again. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code; `apps/desktop` and `whisper` need CI.
 
 ## Permissions and code signing
 

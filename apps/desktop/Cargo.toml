@@ -17,12 +17,12 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-muesli-core = { path = "../crates/core" }
-muesli-audio = { path = "../crates/audio" }
-muesli-whisper = { path = "../crates/whisper" }
-muesli-import = { path = "../crates/import", features = ["whisper"] }
-muesli-detect = { path = "../crates/detect" }
-muesli-system = { path = "../crates/system" }
+muesli-core = { path = "../../crates/core" }
+muesli-audio = { path = "../../crates/audio" }
+muesli-whisper = { path = "../../crates/whisper" }
+muesli-import = { path = "../../crates/import", features = ["whisper"] }
+muesli-detect = { path = "../../crates/detect" }
+muesli-system = { path = "../../crates/system" }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"

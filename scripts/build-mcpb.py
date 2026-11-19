@@ -3,8 +3,8 @@
 
     python3 scripts/build-mcpb.py [path/to/muesli-mcp]
 
-Works from any folder. Without an argument it takes windows/target/release/muesli-mcp, so run
-`cargo build --release -p muesli-mcp` in windows/ first. The result goes to windows/dist/.
+Works from any folder. Without an argument it takes target/release/muesli-mcp, so run
+`cargo build --release -p muesli-mcp` at the repo root first. The result goes to dist/.
 """
 import os
 import subprocess
@@ -14,13 +14,12 @@ import zipfile
 windows = sys.platform.startswith("win")
 exe = "muesli-mcp.exe" if windows else "muesli-mcp"
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-windows = os.path.join(root, "windows")
-binary = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(windows, "target", "release", exe)
+binary = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(root, "target", "release", exe)
 icon = os.path.join(root, "assets", "brand", "app-icon", "extension-icon-512.png")  # the tile without the macOS icon margin
 
 manifest = subprocess.run([binary, "--mcpb-manifest"], check=True, capture_output=True, text=True).stdout
-os.makedirs(os.path.join(windows, "dist"), exist_ok=True)
-out = os.path.join(windows, "dist", "Muesli.mcpb")
+os.makedirs(os.path.join(root, "dist"), exist_ok=True)
+out = os.path.join(root, "dist", "Muesli.mcpb")
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     z.writestr("manifest.json", manifest)
     z.write(icon, "icon.png")

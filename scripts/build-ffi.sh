@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the shared Rust core for the macOS app: windows/crates/ffi becomes
+# Builds the shared Rust core for the macOS app: crates/ffi becomes
 #   macos/Frameworks/MuesliFFI.xcframework        (static library + C header + module map)
 #   macos/Sources/MuesliFFI/muesli_ffi.swift      (generated Swift bindings)
 # Both are generated and git-ignored. Run before `swift build` / `swift test`; macos/build.sh does it.
@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="$PATH:$HOME/.cargo/bin:/opt/homebrew/opt/rustup/bin"
 command -v cargo >/dev/null || { echo "cargo not found: install Rust (https://rustup.rs)." >&2; exit 1; }
 TARGET=aarch64-apple-darwin
-cd "$ROOT/windows"
+cd "$ROOT"
 
 cargo build --release -p muesli-ffi --features whisper --target "$TARGET"
 LIB="target/$TARGET/release/libmuesli_ffi.a"

@@ -17,15 +17,10 @@ jobs:
           - { os: macos-latest, label: macOS }
           - { os: windows-latest, label: Windows }
           - { os: ubuntu-latest, label: "Linux (portable crates only)" }
-    defaults:
-      run:
-        working-directory: windows
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: windows
       - if: matrix.os != 'ubuntu-latest'
         run: cargo test --workspace
       # Linux has no app (no WebKitGTK here) and no audio capture; test the portable crates.
@@ -41,8 +36,6 @@ jobs:
         with:
           targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: windows
       - name: Build the shared Rust core for Swift
         run: scripts/build-ffi.sh
       - run: swift test

@@ -10,7 +10,7 @@ use muesli_mcp::Server;
 use serde_json::Value;
 
 fn fixtures() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/mcp")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/mcp")
 }
 
 fn copy_dir(from: &Path, to: &Path) {

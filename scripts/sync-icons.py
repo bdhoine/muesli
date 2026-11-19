@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generates windows/src-tauri/icons/ from assets/brand, the single source for Muesli's icons.
+"""Generates apps/desktop/icons/ from assets/brand, the single source for Muesli's icons.
 
     python3 scripts/sync-icons.py           write the icons
     python3 scripts/sync-icons.py --check   fail if they are out of date (used in CI)
 
-Never edit windows/src-tauri/icons by hand: change assets/brand and run this script.
+Never edit apps/desktop/icons by hand: change assets/brand and run this script.
 The .icns needs macOS (iconutil), so --check skips it.
 """
 import os
@@ -16,7 +16,7 @@ import sys
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 brand = os.path.join(root, "assets", "brand")
 iconset = os.path.join(brand, "app-icon", "AppIcon.iconset")
-out = os.path.join(root, "windows", "src-tauri", "icons")
+out = os.path.join(root, "apps", "desktop", "icons")
 
 # Target name -> source file.
 COPIES = {

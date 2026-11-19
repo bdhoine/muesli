@@ -7,7 +7,7 @@ use muesli_core::store::Store;
 use muesli_core::{AppStatus, Meeting, MeetingState, Preferences};
 
 fn fixture(name: &str) -> String {
-    std::fs::read_to_string(format!("{}/../../../fixtures/core/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+    std::fs::read_to_string(format!("{}/../../fixtures/core/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
 }
 
 /// Swift writes `4`, serde writes `4.0` for the same double: compare numbers by value.

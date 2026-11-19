@@ -1,6 +1,6 @@
 {
   "bundle": {
     "externalBin": ["binaries/muesli-mcp"],
-    "resources": { "../dist/Muesli.mcpb": "Muesli.mcpb" }
+    "resources": { "../../dist/Muesli.mcpb": "Muesli.mcpb" }
   }
 }

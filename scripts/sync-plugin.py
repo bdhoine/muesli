@@ -17,7 +17,7 @@ root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 plugin = os.path.join(root, "plugin")
 manifest = os.path.join(plugin, ".claude-plugin", "plugin.json")
 
-with open(os.path.join(root, "windows", "Cargo.toml")) as f:
+with open(os.path.join(root, "Cargo.toml")) as f:
     version = re.search(r'^version\s*=\s*"([^"]+)"', f.read(), re.M).group(1)
 
 COPIES = {

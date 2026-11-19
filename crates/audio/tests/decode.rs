@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use muesli_audio::{decode_file, DecodeError};
 
 fn fixture(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/audio").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio").join(name)
 }
 
 fn decode(name: &str) -> (Vec<f32>, f64) {

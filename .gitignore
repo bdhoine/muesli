@@ -10,8 +10,8 @@ macos/Muesli.app/
 macos/Frameworks/
 macos/Sources/MuesliFFI/
 
-# Windows app (Rust and Tauri)
-windows/target/
-windows/dist/
-windows/src-tauri/gen/
-windows/src-tauri/binaries/
+# Rust workspace and the Tauri app
+/target/
+/dist/
+apps/desktop/gen/
+apps/desktop/binaries/

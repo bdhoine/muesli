@@ -7,7 +7,7 @@ use muesli_core::{AudioChunk, MeetingState, Paths, TranscriptSegment};
 use muesli_import::{import_file, title_for, ImportError, SpeechToText};
 
 fn fixture(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../fixtures/audio").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio").join(name)
 }
 
 fn paths() -> (tempfile::TempDir, Paths) {

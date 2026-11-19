@@ -1,6 +1,6 @@
 # macOS and Windows: how the two apps differ
 
-Muesli has two apps that are both here to stay: the macOS app (Swift, `macos/`) and the Windows app (Rust and Tauri, `windows/`). They share the file formats and the MCP tools (the Rust core `windows/crates/core` and `crates/mcp` is shared; `fixtures/` freezes the formats and replies, checked by tests) and should offer the same features. This page records every difference and why it exists:
+Muesli has two apps that are both here to stay: the macOS app (Swift, `macos/`) and the Windows app (Rust and Tauri: `crates/`, `apps/desktop`, `ui/`). They share the file formats and the MCP tools (the Rust core `crates/core` and `crates/mcp` is shared; `fixtures/` freezes the formats and replies, checked by tests) and should offer the same features. This page records every difference and why it exists:
 
 1. differences the platform itself imposes, which will stay;
 2. differences that could be closed and are not yet;
@@ -38,7 +38,7 @@ Closed since this page was first written: a broken audio stream is now handled o
 | Area | Implementation | Verified |
 |---|---|---|
 | Files: `config.json`, `state.json`, `meetings/`, transcripts | Shared formats | Golden tests against files written by the Swift app |
-| MCP server (7 tools) | The same Rust binary (`windows/crates/mcp`) on both platforms; Trash / Recycle Bin wording differs | 33 recorded requests (from the former Swift server) match the Rust replies; the macOS app now bundles the Rust binary |
+| MCP server (7 tools) | The same Rust binary (`crates/mcp`) on both platforms; Trash / Recycle Bin wording differs | 33 recorded requests (from the former Swift server) match the Rust replies; the macOS app now bundles the Rust binary |
 | Whisper transcription | The same Rust code on both (`crates/whisper`, whisper.cpp through `whisper-rs`), same models | Real speech on macOS in both; recording tested on Windows by the maintainer (2026-11-16) |
 | Model download, the one fixed model, custom file, voice activity model | Same (the Rust `ModelManager`, through `muesli-ffi` on macOS) | Tests with a local server; real download on macOS |
 | Microphone | AVAudioEngine / cpal (WASAPI), resampled with rubato | macOS; recording tested on Windows by the maintainer (2026-11-16) |

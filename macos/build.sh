@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds Muesli.app (menu bar app; notifications and permissions need a bundle).
 # The bundle also carries muesli-mcp, the MCP server Claude talks to. It is the Rust
-# binary from windows/crates/mcp, shared with the Windows app (needs a Rust toolchain).
+# binary from crates/mcp, shared with the Windows app (needs a Rust toolchain).
 set -euo pipefail
 cd "$(dirname "$0")"                                      # works from any folder
 BRAND=../assets/brand
@@ -10,11 +10,11 @@ command -v cargo >/dev/null || { echo "cargo not found: install Rust (https://ru
 RUST_TARGET=aarch64-apple-darwin
 ../scripts/build-ffi.sh                                   # shared Rust core (XCFramework + Swift bindings)
 swift build -c release
-(cd ../windows && cargo build --release -p muesli-mcp --target "$RUST_TARGET")
+(cd .. && cargo build --release -p muesli-mcp --target "$RUST_TARGET")
 APP=Muesli.app
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Muesli "$APP/Contents/MacOS/"
-cp "../windows/target/$RUST_TARGET/release/muesli-mcp" "$APP/Contents/MacOS/"
+cp "../target/$RUST_TARGET/release/muesli-mcp" "$APP/Contents/MacOS/"
 iconutil -c icns $BRAND/app-icon/AppIcon.iconset -o "$APP/Contents/Resources/Muesli.icns"
 cp $BRAND/menubar/muesliTemplate.png $BRAND/menubar/muesliTemplate@2x.png "$APP/Contents/Resources/"
 cp Info.plist "$APP/Contents/Info.plist"
