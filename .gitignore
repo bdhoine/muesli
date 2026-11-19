@@ -15,3 +15,4 @@ macos/Sources/MuesliFFI/
 /dist/
 apps/desktop/gen/
 apps/desktop/binaries/
+node_modules/

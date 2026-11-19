@@ -114,6 +114,7 @@ pub struct MainView {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptView {
+    pub words: PlatformWords,
     pub id: u64,
     pub title: String,
     pub body: String,

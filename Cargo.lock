@@ -2592,6 +2592,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "muesli-sim"
+version = "0.0.2"
+dependencies = [
+ "chrono",
+ "muesli-core",
+ "muesli-engine",
+ "muesli-platform-fake",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "muesli-whisper"
 version = "0.0.2"
 dependencies = [

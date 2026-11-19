@@ -546,7 +546,8 @@ impl Engine {
                 for chunk in chunk_rx {
                     if let Ok(segments) = transcriber.transcribe(&chunk) {
                         if !segments.is_empty() {
-                            MeetingStore::new(&me.paths()).append(&mut meeting.lock().unwrap(), segments);
+                            let paths = me.paths(); // the engine's lock first, then the meeting's
+                            MeetingStore::new(&paths).append(&mut meeting.lock().unwrap(), segments);
                             me.changed(); // the live transcript in the main window
                         }
                     }
@@ -627,10 +628,12 @@ impl Engine {
         let Some(mut session) = session else { return };
         let me = self.me();
         std::thread::spawn(move || {
+            // Lock order: the engine before a meeting, never the other way round.
+            let paths = me.paths();
             {
                 let mut m = session.meeting.lock().unwrap();
                 m.state = MeetingState::Finalizing;
-                MeetingStore::new(&me.paths()).save(&m);
+                MeetingStore::new(&paths).save(&m);
             }
             let _ = session.stop_audio.send(());
             if let Some(audio) = session.audio.take() {
@@ -1161,6 +1164,7 @@ impl Engine {
         let s = self.lock();
         let p = s.prompt.as_ref()?;
         Some(PromptView {
+            words: self.platform.words.clone(),
             id: p.id,
             title: p.question.title.clone(),
             body: p.question.body.clone(),

@@ -1,0 +1,16 @@
+{
+  "name": "A call in progress",
+  "description": "A Teams call is being transcribed and people are talking. The main window shows the live transcript.",
+  "setupDone": true,
+  "model": "ready",
+  "steps": [
+    { "do": "meeting", "title": "Weekly sync", "source": "calendar", "minutes": 32, "hoursAgo": 26 },
+    { "do": "call", "teams": true, "seconds": 20 },
+    { "do": "answer", "accept": true },
+    { "do": "wait", "ms": 300 },
+    { "do": "call", "teams": true, "seconds": 10 },
+    { "do": "talk", "seconds": 31 },
+    { "do": "talk", "seconds": 31 },
+    { "do": "intent", "intent": { "type": "openMuesli" } }
+  ]
+}

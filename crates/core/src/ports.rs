@@ -118,7 +118,7 @@ impl Permission {
 }
 
 /// The answer to "may Muesli do this?".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Access {
     Allowed,

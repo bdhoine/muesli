@@ -1,436 +1,344 @@
-// Muesli's windows: Settings, the first-launch assistant and the meeting prompt. Plain JS, no build step.
-(() => {
-  const tauri = window.__TAURI__;
-  const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
+// Muesli's windows: main, settings, setup and prompt. Each renders the view state the engine
+// gives it and sends intents back (see bridge.js). Nothing here decides what Muesli does; the
+// only local state is what the user is typing (a new title) and which <details> are open.
+(function () {
+  const { label, view, send, onChange } = window.muesli;
+  const root = document.getElementById("app");
+  const local = { renaming: null, draft: "" };
+  let current = null;
 
-  let S = null; // the last state from the backend
-  const ui = { page: "general", step: 0, chosen: { autoStop: false, assistants: false }, access: {}, client: 0, prompt: null, info: null, ownModel: null, reach: null };
+  // ------------------------------------------------------------------------------------------
+  // Helpers
 
-  // ---- tiny DOM helper -------------------------------------------------------------------
-  function h(tag, attrs, ...kids) {
-    const el = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs || {})) {
-      if (v === false || v == null) continue;
-      if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
-      else if (k === "class") el.className = v;
-      else if (k === "style") el.setAttribute("style", v);
-      else if (v === true) el.setAttribute(k, "");
-      else el.setAttribute(k, v);
-    }
-    for (const kid of kids.flat(Infinity)) {
-      if (kid == null || kid === false) continue;
-      el.append(kid.nodeType ? kid : document.createTextNode(kid));
-    }
-    return el;
+  const esc = (s) =>
+    String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  /** A button that sends `intent` when clicked. */
+  function button(text, intent, { kind = "", disabled = false, testid = "" } = {}) {
+    return `<button class="btn ${kind}" ${disabled ? "disabled" : ""} ${testid ? `data-testid="${testid}"` : ""}
+      data-intent='${esc(JSON.stringify(intent))}'>${esc(text)}</button>`;
   }
 
-  const mb = (bytes) => `${Math.round(bytes / 1_000_000)} MB`;
-  const size = (bytes) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : mb(bytes));
-  const setPrefs = (patch) => invoke("update_prefs", { prefs: { ...S.prefs, ...patch } });
-  const langName = (code) => {
-    try { return new Intl.DisplayNames([navigator.language], { type: "language" }).of(code) || code; } catch { return code; }
-  };
-  const platformName = () => (S.platform === "windows" ? "Explorer" : "Finder");
-
-  function toggle(on, onchange) {
-    return h("label", { class: "switch" }, h("input", { type: "checkbox", checked: on, onchange: (e) => onchange(e.target.checked) }), h("span"));
-  }
-  function row(label, sub, control) {
-    return h("div", { class: "row" },
-      h("div", { class: "label" }, h("span", null, label), sub ? h("span", { class: "sub small" }, sub) : null),
-      h("div", { class: "ctl" }, control));
-  }
-  const group = (...rows) => h("div", { class: "group" }, rows);
-  const foot = (text) => h("p", { class: "footer" }, text);
-  const dot = (kind) => h("span", { class: `status-dot ${kind}` });
-  const status = (kind, text) => h("span", { class: "status" }, dot(kind), text);
-
-  // A small ⓘ button that reveals extra explanation and actions. Which one is open is kept in
-  // `ui.info`, so it survives the re-render that every state change causes.
-  function info(id, ...content) {
-    const open = ui.info === id;
-    const side = id.startsWith("label:") ? " left" : ""; // after a row's title: open towards the right
-    return h("span", { class: "info" + side + (open ? " open" : "") },
-      h("button", { class: "info-btn", title: "More information", "aria-expanded": String(open),
-        onclick: (e) => { e.stopPropagation(); ui.info = open ? null : id; render(); } }, "ⓘ"),
-      open ? h("div", { class: "info-panel", onclick: (e) => e.stopPropagation() }, content) : null);
-  }
-  document.addEventListener("click", () => { if (ui.info) { ui.info = null; render(); } });
-
-  // ---- shared pieces -----------------------------------------------------------------------
-
-  // Settings: a switch for the computer's languages; the own list only shows while it is in use.
-  function languageSettings() {
-    const system = !S.prefs.languages;
-    return [
-      group(row("Use my computer's languages", system ? S.systemLanguages.map(langName).join(", ") : null,
-        toggle(system, (v) => invoke("use_system_languages", { on: v })))),
-      system ? null : languageChips(false)];
+  function date(iso) {
+    if (!iso) return "";
+    return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   }
 
-  function languageChips(withLinks = true) {
-    const chosen = S.effectiveLanguages;
-    const custom = !!S.prefs.languages;
-    const available = S.supportedLanguages.filter((l) => !chosen.includes(l.code)).sort((a, b) => langName(a.code).localeCompare(langName(b.code)));
-    // Editing the list makes it the user's own; the system list stays one click away, and back.
-    const own = (languages) => setPrefs({ languages });
-    return h("div", { style: "display:flex;flex-direction:column;gap:14px" },
-      h("div", { class: "chips" }, chosen.map((code) =>
-        h("span", { class: "chip" }, langName(code),
-          chosen.length > 1 ? h("button", { title: "Remove", onclick: () => own(chosen.filter((c) => c !== code)) }, "✕") : null))),
-      h("div", { style: "display:flex;gap:12px;align-items:center" },
-        h("select", { onchange: (e) => { if (e.target.value) own([...chosen, e.target.value]); } },
-          h("option", { value: "" }, "+ Add a language"),
-          available.map((l) => h("option", { value: l.code }, langName(l.code)))),
-        !withLinks ? null : custom ? h("button", { class: "link", onclick: () => invoke("use_system_languages", { on: true }) }, "Use my computer's languages")
-          : S.prefs.savedLanguages ? h("button", { class: "link", onclick: () => invoke("use_system_languages", { on: false }) }, "Use my own list again") : null),
-      custom || !withLinks ? null : h("span", { class: "sub small" }, "Taken from your computer's settings."));
+  function duration(minutes) {
+    if (minutes == null) return "";
+    if (minutes < 60) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
   }
 
-  // ---- Settings window ---------------------------------------------------------------------
-  const PAGES = [["general", "General", "⚙", "#6b5a4b"], ["transcription", "Transcription", "🎙", "#5b7a3a"], ["assistants", "AI Assistants", "✦", "#3b2a1e"], ["permissions", "Permissions", "🛡", "#6b5a4b"]];
+  const meta = (...parts) => parts.filter(Boolean).map(esc).join(" · ");
 
-  function settings() {
-    const page = { general: generalPage, transcription: transcriptionPage, assistants: assistantsPage, permissions: permissionsPage }[ui.page]();
-    return h("div", { class: "settings" },
-      h("nav", { class: "sidebar" }, PAGES.map(([id, title, icon, color]) =>
-        h("button", { class: "nav" + (ui.page === id ? " on" : ""), onclick: () => { ui.page = id; render(); } },
-          h("span", { class: "tile", style: `background:${color}` }, icon), title))),
-      h("main", { class: "content" }, h("h1", null, PAGES.find((p) => p[0] === ui.page)[1]), page));
+  function progress(fraction) {
+    if (fraction == null) return `<div class="progress indeterminate"><span></span></div>`;
+    return `<div class="progress"><span style="width:${Math.round(fraction * 100)}%"></span></div>`;
   }
 
-  function generalPage() {
-    const p = S.prefs;
-    return h("div", { style: "display:flex;flex-direction:column;gap:18px;flex:1" },
-      group(
-        row("Save transcripts to", S.transcriptsFolderLocked ? "Set by the TRANSCRIPT_DIR environment variable" : S.transcriptsFolder, [
-          h("button", { disabled: S.transcriptsFolderLocked, onclick: async () => { const f = await invoke("choose_transcripts_folder"); if (f) setPrefs({ transcriptsFolder: f }); } }, "Choose…"),
-          S.transcriptsFolderIsCustom && !S.transcriptsFolderLocked ? h("button", { class: "link", onclick: () => setPrefs({ transcriptsFolder: null }) }, "Use default") : null,
-          h("button", { onclick: () => invoke("open_path", { path: S.transcriptsFolder }) }, `Show in ${platformName()}`)]),
-        row("Recent transcripts in menu", "Shown in the tray menu, newest first",
-          h("select", { onchange: (e) => setPrefs({ recentLimit: +e.target.value }) },
-            [0, 3, 5, 10].map((n) => h("option", { value: n, selected: p.recentLimit === n }, n === 0 ? "Don't show" : String(n)))))),
-      group(
-        row("Stop automatically when the call ends", p.autoStop ? "The transcript is saved without asking" : "Muesli asks before it stops and saves", toggle(p.autoStop, (v) => setPrefs({ autoStop: v }))),
-        p.autoStop ? row("Call has ended after", "How long other apps must leave the microphone free",
-          h("select", { onchange: (e) => setPrefs({ endDelaySeconds: +e.target.value }) },
-            [30, 60, 120, 300].map((s) => h("option", { value: s, selected: p.endDelaySeconds === s }, s < 120 ? `${s} seconds` : `${s / 60} minutes`)))) : null),
-      audioFilesGroup(),
-      h("p", { class: "footer about" }, `Muesli ${S.version} · `, h("button", { class: "link", onclick: () => invoke("open_repository") }, "GitHub")));
+  function setSkin(words) {
+    if (words && document.documentElement.dataset.skin !== words.skin) document.documentElement.dataset.skin = words.skin;
   }
 
-  // What is in use and what is happening, in one line under the model name.
-  function modelStatus() {
-    const m = S.model;
-    if (m.kind === "ready") return status("ok", "Ready");
-    if (m.kind === "downloading") return status("warn", "Downloading. Transcribing is off until it is ready.");
-    if (m.kind === "failed") return status("err", m.message);
-    return status("warn", "Not downloaded yet. Transcribing is off.");
-  }
-
-  // Why the download does not work and where it was trying to go, with a way to test the servers.
-  async function checkConnection() {
-    ui.reach = "checking"; render();
-    try { ui.reach = await invoke("check_connection"); } catch (e) { ui.reach = [{ url: "", ok: false, detail: String(e) }]; }
+  /** Keeps scroll positions across a re-render. */
+  function keepScroll(render) {
+    const saved = [...root.querySelectorAll("[data-scroll]")].map((el) => [
+      el.dataset.scroll,
+      el.scrollTop,
+      el.scrollTop + el.clientHeight >= el.scrollHeight - 4,
+    ]);
     render();
-  }
-
-  function downloadProblem() {
-    const failed = S.model.kind === "failed" && !ui.ownModel && S.downloadError;
-    if (!failed && !ui.reach) return null;
-    const results = ui.reach === "checking" ? [h("span", { class: "sub small" }, "Checking the connection…")]
-      : Array.isArray(ui.reach) ? ui.reach.map((r) => h("div", { class: "reach" },
-          h("span", { class: r.ok ? "ok-text" : "err-text" }, r.ok ? "Reachable" : "Not reachable"),
-          h("span", { class: "sub small mono-digits", style: "word-break:break-all" }, ` ${r.url}`),
-          r.ok ? null : h("div", { class: "sub small" }, r.detail))) : [];
-    return h("div", { class: "row", style: "flex-direction:column;align-items:stretch;gap:8px" },
-      failed ? h("div", { class: "err-text" }, "The model could not be downloaded.") : null,
-      failed ? h("div", { class: "sub small" }, S.downloadError) : null,
-      failed && S.downloadUrl ? h("div", { class: "sub small" }, "Address: ", h("span", { class: "mono-digits", style: "word-break:break-all;user-select:text" }, S.downloadUrl)) : null,
-      failed ? h("div", { class: "sub small" }, "You can also download the files yourself and put them in the models folder, then restart Muesli.") : null,
-      ...results,
-      h("div", { style: "display:flex;gap:8px" },
-        failed ? h("button", { onclick: () => { ui.reach = null; invoke("download_model"); } }, "Try again") : null,
-        h("button", { disabled: ui.reach === "checking", onclick: checkConnection }, "Check connection")));
-  }
-
-  function transcriptionPage() {
-    const p = S.prefs;
-    if (ui.ownModel === null) ui.ownModel = !!p.customModelPath;
-    const d = S.download;
-    const frac = d && d.total > 0 ? Math.min(d.received / d.total, 1) : null;
-    return h("div", { style: "display:flex;flex-direction:column;gap:18px" },
-      group(
-        h("div", { class: "row" },
-          h("div", { class: "label" }, h("span", null, "Model"), h("span", { class: "sub small" }, modelStatus())),
-          h("div", { class: "ctl" },
-            h("span", { class: "sub" }, ui.ownModel ? "Own file" : `${S.modelInfo.title} · ${size(S.modelInfo.bytes)}`),
-            info("model",
-              h("p", null, "Transcription runs on this computer. Muesli only goes online to download the speech model once, and a small model that finds the parts of the audio that contain speech. Use your own file to transcribe with another model."),
-              S.downloadError ? h("p", { class: "err-text" }, S.downloadError) : null,
-              h("p", { class: "sub" }, "Models are stored in"),
-              h("pre", { class: "snippet" }, S.modelsFolder),
-              h("div", { class: "info-actions" },
-                h("button", { onclick: () => invoke("open_models_folder") }, `Show in ${platformName()}`))))),
-        d ? h("div", { class: "row", style: "flex-direction:column;align-items:stretch;gap:6px" },
-          h("div", { class: "bar" + (frac == null ? " indeterminate" : "") }, h("i", { style: `width:${(frac || 0) * 100}%` })),
-          h("div", { style: "display:flex;justify-content:space-between;align-items:center" },
-            h("span", { class: "sub small mono-digits" }, `Downloading the speech model · ${mb(d.received)} of ${mb(d.total)}`),
-            h("button", { onclick: () => invoke("cancel_download") }, "Cancel download"))) : null,
-        d && S.downloadUrl ? h("div", { class: "row" }, h("span", { class: "sub small mono-digits", style: "word-break:break-all;user-select:text" }, `Fetching ${S.downloadUrl}`)) : null,
-        !d && S.model.kind === "missing" && !ui.ownModel
-          ? row("Speech model", null, [h("button", { onclick: () => invoke("download_model") }, "Download"), h("button", { onclick: checkConnection }, "Check connection")]) : null,
-        !d ? downloadProblem() : null,
-        row("Use my own model file", null, toggle(ui.ownModel, (v) => { ui.ownModel = v; if (!v && p.customModelPath) setPrefs({ customModelPath: null }); render(); })),
-        ui.ownModel ? row("Model file", p.customModelPath || "Any whisper.cpp .bin file. None chosen yet.",
-          h("button", { onclick: async () => { const f = await invoke("choose_model_file"); if (f) setPrefs({ customModelPath: f }); } }, p.customModelPath ? "Change…" : "Choose File…")) : null,
-        S.legacyModels > 0 ? row("Old model files", `From earlier versions, ${size(S.legacyBytes)}. Muesli no longer uses them.`,
-          h("button", { onclick: () => invoke("remove_legacy_models") }, "Remove")) : null),
-      h("h2", { style: "font-size:15px" }, "Languages"),
-      languageSettings(),
-      foot("Muesli recognises which of these is spoken. Fewer languages means fewer mistakes."));
-  }
-
-  function assistantsPage() {
-    const p = S.prefs;
-    const a = S.assistants;
-    const ext = a.extension;
-    const claudeInstalled = ext.state !== "claudeMissing";
-    const extInstalled = ext.state === "installed" || ext.state === "outdated";
-    const client = a.clients[ui.client] || a.clients[0];
-    const trash = S.platform === "windows" ? "Recycle Bin" : "Trash";
-    const extStatus = ext.state === "installed" ? status("ok", "Installed") : ext.state === "outdated" ? status("warn", "Update available")
-      : status("warn", p.claudeDesktopConfigEntry ? "Using the config file" : "Not installed");
-    return h("div", { style: "display:flex;flex-direction:column;gap:18px" },
-      group(h("div", { class: "row" },
-        h("div", { class: "label title" }, "Let AI assistants use Muesli",
-          info("label:mcp",
-            h("p", null, `Assistants can read Muesli's status and transcripts, rename meetings, set attendees and speakers, and delete finished meetings (deleted files go to the ${trash}). They cannot start or stop a recording.`),
-            h("p", null, "An assistant on this computer starts Muesli's small MCP server itself; nothing is exposed to the network. What an assistant reads is sent to its provider, for example Anthropic for Claude."))),
-        h("div", { class: "ctl" }, toggle(p.mcpEnabled, (v) => setPrefs({ mcpEnabled: v }))))),
-      p.mcpEnabled ? [
-        claudeInstalled ? [
-          h("h2", { style: "font-size:15px" }, "Claude Desktop"),
-          group(
-            h("div", { class: "row" },
-              h("div", { class: "label title" }, "Muesli extension",
-                info("label:claude",
-                  h("p", null, "The extension lists Muesli in Claude Desktop with its name and icon. Claude Desktop asks you to confirm when you install it."),
-                  ext.version ? h("p", { class: "sub" }, `Version ${ext.version} is installed.`) : null,
-                  extInstalled ? null : [
-                    h("p", null, "If Claude Desktop says the extension cannot be installed, your organisation blocks extensions. Muesli can add itself to Claude Desktop's config file instead: it is then listed as “Muesli” without an icon. Quit and reopen Claude Desktop afterwards. Installing the extension later removes the entry."),
-                    h("div", { class: "info-actions" }, h("button", { onclick: () => setPrefs({ claudeDesktopConfigEntry: !p.claudeDesktopConfigEntry }) },
-                      p.claudeDesktopConfigEntry ? "Remove from config file" : "Add to config file"))])),
-              h("div", { class: "ctl" }, extStatus,
-                ext.bundled && !extInstalled ? h("button", { class: "primary", onclick: () => invoke("install_extension") }, "Install…")
-                  : ext.bundled && ext.state === "outdated" ? h("button", { onclick: () => invoke("install_extension") }, "Update…") : null)),
-            p.claudeDesktopConfigEntry && !extInstalled ? row("Config file entry", a.configStatus || null,
-              h("button", { onclick: () => setPrefs({ claudeDesktopConfigEntry: false }) }, "Remove")) : null)] : null,
-        h("h2", { style: "font-size:15px" }, claudeInstalled ? "Other assistants" : "Set up an assistant"),
-        client && client.snippet ? group(
-          row("Assistant", null, h("select", { onchange: (e) => { ui.client = +e.target.value; render(); } }, a.clients.map((c, i) => h("option", { value: i, selected: i === ui.client }, c.name)))),
-          h("div", { class: "row", style: "flex-direction:column;align-items:stretch;gap:8px" },
-            h("span", { class: "sub small" }, client.instructions),
-            h("pre", { class: "snippet" }, client.snippet),
-            h("div", { style: "text-align:right" }, h("button", { onclick: (e) => { navigator.clipboard?.writeText(client.snippet); e.target.textContent = "Copied"; } }, "Copy"))))
-          : group(row("muesli-mcp", "Missing next to the app. Reinstall Muesli.", [dot("err")])),
-      ] : null);
-  }
-
-  // How Muesli stands with the operating system: one row per thing it needs from it.
-  function permissionsPage() {
-    const y = S.system;
-    // The status is always at the right edge; a button to fix it sits beneath.
-    const access = (value, settingsKind) => h("div", { class: "stack" },
-      value === "allowed" ? status("ok", "Allowed") : value === "denied" ? status("err", "Not allowed") : status("off", "Unknown"),
-      value === "allowed" ? null : h("button", { onclick: () => invoke("open_privacy_settings", { kind: settingsKind }) }, "Open settings…"));
-    return h("div", { style: "display:flex;flex-direction:column;gap:18px" },
-      group(
-        row("Microphone", "To transcribe your side of the conversation", access(y.microphone, "microphone")),
-        // Where the system asks nothing for this (Windows), there is nothing to show.
-        y.systemAudioNeedsPermission ? row("System audio", "To transcribe the other side of a call. Muesli never records your screen.",
-          h("div", { class: "stack" }, status("off", "Asked when you record"),
-            h("button", { onclick: () => invoke("open_privacy_settings", { kind: "systemAudio" }) }, "Open settings…"))) : null,
-        row("Notifications", "To ask whether to transcribe when a meeting starts", access(y.notifications, "notifications"))),
-      group(row("Start at login", "So Muesli is there when a meeting starts", toggle(y.startAtLogin, (v) => invoke("set_start_at_login", { on: v })))),
-      foot("Changes you make in your system settings show here when you come back to this window."));
-  }
-
-
-  const CLEANUP = [
-    ["keep", "Keep the file", "The file stays in the folder. It is not transcribed again."],
-    ["trash", () => `Move to the ${S.platform === "windows" ? "Recycle Bin" : "Trash"}`, () => `Once transcribed, the file goes to the ${S.platform === "windows" ? "Recycle Bin" : "Trash"}.`],
-    ["delete", "Delete the file", "Once transcribed, the file is deleted for good."],
-  ];
-  const cleanupTitle = (c) => (typeof c[1] === "function" ? c[1]() : c[1]);
-  const cleanupDetail = (c) => (typeof c[2] === "function" ? c[2]() : c[2]);
-
-  async function chooseDropFolder() {
-    const f = await invoke("choose_drop_folder");
-    if (f) setPrefs({ dropFolder: f });
-  }
-
-  // What the audio-file queue is doing, in one line.
-  function fileStatus() {
-    const running = S.files.find((f) => f.state.kind === "running");
-    const waiting = S.files.filter((f) => f.state.kind === "waiting").length;
-    if (running) {
-      const p = running.state.progress;
-      return `Transcribing ${running.name}${p != null ? ` · ${Math.round(p * 100)}%` : "…"}${waiting ? ` · ${waiting} waiting` : ""}`;
+    for (const [key, top, atBottom] of saved) {
+      const el = root.querySelector(`[data-scroll="${key}"]`);
+      if (!el) continue;
+      el.scrollTop = key === "live" && atBottom ? el.scrollHeight : top;
     }
-    return waiting ? `${waiting} waiting` : "Nothing to transcribe";
   }
 
-  function audioFilesGroup() {
-    const p = S.prefs;
-    return [
-      h("h2", { style: "font-size:15px" }, "Audio files"),
-      group(
-        row("Drop folder", p.dropFolder || "Off. Audio files put in this folder are transcribed automatically.", [
-          p.dropFolder ? h("button", { onclick: () => setPrefs({ dropFolder: null }) }, "Stop watching") : null,
-          h("button", { onclick: chooseDropFolder }, p.dropFolder ? "Change…" : "Choose Folder…")]),
-        row("After transcribing", p.dropFolder ? cleanupDetail(CLEANUP.find((c) => c[0] === p.dropFolderCleanup) || CLEANUP[0]) : "Choose a folder first",
-          h("select", { disabled: !p.dropFolder, onchange: (e) => setPrefs({ dropFolderCleanup: e.target.value }) },
-            CLEANUP.map((c) => h("option", { value: c[0], selected: p.dropFolderCleanup === c[0] }, cleanupTitle(c))))),
-        p.dropFolder && p.dropFolderCleanup === "delete" ? h("div", { class: "row" }, h("span", { class: "warn-text" }, "Deleted files do not go to the Recycle Bin. Keep a copy of anything you need.")) : null,
-        row("Transcribe an audio file", "mp3, m4a, wav, flac, ogg. Also in the tray menu.",
-          h("button", { disabled: S.model.kind !== "ready", onclick: () => invoke("transcribe_files") }, "Choose Files…")),
-        row("Status", null, S.fileError ? h("span", { class: "err-text" }, S.fileError) : h("span", { class: "sub" }, fileStatus()))),
-    ];
-  }
+  // ------------------------------------------------------------------------------------------
+  // Main window
 
-  // ---- small window for files picked from the menu -----------------------------------------
-  function transcribe() {
-    const items = S.files.filter((f) => f.manual);
-    const working = items.some((f) => f.state.kind === "waiting" || f.state.kind === "running");
-    const stateText = (f) => {
-      const k = f.state.kind;
-      if (k === "waiting") return h("span", { class: "sub" }, "Waiting");
-      if (k === "running") return h("span", { class: "sub mono-digits" }, f.state.progress != null ? `${Math.round(f.state.progress * 100)}%` : "Starting…");
-      if (k === "done") return h("span", { class: "ok-text" }, "✓ Done");
-      if (k === "failed") return h("span", { class: "err-text" }, "Failed");
-      return h("span", { class: "sub" }, "Cancelled");
-    };
-    return h("div", { class: "files-window", style: "padding:20px;display:flex;flex-direction:column;gap:14px;height:100vh;box-sizing:border-box" },
-      h("div", { style: "flex:1;overflow:auto;display:flex;flex-direction:column;gap:14px" },
-        items.length ? items.map((f) => h("div", { style: "display:flex;flex-direction:column;gap:5px" },
-          h("div", { style: "display:flex;justify-content:space-between;gap:10px" }, h("span", { style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap" }, f.name), stateText(f)),
-          f.state.kind === "running" ? h("div", { class: "bar" + (f.state.progress == null ? " indeterminate" : "") }, h("i", { style: `width:${(f.state.progress || 0) * 100}%` })) : null,
-          f.state.kind === "failed" ? h("div", { class: "err-text small" }, f.state.message) : null)) : h("p", { class: "sub" }, "No audio files.")),
-      h("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px" },
-        h("span", { class: "sub small" }, "Transcripts appear in your transcripts folder and the tray menu."),
-        working ? h("button", { onclick: () => invoke("cancel_all_files") }, "Cancel")
-          : h("button", { class: "primary", onclick: () => invoke("close_file_window") }, "Done")));
-  }
-
-  // ---- onboarding assistant ----------------------------------------------------------------
-  function steps() {
-    const all = ["languages", "autoStop", "assistants", "dropFolder", "microphone"];
-    if (S.platform === "macos") all.push("systemAudio"); // Windows loopback needs no permission
-    return all;
-  }
-  const META = {
-    languages: ["🌐", "#6b5a4b", "Which languages do you speak?", "Muesli works out which one is spoken. Fewer languages means fewer mistakes."],
-    autoStop: ["⏹", "#6b5a4b", "Stop when the call ends?", "Muesli can notice that the other app let go of the microphone and save the transcript for you, or ask you first."],
-    assistants: ["✦", "#3b2a1e", "Connect an AI assistant?", "Claude and other assistants can read your transcripts. They can never start or stop a recording."],
-    dropFolder: ["📂", "#3b2a1e", "Transcribe audio files?", "Choose a folder and Muesli transcribes any audio file you put in it, such as a recording from your phone. You can skip this and add one later in Settings."],
-    microphone: ["🎙", "#5b7a3a", "Hear your side", "Muesli needs the microphone to transcribe what you say."],
-    systemAudio: ["🔊", "#6b5a4b", "Hear the other side", "To transcribe the other people on a call, Muesli listens to your computer's audio. It never records your screen."],
-  };
-
-  function choice(title, detail, on, onclick) {
-    return h("button", { class: "choice" + (on ? " on" : ""), onclick }, h("div", null, h("div", { class: "t" }, title), h("div", { class: "sub small" }, detail)), h("span", { class: "mark" }, on ? "●" : "○"));
-  }
-
-  function onboarding() {
-    const list = steps();
-    const id = list[ui.step];
-    const [icon, color, title, intro] = META[id];
-    const p = S.prefs;
-    let body;
-    if (id === "languages") body = languageChips();
-    else if (id === "autoStop") body = [
-      choice("Stop and save automatically", "Once the call has ended, the transcript is saved without asking", ui.chosen.autoStop && p.autoStop, () => { ui.chosen.autoStop = true; setPrefs({ autoStop: true }); }),
-      choice("Ask me first", "Muesli shows a prompt and keeps recording until you say so", ui.chosen.autoStop && !p.autoStop, () => { ui.chosen.autoStop = true; setPrefs({ autoStop: false }); }),
-      h("p", { class: "footer" }, "You can change this later in Settings.")];
-    else if (id === "dropFolder") body = p.dropFolder ? [
-      choice(p.dropFolder, "Audio files put here are transcribed. Click to choose another folder.", true, chooseDropFolder),
-      ...CLEANUP.map((c) => choice(cleanupTitle(c), cleanupDetail(c), p.dropFolderCleanup === c[0], () => setPrefs({ dropFolderCleanup: c[0] }))),
-      h("button", { class: "link", onclick: () => setPrefs({ dropFolder: null }) }, "Don't use a folder"),
-      h("p", { class: "footer" }, "You can change this later in Settings.")]
-      : [choice("Choose a folder…", "Off until you choose one", false, chooseDropFolder), h("p", { class: "footer" }, "You can change this later in Settings.")];
-    else if (id === "assistants") body = [
-      choice("Yes, connect assistants", "Read-only access to your transcripts", ui.chosen.assistants && p.mcpEnabled, () => { ui.chosen.assistants = true; setPrefs({ mcpEnabled: true }); }),
-      choice("Not now", "You can switch this on later in Settings", ui.chosen.assistants && !p.mcpEnabled, () => { ui.chosen.assistants = true; setPrefs({ mcpEnabled: false }); }),
-      p.mcpEnabled && ui.chosen.assistants && S.assistants.extension.state === "notInstalled" && S.assistants.extension.bundled
-        ? h("button", { onclick: () => invoke("install_extension") }, "Add Muesli to Claude Desktop…") : null];
-    else {
-      const a = ui.access[id];
-      body = [a === "granted" ? h("p", { class: "ok-text" }, "✓ Requested. If macOS or Windows asked, your answer is saved.")
-        : a === "failed" ? h("p", { class: "warn-text" }, "That did not work. You can allow it in your system settings, or skip it for now.")
-        : h("p", { class: "sub" }, "Your system will ask you to confirm.")];
-      if (a === "failed") body.push(h("button", { onclick: () => invoke("open_privacy_settings", { kind: id }) }, "Open system settings"));
+  function main(v) {
+    const reader = v.reader;
+    const rows = [];
+    if (v.live) {
+      rows.push(`<li class="row live ${v.live.selected ? "selected" : ""}" data-testid="live-row"
+          data-intent='${esc(JSON.stringify({ type: "select", id: v.live.id }))}'>
+        <span class="dot red" aria-hidden="true"></span>
+        <div><div class="title">${esc(v.live.title)}</div><div class="sub">${esc(v.live.status)}</div></div></li>`);
+    }
+    for (const i of v.imports) {
+      rows.push(`<li class="row import ${i.failed ? "failed" : ""}" data-testid="import-row">
+        <div class="grow"><div class="title">${esc(i.name)}</div><div class="sub">${esc(i.status)}</div>
+        ${i.running ? progress(i.progress) : ""}</div>
+        ${i.failed ? button("Dismiss", { type: "dismissImport", id: i.id }, { kind: "small" }) : button("Cancel", { type: "cancelImport", id: i.id }, { kind: "small" })}
+      </li>`);
+    }
+    for (const m of v.meetings) {
+      rows.push(`<li class="row ${m.selected ? "selected" : ""}" data-testid="meeting-row"
+          data-intent='${esc(JSON.stringify({ type: "select", id: m.id }))}'>
+        <div><div class="title">${esc(m.title)}${m.partial ? ' <span class="badge">Partial</span>' : ""}${m.failed ? ' <span class="badge">Failed</span>' : ""}</div>
+        <div class="sub">${meta(date(m.startedAt), duration(m.durationMinutes), m.source)}</div></div></li>`);
     }
 
-    const last = ui.step === list.length - 1;
-    const isPerm = id === "microphone" || id === "systemAudio";
-    const needsAsk = isPerm && !ui.access[id];
-    return h("div", { class: "onb" },
-      h("div", { class: "hero hero-bg" }, h("div", { class: "icon", style: `background:${color}` }, icon), h("h1", null, title), h("p", null, intro)),
-      h("div", { class: "body" }, body),
-      h("div", { class: "foot" },
-        h("div", { class: "dots" }, list.map((_, i) => h("i", { class: i === ui.step ? "on" : "" }))),
-        ui.step > 0 ? h("button", { class: "big", onclick: () => { ui.step--; render(); } }, "Back") : null,
-        needsAsk ? h("button", { class: "big", onclick: () => advance(list) }, "Skip") : null,
-        h("button", { class: "primary big",
-          onclick: () => (needsAsk ? askPermission(id) : advance(list)) },
-          needsAsk ? `Allow ${id === "microphone" ? "Microphone" : "System Audio"}  →` : last ? "Start using Muesli  ✓" : "Continue  →")));
+    let right = `<div class="empty">${esc(v.emptyText || "Choose a transcript on the left.")}</div>`;
+    if (reader) {
+      const renaming = local.renaming === reader.id;
+      const heading = renaming
+        ? `<form class="rename" data-testid="rename-form"><input name="title" value="${esc(local.draft)}" aria-label="Title" autofocus>
+             <button class="btn primary" type="submit">Rename</button><button class="btn" type="button" data-local="cancel-rename">Cancel</button></form>`
+        : `<h1 data-testid="reader-title">${esc(reader.title)}</h1>`;
+      const actions = reader.live
+        ? button("Stop and Save", { type: "stopAndSave" }, { kind: "primary", testid: "stop" })
+        : reader.editable && !renaming
+          ? `<button class="btn" data-local="rename" data-testid="rename">Rename</button>` + button("Delete", { type: "delete", id: reader.id }, { testid: "delete" })
+          : "";
+      const lines = reader.lines.length
+        ? reader.lines
+            .map((l) => `<p class="line"><span class="time">[${esc(l.time)}]</span> <strong>${esc(l.speaker)}</strong>: ${esc(l.text)}</p>`)
+            .join("")
+        : `<p class="empty-text">${esc(reader.emptyText || "")}</p>`;
+      right = `<header class="reader-head">
+          <div class="grow">${heading}
+            ${reader.badge ? `<span class="badge live-badge" data-testid="live-badge"><span class="dot red"></span>${esc(reader.badge)}</span>` : ""}
+            <div class="sub">${meta(date(reader.startedAt), duration(reader.durationMinutes), reader.source)}</div>
+            ${reader.attendees.length ? `<div class="sub">With ${esc(reader.attendees.join(", "))}</div>` : ""}
+          </div>
+          <div class="actions">${actions}</div>
+        </header>
+        <article class="transcript" data-scroll="${reader.live ? "live" : "reader"}" data-testid="transcript">${lines}</article>`;
+    }
+
+    keepScroll(() => {
+      root.innerHTML = `<div class="main-window">
+        <div class="toolbar">
+          ${v.transcribing ? "" : button("Start Transcribing", { type: "startTranscribing" }, { kind: "primary", disabled: !v.canStart, testid: "start" })}
+          ${button("Transcribe Audio File…", { type: "chooseAudioFiles" }, { disabled: !v.canTranscribeFile, testid: "transcribe-file" })}
+          ${button(v.showInFileManager, { type: "showInFileManager", id: reader && !reader.live ? reader.id : null }, { testid: "reveal" })}
+          <span class="grow"></span>
+          ${button("Settings…", { type: "openSettings" }, { kind: "quiet" })}
+        </div>
+        ${v.error ? `<div class="banner" role="alert">${esc(v.error)} ${button("Dismiss", { type: "dismissError" }, { kind: "small" })}</div>` : ""}
+        <div class="split">
+          <ul class="list" data-scroll="list" data-testid="list">${rows.join("")}</ul>
+          <section class="reader">${right}</section>
+        </div>
+        ${v.toast ? `<div class="toast" role="status" data-testid="toast">${esc(v.toast.text)}
+            ${v.toast.undo ? button("Undo", { type: "undo" }, { kind: "small", testid: "undo" }) : ""}
+            ${button("×", { type: "dismissToast" }, { kind: "small quiet" })}</div>` : ""}
+      </div>`;
+    });
+    const input = root.querySelector(".rename input");
+    if (input && document.activeElement !== input) {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
   }
 
-  async function askPermission(id) {
-    try { await invoke("request_permission", { kind: id }); ui.access[id] = "granted"; } catch { ui.access[id] = "failed"; }
-    render();
-  }
-  async function advance(list) {
-    if (ui.step === list.length - 1) { await invoke("finish_onboarding"); return; }
-    ui.step++;
-    render();
-  }
+  // ------------------------------------------------------------------------------------------
+  // Settings
 
-  // ---- prompt window -----------------------------------------------------------------------
-  function prompt() {
-    const p = ui.prompt;
-    if (!p) return h("div");
-    const start = p.kind === "start";
-    return h("div", { class: "prompt" },
-      h("div", null, h("h3", null, p.title), h("p", { class: "sub" }, p.body)),
-      h("div", { class: "actions" },
-        h("button", { onclick: () => invoke("prompt_response", { accept: false }) }, "Not now"),
-        h("button", { class: "primary", onclick: () => invoke("prompt_response", { accept: true }) }, start ? "Start transcribing" : "Stop and save")));
+  function permissionRows(rows) {
+    return rows
+      .map(
+        (p) => `<div class="perm" data-testid="permission-${p.permission}">
+          <div class="grow"><div class="title">${esc(p.title)} ${p.required ? '<span class="badge">Required</span>' : '<span class="badge quiet">Optional</span>'}</div>
+          <div class="sub">${esc(p.detail)}</div></div>
+          <span class="status ${p.granted ? "ok" : ""}"><span class="dot ${p.granted ? "green" : ""}"></span>${esc(p.badge)}</span>
+          ${
+            p.button
+              ? button(p.button, p.access === "notAsked" ? { type: "requestPermission", permission: p.permission } : { type: "openPermissionSettings", permission: p.permission }, { kind: "small" })
+              : ""
+          }
+        </div>`,
+      )
+      .join("");
   }
 
-  // ---- boot --------------------------------------------------------------------------------
-  const label = () => new URLSearchParams(location.search).get("window") || tauri.window.getCurrentWindow().label;
-
-  function render() {
-    if (!S) return;
-    const root = document.getElementById("app");
-    const scroll = root.querySelector(".content, .body")?.scrollTop || 0;
-    const view = { settings, onboarding, prompt, transcribe }[label()] || settings;
-    root.replaceChildren(view());
-    const el = root.querySelector(".content, .body");
-    if (el) el.scrollTop = scroll;
-    document.title = { settings: "Muesli Settings", onboarding: "Welcome to Muesli", prompt: "Muesli", transcribe: "Transcribing Audio" }[label()] || "Muesli";
+  function languages(l) {
+    const chips = l.chosen
+      .map(
+        (c) => `<span class="chip" data-testid="chip-${c.code}">${esc(c.name)}
+          ${l.canRemove ? `<button class="chip-x" aria-label="Remove ${esc(c.name)}" data-intent='${esc(JSON.stringify({ type: "removeLanguage", code: c.code }))}'>×</button>` : ""}</span>`,
+      )
+      .join("");
+    const options = l.available.map((c) => `<option value="${esc(c.code)}">${esc(c.name)}</option>`).join("");
+    return `<div class="chips">${chips}
+      <select class="add-language" data-testid="add-language" aria-label="Add language"><option value="">+ Add language</option>${options}</select></div>`;
   }
 
-  let pending = false;
+  function model(m) {
+    return `<div class="model" data-testid="model">
+      <div class="grow"><div class="title">${esc(m.title)}</div>
+      <div class="sub">${esc(m.text)}</div>
+      ${m.progress != null ? progress(m.progress) : ""}
+      ${m.error ? `<div class="error-text">${esc(m.error)}${m.url ? `<br><code>${esc(m.url)}</code>` : ""}</div>` : ""}</div>
+      ${m.canRetry ? button("Download again", { type: "downloadModelAgain" }, { kind: "small" }) : ""}
+    </div>`;
+  }
+
+  function settings(v) {
+    const a = v.assistants;
+    const open = [...root.querySelectorAll("details[open]")].map((d) => d.dataset.key);
+    const assistants = a.enabled
+      ? `${
+          a.claudeDesktop
+            ? `<div class="row-flat"><div class="grow"><div class="title">Claude Desktop</div><div class="sub">${esc(a.claudeDesktop.status)}</div></div>
+               ${a.claudeDesktop.button ? button(a.claudeDesktop.button, { type: "connectClaudeDesktop" }, { kind: "primary small" }) : ""}</div>`
+            : ""
+        }
+        <details data-key="other" ${open.includes("other") ? "open" : ""}><summary>Other apps…</summary>
+          <div class="segmented" role="tablist">${a.assistants
+            .map((c) => `<button role="tab" aria-selected="${c.selected}" class="seg ${c.selected ? "on" : ""}" data-intent='${esc(JSON.stringify({ type: "pickAssistant", name: c.name }))}'>${esc(c.name)}</button>`)
+            .join("")}</div>
+          <p class="sub">${esc(a.instructions)}</p>
+          ${a.command ? `<pre class="command" data-testid="command">${esc(a.command)}</pre><button class="btn small" data-local="copy">Copy</button>` : `<p class="sub">muesli-mcp is not next to the app in this build.</p>`}
+          ${a.canAddToClaudeConfig ? button("Add to Claude's config file", { type: "addToClaudeConfig" }, { kind: "small" }) : ""}
+          ${a.claudeConfigStatus ? `<p class="sub">${esc(a.claudeConfigStatus)}</p>` : ""}
+        </details>`
+      : "";
+    root.innerHTML = `<div class="settings" data-scroll="settings">
+      <section><h2>General</h2>
+        <div class="row-flat"><div class="grow"><div class="title">Transcripts folder</div><div class="sub path" data-testid="folder">${esc(v.transcriptsFolder)}</div></div>
+          ${button(`Show in ${v.words.fileManager}`, { type: "showInFileManager", id: null }, { kind: "small" })}
+          ${button("Change…", { type: "chooseTranscriptsFolder" }, { kind: "small", disabled: v.transcriptsFolderLocked })}</div>
+        <label class="row-flat switch"><div class="grow title">${esc(v.words.startAtLogin)}</div>
+          <input type="checkbox" role="switch" data-testid="login" ${v.startAtLogin ? "checked" : ""}
+            data-toggle='${esc(JSON.stringify({ type: "setStartAtLogin" }))}'></label>
+      </section>
+      <section><h2>Languages</h2>
+        <p class="sub">Muesli picks the most likely of these every 30 seconds.</p>
+        ${languages(v.languages)}
+        ${button("Reset", { type: "resetLanguages" }, { kind: "small quiet", disabled: !v.languages.canReset })}
+      </section>
+      <section><h2>AI assistants</h2>
+        <label class="row-flat switch"><div class="grow"><div class="title">Let AI assistants use Muesli</div><div class="sub">${esc(a.privacy)}</div></div>
+          <input type="checkbox" role="switch" data-testid="assistants" ${a.enabled ? "checked" : ""}
+            data-toggle='${esc(JSON.stringify({ type: "setAssistantsEnabled" }))}'></label>
+        ${assistants}
+      </section>
+      <details class="advanced" data-key="advanced" ${open.includes("advanced") ? "open" : ""}><summary><h2>Advanced</h2></summary>
+        ${model(v.model)}
+        <div class="perms">${permissionRows(v.permissions)}</div>
+        <p class="sub">Muesli ${esc(v.version)}</p>
+      </details>
+    </div>`;
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Setup
+
+  function setup(v) {
+    const dots = Array.from({ length: v.steps }, (_, i) => `<span class="dot ${i === v.step ? "on" : ""}" aria-hidden="true"></span>`).join("");
+    let body = "";
+    if (v.step === 0) {
+      body = `<img class="mark" alt="" src="brand/mark.svg"><ul class="promises">${v.promises.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>`;
+    } else if (v.step === 1) {
+      body = languages(v.languages);
+    } else if (v.step === 2) {
+      body = `<div class="perms">${permissionRows(v.permissions)}</div>${v.permissionsNote ? `<p class="sub note">${esc(v.permissionsNote)} ${button("Open privacy settings", { type: "openPermissionSettings", permission: "microphone" }, { kind: "link" })}</p>` : ""}`;
+    } else {
+      body = v.notice ? `<p class="notice">${esc(v.notice)}</p>` : "";
+    }
+    const footerModel = v.model ? `<div class="footer-model" data-testid="setup-model"><span>${esc(v.model.title)}: ${esc(v.model.text)}</span>${v.model.progress != null ? progress(v.model.progress) : ""}</div>` : "";
+    const primary = v.step === 3 ? { type: "finishSetup" } : { type: "setupNext" };
+    root.innerHTML = `<div class="setup step-${v.step}">
+      <div class="setup-body">
+        <h1 data-testid="setup-title">${esc(v.title)}</h1>
+        ${v.subtitle ? `<p class="subtitle">${esc(v.subtitle)}</p>` : ""}
+        ${body}
+      </div>
+      <footer>
+        <div class="dots" data-testid="dots">${dots}</div>
+        ${footerModel}
+        <div class="buttons">
+          ${v.canGoBack ? button("Back", { type: "setupBack" }, { kind: "quiet" }) : ""}
+          ${button(v.primary, primary, { kind: "primary", disabled: !v.primaryEnabled, testid: "setup-primary" })}
+        </div>
+      </footer>
+    </div>`;
+  }
+
+  // ------------------------------------------------------------------------------------------
+  // Prompt
+
+  function prompt(v) {
+    if (!v) {
+      root.innerHTML = "";
+      return;
+    }
+    root.innerHTML = `<div class="prompt" data-testid="prompt">
+      <img class="mark small" alt="" src="brand/mark.svg">
+      <div class="grow"><div class="title">${esc(v.title)}</div><div class="sub">${esc(v.body)}</div>
+      <div class="buttons">${button(v.decline, { type: "answerPrompt", accept: false })}${button(v.accept, { type: "answerPrompt", accept: true }, { kind: "primary" })}</div></div>
+    </div>`;
+  }
+
+  // ------------------------------------------------------------------------------------------
+
+  const renderers = { main, settings, setup, prompt };
+
   async function refresh() {
-    S = await invoke("get_state");
-    if (label() === "prompt") ui.prompt = await invoke("get_prompt");
-    if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; render(); }); }
+    const v = await view();
+    current = v;
+    setSkin(v?.words);
+    document.body.className = `window-${label}`;
+    renderers[label]?.(v);
   }
 
+  root.addEventListener("click", (event) => {
+    const localAction = event.target.closest("[data-local]");
+    if (localAction) {
+      const action = localAction.dataset.local;
+      if (action === "rename") {
+        local.renaming = current.reader.id;
+        local.draft = current.reader.title;
+      } else if (action === "cancel-rename") {
+        local.renaming = null;
+      } else if (action === "copy") {
+        navigator.clipboard?.writeText(current.assistants.command);
+        localAction.textContent = "Copied";
+        return;
+      }
+      renderers[label]?.(current);
+      return;
+    }
+    const target = event.target.closest("[data-intent]");
+    if (!target || target.disabled) return;
+    event.preventDefault();
+    send(JSON.parse(target.dataset.intent));
+  });
+
+  root.addEventListener("input", (event) => {
+    if (event.target.matches(".rename input")) local.draft = event.target.value;
+  });
+
+  root.addEventListener("submit", (event) => {
+    if (!event.target.matches(".rename")) return;
+    event.preventDefault();
+    const title = local.draft.trim();
+    const id = local.renaming;
+    local.renaming = null;
+    if (title) send({ type: "rename", id, title });
+    renderers[label]?.(current);
+  });
+
+  root.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && local.renaming) {
+      local.renaming = null;
+      renderers[label]?.(current);
+    }
+  });
+
+  root.addEventListener("change", (event) => {
+    const t = event.target;
+    if (t.dataset.toggle) send({ ...JSON.parse(t.dataset.toggle), on: t.checked });
+    if (t.matches(".add-language") && t.value) send({ type: "addLanguage", code: t.value });
+  });
+
+  // Permissions switched on in the system settings show up when the window comes back.
+  window.addEventListener("focus", refresh);
+  onChange(refresh);
   refresh();
-  tauri.event.listen("state-changed", refresh);
-  window.addEventListener("focus", refresh); // system settings may have changed meanwhile
 })();

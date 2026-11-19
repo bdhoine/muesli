@@ -27,6 +27,24 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
+  ui:
+    name: UI tests (simulator, both skins)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo build -p muesli-sim
+      - run: npm ci
+        working-directory: apps/sim
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/sim
+      - run: node --test tests/*.test.mjs
+        working-directory: apps/sim
+
   icons:
     name: Generated files up to date (icons, plugin, launcher)
     runs-on: ubuntu-latest

@@ -1,0 +1,34 @@
+/* The simulator page itself: plain and quiet, so Muesli's windows stand out. */
+:root { --bg: #ece6da; --card: #fffdf8; --line: #dcd0b8; --text: #3b2a1e; --muted: #6b5a4b; --accent: #4e6b31; font: 13px/1.4 system-ui, sans-serif; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) { :root { --bg: #15100b; --card: #241c15; --line: #4a3b2e; --text: #f6f1e7; --muted: #c8b9a6; --accent: #a9c77c; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+.bar { display: flex; gap: 14px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); background: var(--card); }
+.grow { flex: 1; }
+.muted { color: var(--muted); }
+main { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; }
+.world { overflow: auto; padding: 10px; border-right: 1px solid var(--line); }
+.world section { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 8px; color: var(--muted); }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+button, select { font: inherit; }
+.tray .icon { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--text); border-radius: 4px; position: relative; }
+.tray .icon.on::after { content: ""; position: absolute; right: -6px; top: -6px; width: 8px; height: 8px; border-radius: 50%; background: #b3382c; }
+#menu { list-style: none; padding: 4px 0 0; margin: 0; }
+#menu li { padding: 3px 6px; border-radius: 4px; }
+#menu li.action { cursor: pointer; }
+#menu li.action:hover { background: var(--bg); }
+#menu li.disabled, #menu li.label { color: var(--muted); }
+#menu li.separator { border-top: 1px solid var(--line); margin: 4px 0; padding: 0; }
+.notification .t { font-weight: 600; }
+.notification .buttons { margin-top: 8px; }
+#log { padding-left: 16px; margin: 0; font-size: 12px; }
+.desktop { position: relative; overflow: auto; padding: 14px; display: flex; flex-wrap: wrap; gap: 14px; align-content: flex-start; }
+.frame { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.frame header { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.frame iframe { border: 0; flex: 1; }
+.frame.main { width: 980px; height: 620px; }
+.frame.settings { width: 620px; height: 700px; }
+.frame.setup { width: 560px; height: 600px; }
+.frame.prompt { width: 380px; height: 170px; }
+.notification .card + .card { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 10px; }

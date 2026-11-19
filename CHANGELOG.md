@@ -4,7 +4,13 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
-### Changed
+### Added
+- Muesli's window: your transcripts on the left, newest first, and the text on the right. The meeting being transcribed sits at the top and its text grows every 30 seconds while you watch. Rename a finished transcript (its files are renamed too) or delete it: it goes to the Trash (Recycle Bin on Windows), and Undo brings it back for a few seconds. "Show in Finder" (Explorer on Windows) shows the file.
+- Audio files you transcribe show their progress in that list, with Cancel.
+- A new first-start setup in four short screens: welcome, languages, permissions (all on one screen) and done. The speech model downloads while you go through it.
+- Settings is one page: transcripts folder and start at login, languages, AI assistants and, folded away, the speech model and permissions.
+- Dark mode follows your system.
+
 - A meeting or call is suggested only once. If you dismiss the prompt, ignore it or never join, Muesli does not ask again for the same call, however long it lasts and however often you mute. A call counts as new only after the microphone has been free for 60 seconds. Stopping while the call goes on, and a call that runs past its calendar meeting, do not trigger a new prompt either.
 - Muesli always asks before it starts transcribing ("Looks like a meeting… Start transcribing?") and never starts by itself.
 - When the call seems to be over (the microphone has been free for 60 seconds), Muesli always asks "Stop and save the transcript?". If you do not answer within 5 minutes, it stops, saves and tells you so, with a button to open the transcript.

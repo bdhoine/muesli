@@ -1,0 +1,10 @@
+{
+  "name": "Notifications off",
+  "description": "Notifications are switched off, so Muesli's own prompt window asks whether to start.",
+  "setupDone": true,
+  "model": "ready",
+  "steps": [
+    { "do": "notifications", "on": false },
+    { "do": "call", "teams": true, "seconds": 20 }
+  ]
+}

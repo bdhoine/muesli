@@ -1,0 +1,15 @@
+/* Windows skin: Fluent-like shapes. Squarer corners, a command bar with flat buttons, denser
+   lists. Only shapes and spacing; colours come from style.css. */
+[data-skin="windows"] {
+  --radius: 6px;
+  --control-radius: 4px;
+}
+[data-skin="windows"] .toolbar { padding: 6px 10px; gap: 2px; background: var(--bg); }
+[data-skin="windows"] .toolbar .btn:not(.primary) { border-color: transparent; background: transparent; }
+[data-skin="windows"] .toolbar .btn:not(.primary):hover:not(:disabled) { background: var(--tint); }
+[data-skin="windows"] .list { background: var(--bg); padding: 6px; }
+[data-skin="windows"] .row { padding: 8px 10px 8px 12px; }
+[data-skin="windows"] .row.selected { background: var(--selected); box-shadow: none; }
+[data-skin="windows"] h1 { font-weight: 600; }
+[data-skin="windows"] .settings section, [data-skin="windows"] .settings .advanced { padding: 14px 16px; margin-bottom: 8px; }
+[data-skin="windows"] .setup footer { background: var(--card); }

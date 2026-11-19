@@ -114,7 +114,8 @@ const OTHERS: [&str; 6] = [
 /// nothing, as with the real voice activity model.
 #[derive(Default)]
 pub struct ScriptedTranscriber {
-    next: AtomicUsize,
+    you: AtomicUsize,
+    others: AtomicUsize,
 }
 
 impl SpeechToText for ScriptedTranscriber {
@@ -123,11 +124,10 @@ impl SpeechToText for ScriptedTranscriber {
         if !loud || chunk.samples.is_empty() {
             return Ok(Vec::new());
         }
-        let n = self.next.fetch_add(1, Ordering::SeqCst);
         let seconds = chunk.samples.len() as f64 / 16_000.0;
         let text = match chunk.speaker.as_str() {
-            "You" => YOU[n % YOU.len()],
-            _ => OTHERS[n % OTHERS.len()],
+            "You" => YOU[self.you.fetch_add(1, Ordering::SeqCst) % YOU.len()],
+            _ => OTHERS[self.others.fetch_add(1, Ordering::SeqCst) % OTHERS.len()],
         };
         Ok(vec![TranscriptSegment {
             start: chunk.offset_seconds,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates apps/desktop/icons/ from assets/brand, the single source for Muesli's icons.
+"""Generates apps/desktop/icons/ and ui/brand/ from assets/brand, the single source for Muesli's icons.
 
     python3 scripts/sync-icons.py           write the icons
     python3 scripts/sync-icons.py --check   fail if they are out of date (used in CI)
@@ -26,6 +26,12 @@ COPIES = {
     "icon.png": os.path.join(brand, "app-icon", "app-icon-1024.png"),
     "tray.png": os.path.join(brand, "menubar", "muesliTemplate@2x.png"),
 }
+# The web UI's copies of the logo (ui/brand/), also generated.
+UI_OUT = os.path.join(root, "ui", "brand")
+UI_COPIES = {
+    "mark.svg": os.path.join(brand, "logo", "mark.svg"),
+    "mark-on-dark.svg": os.path.join(brand, "logo", "mark-on-dark.svg"),
+}
 # Windows icon: PNG images of these pixel sizes in one .ico container.
 ICO_SOURCES = [(16, "icon_16x16.png"), (32, "icon_32x32.png"), (64, "icon_32x32@2x.png"), (128, "icon_128x128.png"), (256, "icon_256x256.png")]
 
@@ -48,28 +54,29 @@ def ico():
 
 
 def wanted():
-    files = {name: read(src) for name, src in COPIES.items()}
-    files["icon.ico"] = ico()
+    files = {os.path.join(out, name): read(src) for name, src in COPIES.items()}
+    files[os.path.join(out, "icon.ico")] = ico()
+    files.update({os.path.join(UI_OUT, name): read(src) for name, src in UI_COPIES.items()})
     return files
 
 
 def main():
     files = wanted()
     if "--check" in sys.argv:
-        stale = [n for n, data in files.items() if not os.path.exists(os.path.join(out, n)) or read(os.path.join(out, n)) != data]
+        stale = [os.path.relpath(p, root) for p, data in files.items() if not os.path.exists(p) or read(p) != data]
         if stale:
             sys.exit(f"Out of date: {', '.join(stale)}. Run python3 scripts/sync-icons.py")
         print("Icons are up to date.")
         return
-    os.makedirs(out, exist_ok=True)
-    for name, data in files.items():
-        with open(os.path.join(out, name), "wb") as f:
+    for path, data in files.items():
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
             f.write(data)
     if shutil.which("iconutil"):
         subprocess.run(["iconutil", "-c", "icns", iconset, "-o", os.path.join(out, "icon.icns")], check=True)
     else:
         print("iconutil not found (not macOS): icon.icns left as it is.")
-    print(f"Wrote {len(files)} files to {os.path.relpath(out, root)}")
+    print(f"Wrote {len(files)} files to apps/desktop/icons and ui/brand")
 
 
 if __name__ == "__main__":

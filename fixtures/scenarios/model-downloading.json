@@ -1,0 +1,10 @@
+{
+  "name": "Getting ready",
+  "description": "Setup is done but the speech model is still downloading: the menu shows Getting Ready and starting waits.",
+  "setupDone": true,
+  "model": "downloading",
+  "steps": [
+    { "do": "model", "state": "progress", "fraction": 0.42 },
+    { "do": "intent", "intent": { "type": "openSettings" } }
+  ]
+}

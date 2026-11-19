@@ -1,0 +1,8 @@
+{
+  "name": "First launch",
+  "description": "A fresh computer: no settings, no speech model, nothing allowed yet. Setup opens.",
+  "setupDone": false,
+  "model": "missing",
+  "permissions": "notAsked",
+  "steps": []
+}

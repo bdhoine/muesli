@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Muesli simulator</title>
+  <link rel="stylesheet" href="/sim/sim.css">
+</head>
+<body>
+  <header class="bar">
+    <strong>Muesli simulator</strong>
+    <label>Skin
+      <select id="skin" data-testid="skin"><option value="mac">macOS</option><option value="windows">Windows</option></select>
+    </label>
+    <label>Scenario <select id="scenario" data-testid="scenario"></select></label>
+    <button id="reset" data-testid="reset">Reset</button>
+    <span class="grow"></span>
+    <button id="pause" data-testid="pause">Pause time</button>
+    <span id="clock" class="muted" data-testid="clock"></span>
+  </header>
+  <main>
+    <aside class="world">
+      <section>
+        <h2>The world</h2>
+        <div class="buttons">
+          <button data-do='{"do":"call","teams":true}' data-testid="teams-call">A Teams call starts</button>
+          <button data-do='{"do":"call","teams":false}'>A call starts</button>
+          <button data-do='{"do":"calendar","title":"Design review","id":"design-review"}'>A calendar meeting starts</button>
+          <button data-do='{"do":"talk","seconds":31}' data-testid="talk">Talk for 30 s</button>
+          <button data-do='{"do":"hangUp"}' data-testid="hang-up">Hang up</button>
+          <button data-do='{"do":"advance","seconds":60}' data-testid="plus-minute">+1 minute</button>
+          <button data-do='{"do":"advance","seconds":300}' data-testid="plus-five">+5 minutes</button>
+          <button data-do='{"do":"dropFile"}' data-testid="drop-file">Drop a file on the icon</button>
+        </div>
+      </section>
+      <section>
+        <h2>This computer</h2>
+        <label class="check"><input type="checkbox" id="notifications" data-testid="notifications" checked> Notifications allowed</label>
+        <div class="buttons">
+          <button data-do='{"do":"model","state":"progress","fraction":0.42}'>Model: 42 %</button>
+          <button data-do='{"do":"model","state":"ready"}' data-testid="model-ready">Model: ready</button>
+          <button data-do='{"do":"model","state":"failed"}'>Model: download fails</button>
+        </div>
+        <p class="muted" id="model"></p>
+      </section>
+      <section>
+        <h2 id="tray-title">Menu bar</h2>
+        <div class="tray" data-testid="tray"><span class="icon" id="tray-icon"></span><ul id="menu"></ul></div>
+      </section>
+      <section id="notification-box" hidden>
+        <h2>Notifications</h2>
+        <div class="notification" data-testid="notification"></div>
+      </section>
+      <section>
+        <h2>Log</h2>
+        <ul id="log" class="muted"></ul>
+      </section>
+    </aside>
+    <div class="desktop" id="desktop" data-testid="desktop"></div>
+  </main>
+  <script src="/sim/sim.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "A day of meetings",
+  "description": "Setup done, the model is ready and there are a few transcripts. The main window is open.",
+  "setupDone": true,
+  "model": "ready",
+  "steps": [
+    { "do": "meeting", "title": "Weekly sync", "source": "calendar", "minutes": 32, "hoursAgo": 26, "attendees": ["Ana", "Bram", "Chloé"],
+      "lines": [["You", "Morning all. Let's start with the release."], ["Others", "The importer is done, it needs testing on Windows."], ["You", "I'll take that."], ["Others", "Great. Next: the website."]] },
+    { "do": "meeting", "title": "Teams call", "source": "teams", "minutes": 18, "hoursAgo": 5 },
+    { "do": "meeting", "title": "Customer interview", "source": "file", "minutes": 47, "hoursAgo": 2,
+      "lines": [["Speaker", "Thanks for taking the time."], ["Speaker", "How do you take notes in meetings today?"], ["Speaker", "Mostly by hand, and I lose half of it."]] },
+    { "do": "intent", "intent": { "type": "openMuesli" } }
+  ]
+}

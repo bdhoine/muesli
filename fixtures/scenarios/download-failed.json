@@ -1,0 +1,10 @@
+{
+  "name": "The download fails",
+  "description": "The speech model could not be downloaded: Settings shows why and where, with Download again.",
+  "setupDone": true,
+  "model": "missing",
+  "steps": [
+    { "do": "model", "state": "failed" },
+    { "do": "intent", "intent": { "type": "openSettings" } }
+  ]
+}

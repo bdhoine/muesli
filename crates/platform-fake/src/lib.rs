@@ -224,6 +224,29 @@ impl FakeNotifier {
         self.notices.lock().unwrap().clone()
     }
 
+    /// The question waiting for an answer, if any.
+    pub fn pending_question(&self) -> Option<Question> {
+        if self.pending_answer.lock().unwrap().is_some() {
+            self.questions.lock().unwrap().last().cloned()
+        } else {
+            None
+        }
+    }
+
+    /// The notice whose button was not clicked yet, if any.
+    pub fn pending_notice(&self) -> Option<Notice> {
+        if self.pending_action.lock().unwrap().is_some() {
+            self.notices.lock().unwrap().last().cloned()
+        } else {
+            None
+        }
+    }
+
+    /// Dismisses the notice without clicking.
+    pub fn dismiss_notice(&self) {
+        self.pending_action.lock().unwrap().take();
+    }
+
     /// Answers the last question shown. Returns false when none is waiting.
     pub fn answer(&self, accept: bool) -> bool {
         let Some(on_answer) = self.pending_answer.lock().unwrap().take() else { return false };
