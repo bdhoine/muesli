@@ -17,6 +17,8 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 | Checking that permission | Read through a private macOS framework; if unavailable Muesli just tries | Not applicable | macOS has no public call that tells whether system audio recording is allowed. |
 | Permissions in the first-launch assistant | Microphone, system audio, calendar, notifications: four screens | Microphone only | Follows from the rows above. Windows asks nothing for notifications, and for the microphone it has a system-wide switch rather than a prompt for desktop apps, so the screen opens the microphone once and links to the privacy settings. |
 | Where the app lives | Menu bar | System tray (notification area) | Platform convention. |
+| Clicking the icon | A click shows the menu | A left click opens Muesli's window, a right click shows the menu | Platform convention for tray apps. |
+| Dropping audio files on the icon | The menu bar icon takes dropped files | Not possible: drop them on Muesli's window instead (works on both) | A notification-area icon on Windows (`Shell_NotifyIcon`) cannot be a drop target; there is no API for it. |
 | Deleted transcripts | Trash | Recycle Bin | Platform convention. Both can be restored. |
 | Where models are stored | `~/Library/Application Support/Muesli` | `%LOCALAPPDATA%\Muesli` (everything else in `%APPDATA%\Muesli`) | Windows roams `%APPDATA%` between PCs in company domains; multi-gigabyte files must not roam. macOS has no such split. |
 | Speech model acceleration | GPU (Metal), always available on Apple Silicon | CPU | Every supported Mac has the same GPU API. On Windows it depends on the graphics card and its drivers (Vulkan or CUDA), so one build cannot rely on it. See section 2. |

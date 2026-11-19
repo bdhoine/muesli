@@ -134,4 +134,9 @@ impl TauriHost {
     pub fn tray_clicked(&self, id: &str) {
         self.send(Intent::Tray { id: id.to_string() });
     }
+
+    /// A left click on the tray icon (Windows).
+    pub fn open_muesli(&self) {
+        self.send(Intent::OpenMuesli);
+    }
 }

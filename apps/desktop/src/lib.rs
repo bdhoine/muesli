@@ -12,7 +12,7 @@ use std::time::Duration;
 use muesli_core::ports::{Platform, Tray};
 use muesli_core::{languages, Paths};
 use muesli_engine::{Engine, Intent, Options, Window};
-use tauri::{RunEvent, State};
+use tauri::{DragDropEvent, RunEvent, State, WindowEvent};
 
 use crate::host::TauriHost;
 
@@ -60,12 +60,21 @@ pub fn run() {
 
     let for_setup = (engine.clone(), host.clone());
     let for_second = engine.clone();
+    let for_drops = engine.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(move |_, _, _| for_second.intent(Intent::OpenMuesli)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(engine.clone())
         .invoke_handler(tauri::generate_handler![view, intent])
+        // Audio files dropped on Muesli's window are transcribed, like files dropped on the
+        // menu bar icon (macOS). Windows' tray icons cannot take drops; see docs/PLATFORMS.md.
+        .on_window_event(move |_, event| {
+            if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+                let (engine, paths) = (for_drops.clone(), paths.clone());
+                std::thread::spawn(move || engine.intent(Intent::TranscribeFiles { paths }));
+            }
+        })
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory); // menu bar only, no Dock icon
