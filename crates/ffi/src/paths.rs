@@ -21,13 +21,14 @@ pub struct PathSet {
     pub support: PathBuf,
     pub transcripts: PathBuf,
     pub models: PathBuf,
+    pub transcripts_locked: bool,
 }
 
 /// The paths in effect now: environment overrides, then the folder chosen in `config.json`.
 /// Creates the support and transcripts folders.
 #[uniffi::export]
 pub fn paths_current() -> PathSet {
-    let base = Paths::from_env();
+    let base = Paths::from_platform(&muesli_platform_common::SystemPaths);
     let prefs = Preferences::load(&base);
     let paths = base.with_preferences(&prefs);
     let _ = std::fs::create_dir_all(&paths.support);
@@ -38,13 +39,13 @@ pub fn paths_current() -> PathSet {
 /// Whether `TRANSCRIPT_DIR` fixes the transcripts folder.
 #[uniffi::export]
 pub fn paths_transcripts_set_by_environment() -> bool {
-    Paths::transcripts_set_by_environment()
+    Paths::from_platform(&muesli_platform_common::SystemPaths).transcripts_set_by_environment()
 }
 
 /// Remembers the user's transcripts folder in `config.json` (`None` goes back to the default).
 #[uniffi::export]
 pub fn paths_set_transcripts_folder(folder: Option<String>) {
-    let base = Paths::from_env();
+    let base = Paths::from_platform(&muesli_platform_common::SystemPaths);
     let mut prefs = Preferences::load(&base);
     prefs.transcripts_folder = folder;
     let _ = prefs.save(&base);

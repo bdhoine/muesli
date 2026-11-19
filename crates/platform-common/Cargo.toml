@@ -1,0 +1,23 @@
+[package]
+name = "muesli-platform-common"
+description = "Port adapters that work the same on macOS and Windows through portable libraries: clock, folders, trash, Teams process scan, cpal audio capture."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+muesli-core = { path = "../core" }
+muesli-audio = { path = "../audio" }
+chrono = { version = "0.4", features = ["clock"] }
+dirs = "5"
+trash = "5"
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+
+[features]
+# Microphone and system-audio capture with cpal. Off for muesli-mcp and the Swift app's library.
+capture = ["dep:cpal"]
+
+# cpal records the microphone everywhere and system audio through WASAPI loopback (Windows) and
+# a Core Audio process tap (macOS 14.4+). Linux has no capture.
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+cpal = { version = "0.18", optional = true }

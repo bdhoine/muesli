@@ -13,4 +13,6 @@ dirs = "5"
 sys-locale = "0.3"
 tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
-trash = "5"
+
+[dev-dependencies]
+muesli-platform-fake = { path = "../platform-fake" }

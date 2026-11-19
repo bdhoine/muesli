@@ -1,0 +1,22 @@
+[package]
+name = "muesli-port-contracts"
+description = "One test suite per port. Run against the fakes everywhere and against the native adapters on their own OS."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+muesli-core = { path = "../core" }
+chrono = "0.4"
+tempfile = "3"
+
+[dev-dependencies]
+muesli-platform-fake = { path = "../platform-fake" }
+muesli-platform-common = { path = "../platform-common" }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+muesli-platform-macos = { path = "../platform-macos" }
+
+[target.'cfg(windows)'.dev-dependencies]
+muesli-platform-windows = { path = "../platform-windows" }

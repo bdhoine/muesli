@@ -24,8 +24,8 @@ pub fn extension_path() -> Option<PathBuf> {
 
 /// Whether the Claude desktop app is installed. On Windows the installer's folder is checked,
 /// and Claude's data folder as a fallback, because the install location differs between builds.
-pub fn claude_installed() -> bool {
-    let data = ClaudeDesktopConfig::default_directory();
+pub fn claude_installed(app: &App) -> bool {
+    let data = ClaudeDesktopConfig::default_directory(&*app.platform.paths);
     if cfg!(target_os = "macos") {
         let home_apps = dirs::home_dir().map(|h| h.join("Applications/Claude.app"));
         std::path::Path::new("/Applications/Claude.app").exists() || home_apps.is_some_and(|p| p.exists())
@@ -35,8 +35,8 @@ pub fn claude_installed() -> bool {
     }
 }
 
-pub fn extension_state() -> ExtensionState {
-    ClaudeDesktopExtension::state_with(VERSION, &ClaudeDesktopConfig::default_directory(), Some(claude_installed()))
+pub fn extension_state(app: &App) -> ExtensionState {
+    ClaudeDesktopExtension::state_with(VERSION, &ClaudeDesktopConfig::default_directory(&*app.platform.paths), Some(claude_installed(app)))
 }
 
 /// Applies the MCP preferences to Claude Desktop's config file and records a status line.
@@ -46,6 +46,6 @@ pub fn apply(app: &App, prefs: &Preferences) {
         return;
     };
     let _ = muesli_core::assistants::record_helper_path(&app.paths(), &helper); // the Claude plugin finds muesli-mcp through this
-    let dir = ClaudeDesktopConfig::default_directory();
-    *app.claude_status.lock().unwrap() = ClaudeDesktopConfig::sync(prefs, &helper, extension_state().is_installed(), &dir);
+    let dir = ClaudeDesktopConfig::default_directory(&*app.platform.paths);
+    *app.claude_status.lock().unwrap() = ClaudeDesktopConfig::sync(prefs, &helper, extension_state(app).is_installed(), &dir);
 }

@@ -4,6 +4,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
+use muesli_core::ports::Platform;
 use muesli_core::status::{Activity, Current, Detected, LastReady};
 use muesli_core::{DetectedMeeting, Meeting, Paths, Preferences};
 use muesli_whisper::ModelManager;
@@ -33,13 +34,15 @@ pub struct Prompt {
 
 pub struct Session {
     pub meeting: Arc<Mutex<Meeting>>,
-    /// Tells the audio thread to stop; the thread then drops the capture and closes the chunk channel.
+    /// Tells the audio thread to stop; the thread then stops both streams and closes the chunk channel.
     pub stop_audio: Sender<()>,
     pub consumer: Option<JoinHandle<()>>,
     pub audio: Option<JoinHandle<()>>,
 }
 
 pub struct App {
+    /// The adapters for this OS.
+    pub platform: Platform,
     /// Paths from the environment; `paths()` adds the user's transcripts folder.
     base: Paths,
     pub prefs: Mutex<Preferences>,
@@ -57,9 +60,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(paths: Paths) -> Arc<Self> {
+    pub fn new(platform: Platform) -> Arc<Self> {
+        let paths = Paths::from_platform(&*platform.paths);
         let prefs = Preferences::load(&paths);
         Arc::new(Self {
+            platform,
             model: ModelManager::new(paths.clone(), prefs.clone()),
             files: Default::default(),
             base: paths,

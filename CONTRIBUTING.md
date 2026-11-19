@@ -9,7 +9,7 @@ Muesli supports macOS and Windows, and the two apps are peers in this repository
 ```
 macos/          The macOS app (Swift): Package.swift, Sources/, Tests/, Info.plist, build.sh
 Cargo.toml      The Rust workspace (shared crates and the Tauri app)
-crates/         Shared Rust crates: core, mcp, whisper, audio, import, detect, system, ffi
+crates/         Shared Rust crates: core (with the ports), mcp, whisper, audio, import, ffi, platform-*, port-contracts
 apps/desktop/   The Tauri app (Windows)
 ui/             The web UI of the Tauri app
 fixtures/       Frozen file formats and MCP replies, checked by the Rust tests
@@ -170,12 +170,15 @@ The Windows app is written in Rust with Tauri. It also builds and runs on macOS,
 |---|---|
 | `crates/core` | Models, preferences, `state.json`, languages, chunker, detection logic, store (append, finish, recover), editor, assistant setup and Claude Desktop config. No OS code. |
 | `crates/mcp` | `muesli-mcp`, the MCP server (stdio) |
-| `crates/audio` | Resampling, microphone and system-audio capture (feature `capture`), and `decode_file`: any audio file (mp3, m4a/aac, flac, wav, ogg, alac) to 16 kHz mono blocks, with `symphonia` |
+| `crates/audio` | Resampling (`rubato`) and `decode_file`: any audio file (mp3, m4a/aac, flac, wav, ogg, alac) to 16 kHz mono blocks, with `symphonia`. No device code. |
 | `crates/import` | `import_file`: decode, 30 s chunks, transcribe, save as a meeting with source `file`; shared by both apps (macOS through `muesli-ffi`) |
 | `crates/whisper` | Model download and validation (`ModelManager`, used by both apps), whisper.cpp transcriber (`whisper-rs`) with voice activity detection |
-| `crates/audio` | Capture with `cpal`: microphone, WASAPI loopback (Windows), Core Audio tap (macOS). Resampling with `rubato`. |
-| `crates/detect` | Samplers: Core Audio process list (macOS), WASAPI sessions (Windows), Teams process |
-| `crates/system` | Dealings with Windows that need no audio: toasts with answer buttons for the meeting prompts, and the permission status shown in Settings |
+| `crates/core/src/ports.rs` | The ports: every OS service Muesli uses, as a trait (`Clock`, `MicCapture`, `SystemAudioCapture`, `MeetingDetector`, `Notifier`, `Permissions`, `Tray`, `Trash`, `PlatformPaths`, `LoginItem`) and the `Platform` bundle that holds one adapter of each. The core never calls the OS itself. |
+| `crates/platform-common` | Adapters both desktop OSes share through portable libraries: system clock, folders (`dirs`), trash (`trash`), Teams process scan (`sysinfo`), microphone and system audio (`cpal`, feature `capture`: WASAPI loopback on Windows, Core Audio tap on macOS) |
+| `crates/platform-windows` | Windows adapters: WASAPI sessions (mic in use), toasts with answer buttons, privacy switches, the Run key for start at login. Compiles to nothing elsewhere. |
+| `crates/platform-macos` | macOS adapters: Core Audio process list (mic in use); notifications, permissions, calendar and login item follow in milestone 6. Compiles to nothing elsewhere. |
+| `crates/platform-fake` | A fake for every port (manual clock, scripted detector, fed or WAV-played audio, recorded notifications, folder trash). Builds everywhere; used by tests, the Linux development build and the simulator. |
+| `crates/port-contracts` | One test suite per port. `tests/fakes.rs` runs them against the fakes everywhere, `tests/native.rs` against the adapters of the OS it runs on (the ones that need a device or a person are `#[ignore]`d: run them with `-- --ignored` on a real machine). |
 | `apps/desktop` | The Tauri app: tray, windows, recording session, commands. Keep it thin. |
 | `ui/` | The web UI (plain JS, no build step): Settings, onboarding, prompt |
 
@@ -193,8 +196,8 @@ Install Rust with `brew install rustup && rustup default stable` (macOS) or from
 - **Paths are passed around** as a `Paths` value instead of read from the environment, so tests run in parallel. On Windows, models live in `%LOCALAPPDATA%\Muesli`, everything else in `%APPDATA%\Muesli`.
 - **Use libraries for the hard parts**: `rubato` (resampling), `cpal` (audio devices), `whisper-rs`, `uuid`, `tempfile` (atomic writes), `trash`. Do not hand-roll replacements.
 - **Try the UI without the app**: serve `ui/` and open `index.html?mock=1&window=onboarding` (or `settings`, `prompt`).
-- **Check capture on a real machine**: `cargo run -p muesli-audio --example probe -- 8`. Check the resampler by ear or with Whisper: `--example resample_wav -- in.wav out.wav`. Transcribe real speech: the ignored test in `crates/whisper/tests/transcribe.rs`.
-- **Windows without a PC**: the **Tests** workflow (`.github/workflows/ci.yml`) runs the Rust tests on macOS, Windows and Linux (portable crates only), the Swift tests on macOS and the checks that generated files (icons, plugin) are current. It is started by hand (Actions tab, or `gh workflow run Tests`). **Build installers** (`app.yml`, `gh workflow run "Build installers"`) builds the Windows installer and `Muesli.app` for macOS (signed ad hoc, since CI has no certificate) and uploads them as artifacts. A macOS job can wait a long time for a runner and is cancelled after 15 minutes in the queue; run it again. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-detect -p muesli-system` type-checks most Windows code; `apps/desktop` and `whisper` need CI.
+- **Check capture on a real machine**: `cargo run -p muesli-platform-common --features capture --example probe -- 8`. Check the resampler by ear or with Whisper: `--example resample_wav -- in.wav out.wav`. Transcribe real speech: the ignored test in `crates/whisper/tests/transcribe.rs`.
+- **Windows without a PC**: the **Tests** workflow (`.github/workflows/ci.yml`) runs clippy and the Rust tests on macOS, Windows and Linux (the whole workspace; on Linux the app uses the fake adapters), the Swift tests on macOS and the checks that generated files (icons, plugin) are current. It is started by hand (Actions tab, or `gh workflow run Tests`). **Build installers** (`app.yml`, `gh workflow run "Build installers"`) builds the Windows installer and `Muesli.app` for macOS (signed ad hoc, since CI has no certificate) and uploads them as artifacts. A macOS job can wait a long time for a runner and is cancelled after 15 minutes in the queue; run it again. From a Mac, `rustup target add x86_64-pc-windows-msvc` then `cargo check --target x86_64-pc-windows-msvc -p muesli-core -p muesli-mcp -p muesli-audio -p muesli-platform-windows` type-checks most Windows code; `apps/desktop` and `whisper` need CI.
 
 ## Permissions and code signing
 

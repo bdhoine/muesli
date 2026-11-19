@@ -1,6 +1,8 @@
 //! The tray icon (menu bar on macOS, notification area on Windows) and its menu.
 
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+
+use muesli_core::ports::{Tray, TrayItem, TrayMenu};
 
 use muesli_core::store::{shorten_title, Store};
 use tauri::image::Image;
@@ -14,22 +16,14 @@ use crate::windows;
 
 const TRAY_ID: &str = "main";
 
-/// One line of the tray menu. The menu is described as data first, so it is only rebuilt (which
-/// would close a menu the user has open) when it really differs.
-#[derive(Debug, Clone, PartialEq)]
-enum Entry {
-    Item { id: String, text: String, enabled: bool },
-    Separator,
-}
+type Entry = TrayItem;
 
 fn item(id: &str, text: impl Into<String>, enabled: bool) -> Entry {
-    Entry::Item { id: id.into(), text: text.into(), enabled }
+    TrayItem::Action { id: id.into(), label: text.into(), enabled }
 }
 
-static SHOWN: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
-
 fn entries(app: &App) -> Vec<Entry> {
-    let label = |text: String| item("none", text, false);
+    let label = |text: String| TrayItem::Label { label: text };
     let mut out = Vec::new();
     match app.status() {
         Status::Idle => {
@@ -51,7 +45,7 @@ fn entries(app: &App) -> Vec<Entry> {
             out.push(item("dismiss", "Dismiss", true));
         }
     }
-    out.push(Entry::Separator);
+    out.push(TrayItem::Separator);
     out.push(item("transcribe_file", "Transcribe Audio File…", app.model.is_ready()));
     if let Some(running) = app.files.running() {
         let progress = match running.state {
@@ -71,7 +65,7 @@ fn entries(app: &App) -> Vec<Entry> {
     }
     let limit = app.prefs().effective_recent_limit() as usize;
     if limit > 0 {
-        out.push(Entry::Separator);
+        out.push(TrayItem::Separator);
         out.push(label("Recent Transcripts".into()));
         let recent = Store::recent_transcripts(&app.paths().transcripts, limit);
         if recent.is_empty() {
@@ -81,56 +75,78 @@ fn entries(app: &App) -> Vec<Entry> {
             out.push(item(&format!("recent:{}", r.path.to_string_lossy()), shorten_title(&r.title, 44), true));
         }
     }
-    out.push(Entry::Separator);
+    out.push(TrayItem::Separator);
     out.push(item("folder", "Open Transcripts Folder", true));
-    out.push(Entry::Separator);
+    out.push(TrayItem::Separator);
     out.push(item("settings", "Settings…", true));
     out.push(item("quit", "Quit Muesli", true));
     out
 }
 
-fn menu(handle: &AppHandle, entries: &[Entry]) -> tauri::Result<Menu<tauri::Wry>> {
+/// The menu Muesli wants now.
+pub fn menu_for(app: &App) -> TrayMenu {
+    TrayMenu { items: entries(app), transcribing: app.is_recording(), tooltip: "Muesli".into() }
+}
+
+/// Hands the menu to the tray port.
+pub fn refresh(ctx: &Ctx) {
+    ctx.app.platform.tray.show(&menu_for(&ctx.app));
+}
+
+/// The `Tray` adapter: Tauri's tray icon, the same on macOS and Windows. It needs the app handle,
+/// which only exists once Tauri runs, so the menu waits until `attach`.
+#[derive(Default)]
+pub struct TauriTray {
+    handle: OnceLock<AppHandle>,
+    shown: Mutex<Option<TrayMenu>>,
+}
+
+impl TauriTray {
+    pub fn attach(&self, handle: &AppHandle) -> tauri::Result<()> {
+        let _ = self.handle.set(handle.clone());
+        let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))?;
+        TrayIconBuilder::with_id(TRAY_ID)
+            .icon(icon)
+            .icon_as_template(true)
+            .show_menu_on_left_click(true)
+            .tooltip("Muesli")
+            .on_menu_event(|handle, event| on_menu(handle, event.id().as_ref()))
+            .build(handle)?;
+        Ok(())
+    }
+}
+
+impl Tray for TauriTray {
+    fn show(&self, wanted: &TrayMenu) {
+        let Some(handle) = self.handle.get() else { return };
+        {
+            // Rebuilding closes a menu the user has open, so only when it really differs.
+            let mut shown = self.shown.lock().unwrap();
+            if shown.as_ref() == Some(wanted) {
+                return;
+            }
+            *shown = Some(wanted.clone());
+        }
+        let (handle2, wanted) = (handle.clone(), wanted.clone());
+        let _ = handle.run_on_main_thread(move || {
+            if let (Some(tray), Ok(menu)) = (handle2.tray_by_id(TRAY_ID), build_menu(&handle2, &wanted.items)) {
+                let _ = tray.set_menu(Some(menu));
+                let _ = tray.set_tooltip(Some(&wanted.tooltip));
+            }
+        });
+    }
+}
+
+fn build_menu(handle: &AppHandle, items: &[TrayItem]) -> tauri::Result<Menu<tauri::Wry>> {
     let menu = Menu::new(handle)?;
-    for entry in entries {
+    for entry in items {
         match entry {
-            Entry::Separator => menu.append(&PredefinedMenuItem::separator(handle)?)?,
-            Entry::Item { id, text, enabled } => menu.append(&MenuItem::with_id(handle, id, text, *enabled, None::<&str>)?)?,
+            TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(handle)?)?,
+            TrayItem::Label { label } => menu.append(&MenuItem::with_id(handle, "none", label, false, None::<&str>)?)?,
+            TrayItem::Action { id, label, enabled } => menu.append(&MenuItem::with_id(handle, id, label, *enabled, None::<&str>)?)?,
         }
     }
     Ok(menu)
-}
-
-pub fn build(ctx: &Ctx) -> tauri::Result<()> {
-    let entries = entries(&ctx.app);
-    let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))?;
-    TrayIconBuilder::with_id(TRAY_ID)
-        .icon(icon)
-        .icon_as_template(true)
-        .menu(&menu(&ctx.handle, &entries)?)
-        .show_menu_on_left_click(true)
-        .tooltip("Muesli")
-        .on_menu_event(|handle, event| on_menu(handle, event.id().as_ref()))
-        .build(&ctx.handle)?;
-    *SHOWN.lock().unwrap() = entries;
-    Ok(())
-}
-
-/// Rebuilds the menu if what it should show has changed.
-pub fn refresh(ctx: &Ctx) {
-    let wanted = entries(&ctx.app);
-    {
-        let mut shown = SHOWN.lock().unwrap();
-        if *shown == wanted {
-            return;
-        }
-        *shown = wanted.clone();
-    }
-    let handle = ctx.handle.clone();
-    let _ = ctx.handle.run_on_main_thread(move || {
-        if let (Some(tray), Ok(menu)) = (handle.tray_by_id(TRAY_ID), menu(&handle, &wanted)) {
-            let _ = tray.set_menu(Some(menu));
-        }
-    });
 }
 
 fn on_menu(handle: &AppHandle, id: &str) {

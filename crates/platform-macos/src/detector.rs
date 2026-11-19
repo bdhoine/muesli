@@ -1,4 +1,11 @@
-//! macOS: the Core Audio process list says which processes are running input (macOS 14.2+).
+//! Meeting detection on macOS: the Core Audio process list says which processes are running input
+//! (macOS 14.2+), and a Teams process means a Teams call. Calendar meetings come in milestone 6.
+
+use std::sync::Mutex;
+
+use chrono::{DateTime, Utc};
+use muesli_core::ports::{DetectionSample, MeetingDetector};
+use muesli_platform_common::teams::ProcessScanner;
 
 use std::mem::size_of;
 use std::ptr::NonNull;
@@ -9,20 +16,34 @@ use objc2_core_audio::{
     AudioObjectID, AudioObjectPropertyAddress,
 };
 
-pub struct Mac {
+/// The `MeetingDetector` adapter.
+pub struct MacDetector {
     own_pid: i32,
+    processes: Mutex<ProcessScanner>,
+}
+
+impl Default for MacDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MeetingDetector for MacDetector {
+    fn sample(&self, _now: DateTime<Utc>) -> DetectionSample {
+        DetectionSample { calendar: None, mic_busy: self.mic_busy(), teams_running: self.processes.lock().unwrap().teams_running() }
+    }
 }
 
 fn address(selector: u32) -> AudioObjectPropertyAddress {
     AudioObjectPropertyAddress { mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain }
 }
 
-impl Mac {
+impl MacDetector {
     pub fn new() -> Self {
-        Self { own_pid: std::process::id() as i32 }
+        Self { own_pid: std::process::id() as i32, processes: Mutex::new(ProcessScanner::new()) }
     }
 
-    pub fn mic_busy(&mut self) -> Option<bool> {
+    pub fn mic_busy(&self) -> Option<bool> {
         unsafe {
             let list = address(kAudioHardwarePropertyProcessObjectList);
             let mut size = 0u32;

@@ -16,16 +16,16 @@ jobs:
         include:
           - { os: macos-latest, label: macOS }
           - { os: windows-latest, label: Windows }
-          - { os: ubuntu-latest, label: "Linux (portable crates only)" }
+          - { os: ubuntu-latest, label: "Linux (fakes; development only)" }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - if: matrix.os != 'ubuntu-latest'
-        run: cargo test --workspace
-      # Linux has no app (no WebKitGTK here) and no audio capture; test the portable crates.
+      # Linux is not a product; the app builds there with the fake adapters, which needs WebKitGTK.
       - if: matrix.os == 'ubuntu-latest'
-        run: cargo test -p muesli-core -p muesli-mcp -p muesli-detect -p muesli-audio -p muesli-system -p muesli-import
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
 
   swift:
     name: Swift tests, macOS app

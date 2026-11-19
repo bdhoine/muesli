@@ -1,16 +1,8 @@
-//! Microphone ("You") and system audio ("Others") as 16 kHz mono f32, chunked for Whisper.
-//!
-//! Resampling and mixing are plain Rust and tested everywhere. The device code uses `cpal`:
-//! the microphone on macOS and Windows, and system audio through WASAPI loopback on Windows and
-//! a Core Audio process tap on macOS (the "System Audio Recording Only" permission).
+//! Audio as Whisper wants it (16 kHz mono f32), without the OS: resampling, mixing and decoding
+//! audio files. Capturing devices is a port; the `cpal` adapters live in `platform-common`.
 
 pub mod decode;
 pub mod resample;
-
-#[cfg(all(feature = "capture", any(target_os = "macos", target_os = "windows")))]
-mod capture;
-#[cfg(all(feature = "capture", any(target_os = "macos", target_os = "windows")))]
-pub use capture::{probe_microphone, probe_system_audio, AudioCapture, CaptureError};
 
 pub use decode::{decode_file, DecodeError, Progress};
 pub use resample::{downmix_to_mono, Resampler};

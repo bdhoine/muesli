@@ -1,11 +1,14 @@
 use std::io::{BufRead, Write};
 
+use std::sync::Arc;
+
 use muesli_core::{Paths, Preferences, VERSION};
 use muesli_mcp::{audit, doctor, Server, Tools};
+use muesli_platform_common::{SystemPaths, SystemTrash};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let paths = Paths::from_env();
+    let paths = Paths::from_platform(&SystemPaths);
     match args.first().map(String::as_str) {
         None | Some("stdio") => serve(paths),
         Some("doctor") => std::process::exit(if doctor::run(&paths) { 0 } else { 1 }),
@@ -26,7 +29,7 @@ fn main() {
 fn serve(paths: Paths) {
     let refusal_paths = paths.clone();
     let audit_paths = paths.clone();
-    let server = Server::new(paths)
+    let server = Server::new(paths, Arc::new(SystemTrash { name: muesli_mcp::trash_name() }))
         .with_refusal(move || {
             if Preferences::load(&refusal_paths).mcp_enabled {
                 None

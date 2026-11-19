@@ -1,26 +1,15 @@
 [package]
 name = "muesli-audio"
-description = "Microphone and system-audio capture for Muesli, as 16 kHz mono f32 chunks."
+description = "Audio for Muesli without the OS: resampling to 16 kHz mono and decoding audio files."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-
-[features]
-default = ["capture"]
-# Microphone and system-audio capture (cpal). Off for builds that only read files (the macOS app's
-# Rust library, which captures with Swift).
-capture = ["dep:cpal"]
 
 [dependencies]
 muesli-core = { path = "../core" }
 rubato = "5"
 audioadapter-buffers = "5"
 symphonia = { version = "0.6.1", features = ["mp3", "aac", "isomp4", "flac", "wav", "ogg", "vorbis", "pcm", "alac"] }
-
-# cpal records the microphone everywhere and system audio through WASAPI loopback (Windows) and
-# a Core Audio process tap (macOS 14.6+). Linux builds only the pure resampling code.
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-cpal = { version = "0.18", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,17 +1,19 @@
 [package]
-name = "muesli-detect"
-description = "Meeting detection: samples the system and feeds the decisions in muesli-core."
+name = "muesli-platform-windows"
+description = "Muesli's Windows adapters: WASAPI sessions for meeting detection, toasts with answer buttons, privacy switches, the Run key for start at login."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 muesli-core = { path = "../core" }
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
-sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+muesli-platform-common = { path = "../platform-common", features = ["capture"] }
 
 [target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.8"
+windows-registry = "0.6"
 windows = { version = "0.62", features = [
+  "UI_Notifications",
   "Win32_Foundation",
   "Win32_Media_Audio",
   "Win32_System_Com",
@@ -19,6 +21,3 @@ windows = { version = "0.62", features = [
   "Win32_System_Variant",
   "Win32_Devices_FunctionDiscovery",
 ] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2-core-audio = "0.3"

@@ -37,10 +37,10 @@ fn is_temporary(path: &Path) -> bool {
 }
 
 /// Applies `mode` to a transcribed file.
-pub fn clean_up(path: &Path, mode: AudioCleanup) -> Result<(), String> {
+pub fn clean_up(path: &Path, mode: AudioCleanup, trash: &dyn crate::ports::Trash) -> Result<(), String> {
     match mode {
         AudioCleanup::Keep => Ok(()),
-        AudioCleanup::Trash => trash::delete(path).map_err(|e| e.to_string()),
+        AudioCleanup::Trash => trash.trash(path),
         AudioCleanup::Delete => std::fs::remove_file(path).map_err(|e| e.to_string()),
     }
 }

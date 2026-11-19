@@ -1,6 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 
 use crate::models::DetectedMeeting;
+use crate::ports::DetectionSample;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DetectionEvent {
@@ -64,6 +65,11 @@ impl DetectionLogic {
     pub fn looks_like_meeting(text: &str, attendee_count: usize) -> bool {
         let haystack = text.to_lowercase();
         MEETING_HOSTS.iter().any(|h| haystack.contains(h)) || attendee_count > 1
+    }
+
+    /// `tick` with one [`DetectionSample`] taken by a `MeetingDetector` port.
+    pub fn tick_sample(&mut self, now: DateTime<Utc>, recording: bool, sample: DetectionSample) -> Vec<DetectionEvent> {
+        self.tick(now, recording, sample.calendar, sample.mic_busy, sample.teams_running)
     }
 
     /// * `calendar`: the calendar meeting running now, if any, with its event id.

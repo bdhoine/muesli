@@ -10,24 +10,43 @@ mod windows;
 
 use std::time::Duration;
 
-use chrono::Utc;
+use std::sync::Arc;
+
+use muesli_core::ports::{Platform, Tray};
 use muesli_core::store::MeetingStore;
-use muesli_core::{DetectionEvent, Paths};
-use muesli_detect::{Detector, SystemSampler};
+use muesli_core::{DetectionEvent, DetectionLogic};
 use tauri::RunEvent;
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 use crate::ctx::Ctx;
 use crate::state::App;
 
+/// The adapters for this OS; the shell draws the tray.
+fn platform(tray: Arc<dyn Tray>) -> Platform {
+    #[cfg(target_os = "macos")]
+    return muesli_platform_macos::platform(tray);
+    #[cfg(windows)]
+    return muesli_platform_windows::platform(tray);
+    // Linux, for development only: real folders and clock, fakes for audio, detection,
+    // notifications and permissions.
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let root = std::env::temp_dir().join("muesli-dev");
+        let mut p = muesli_platform_fake::FakePlatform::new(&root).platform();
+        p.clock = Arc::new(muesli_platform_common::SystemClock);
+        p.paths = Arc::new(muesli_platform_common::SystemPaths);
+        p.tray = tray;
+        p
+    }
+}
+
 pub fn run() {
-    let app_state = App::new(Paths::from_env());
+    let tray = Arc::new(tray::TauriTray::default());
+    let app_state = App::new(platform(tray.clone()));
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|handle, _, _| windows::show(handle, "settings")))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .manage(app_state.clone())
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
@@ -65,6 +84,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory); // menu bar only, no Dock icon
             let ctx = Ctx { app: app_state.clone(), handle: app.handle().clone() };
+            tray.attach(app.handle())?;
             boot(&ctx);
             Ok(())
         });
@@ -81,8 +101,8 @@ pub fn run() {
 
 fn boot(ctx: &Ctx) {
     let app = &ctx.app;
-    if !cfg!(debug_assertions) {
-        let _ = ctx.handle.autolaunch().enable(); // always run: start at login
+    if !cfg!(debug_assertions) && !app.prefs().onboarding_done {
+        let _ = app.platform.login_item.set_enabled(true); // start at login unless switched off in Settings
     }
 
     let paths = app.paths();
@@ -93,8 +113,7 @@ fn boot(ctx: &Ctx) {
         store.latest_ready().map(|m| muesli_core::status::LastReady { id: m.id, title: m.title, ended_at: m.ended_at });
     bridge::apply(app, &app.prefs());
 
-    let _ = muesli_system::register_app(prompt::APP_ID, "Muesli"); // so Windows shows prompts under our name
-    let _ = tray::build(ctx);
+    tray::refresh(ctx);
 
     // Download the speech model and the voice activity model on the first start, and whenever
     // one of them went missing.
@@ -126,15 +145,17 @@ fn boot(ctx: &Ctx) {
     // Meeting detection, every few seconds, once onboarding is done.
     let c = ctx.clone();
     std::thread::spawn(move || {
-        let mut detector = Detector::new(SystemSampler::new());
+        let mut detector = DetectionLogic::default();
+        let (clock, sampler) = (c.app.platform.clock.clone(), c.app.platform.detector.clone());
         loop {
             std::thread::sleep(Duration::from_secs(5));
             if !c.app.prefs().onboarding_done {
                 continue;
             }
-            detector.logic.end_delay = chrono::Duration::seconds(c.app.prefs().end_delay_seconds as i64);
-            let events = detector.tick(Utc::now(), c.app.is_recording());
-            *c.app.detected.lock().unwrap() = detector.logic.in_progress.clone();
+            detector.end_delay = chrono::Duration::seconds(c.app.prefs().end_delay_seconds as i64);
+            let now = clock.now();
+            let events = detector.tick_sample(now, c.app.is_recording(), sampler.sample(now));
+            *c.app.detected.lock().unwrap() = detector.in_progress.clone();
             for event in events {
                 match event {
                     DetectionEvent::Suggest(m) => suggest(&c, m),

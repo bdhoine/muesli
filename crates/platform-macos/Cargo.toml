@@ -1,0 +1,13 @@
+[package]
+name = "muesli-platform-macos"
+description = "Muesli's macOS adapters: Core Audio process list for meeting detection, and (milestone 6) EventKit, notifications, permissions, trash and login item."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+muesli-core = { path = "../core" }
+muesli-platform-common = { path = "../platform-common", features = ["capture"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-audio = "0.3"

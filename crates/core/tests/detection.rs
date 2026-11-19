@@ -339,3 +339,36 @@ fn end_delay_is_configurable() {
     }
     assert_eq!(ticks, 4);
 }
+
+// One sample per tick, as a `MeetingDetector` port delivers it.
+mod samples {
+    use chrono::{Duration, TimeZone, Utc};
+    use muesli_core::ports::DetectionSample;
+    use muesli_core::{DetectedMeeting, DetectionEvent, DetectionLogic};
+
+    #[test]
+    fn a_call_on_teams_is_suggested_after_the_warmup() {
+        let mut logic = DetectionLogic::default();
+        let mut t = Utc.timestamp_opt(1_800_000_000, 0).unwrap();
+        let mut suggested = None;
+        for _ in 0..5 {
+            t += Duration::seconds(5);
+            let sample = DetectionSample { calendar: None, mic_busy: Some(true), teams_running: true };
+            for e in logic.tick_sample(t, false, sample) {
+                if let DetectionEvent::Suggest(m) = e {
+                    suggested = Some(m);
+                }
+            }
+        }
+        assert_eq!(suggested, Some(DetectedMeeting::new("Teams call", "teams")));
+    }
+
+    #[test]
+    fn calendar_meetings_are_passed_through() {
+        let meeting = DetectedMeeting::new("Weekly sync", "calendar");
+        let mut logic = DetectionLogic::default();
+        let sample = DetectionSample { calendar: Some((meeting.clone(), "e1".into())), mic_busy: Some(false), teams_running: false };
+        let events = logic.tick_sample(Utc.timestamp_opt(1_800_000_000, 0).unwrap(), false, sample);
+        assert!(events.contains(&DetectionEvent::Suggest(meeting)));
+    }
+}

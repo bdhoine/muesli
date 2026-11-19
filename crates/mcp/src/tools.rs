@@ -10,6 +10,8 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use crate::trash_name;
+use muesli_core::ports::Trash;
+use std::sync::Arc;
 
 pub const RESPONSE_CAP: usize = 60_000;
 
@@ -54,12 +56,12 @@ impl Tools {
         Self::READ_NAMES.contains(&name) || Self::MANAGE_NAMES.contains(&name)
     }
 
-    pub fn new(paths: Paths) -> Self {
+    /// Deleted transcripts go to `trash` (the Trash / Recycle Bin) so the user can restore them.
+    pub fn new(paths: Paths, trash: Arc<dyn Trash>) -> Self {
         Self {
             paths,
-            // Deleted transcripts go to the Trash / Recycle Bin so the user can restore them.
-            discard: Box::new(|p| {
-                if p.exists() && trash::delete(p).is_err() {
+            discard: Box::new(move |p| {
+                if p.exists() && trash.trash(p).is_err() {
                     let _ = std::fs::remove_file(p);
                 }
             }),

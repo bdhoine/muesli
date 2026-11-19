@@ -29,7 +29,7 @@ pub fn is_audio_file(path: String) -> bool {
 /// Applies the cleanup setting to a transcribed file. `None` when it worked, else why not.
 #[uniffi::export]
 pub fn audio_clean_up(path: String, mode: AudioCleanup) -> Option<String> {
-    import::clean_up(Path::new(&path), mode).err()
+    import::clean_up(Path::new(&path), mode, &muesli_platform_common::SystemTrash { name: "Trash" }).err()
 }
 
 /// Watches the drop folder: call `poll` every few seconds.

@@ -18,17 +18,24 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 muesli-core = { path = "../../crates/core" }
-muesli-audio = { path = "../../crates/audio" }
 muesli-whisper = { path = "../../crates/whisper" }
 muesli-import = { path = "../../crates/import", features = ["whisper"] }
-muesli-detect = { path = "../../crates/detect" }
-muesli-system = { path = "../../crates/system" }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
-tauri-plugin-autostart = "2"
 dirs = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde", "clock"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+muesli-platform-macos = { path = "../../crates/platform-macos" }
+
+[target.'cfg(windows)'.dependencies]
+muesli-platform-windows = { path = "../../crates/platform-windows" }
+
+# Linux is for development only: real folders and clock, fakes for everything else.
+[target.'cfg(not(any(target_os = "macos", windows)))'.dependencies]
+muesli-platform-common = { path = "../../crates/platform-common" }
+muesli-platform-fake = { path = "../../crates/platform-fake" }

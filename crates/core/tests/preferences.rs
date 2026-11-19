@@ -216,3 +216,35 @@ fn a_chosen_transcripts_folder_replaces_the_default() {
     p.save(&env.paths).unwrap();
     assert_eq!(Preferences::load(&env.paths).transcripts_folder.as_deref(), Some("/x"));
 }
+
+mod platform_paths {
+    use muesli_core::Paths;
+    use muesli_platform_fake::FakePaths;
+
+    #[test]
+    fn folders_come_from_the_platform() {
+        let dir = tempfile::tempdir().unwrap();
+        let platform = FakePaths::new(dir.path());
+        let paths = Paths::from_platform(&platform);
+        assert_eq!(paths.support, dir.path().join("data/Muesli"));
+        assert_eq!(paths.models, dir.path().join("local/Muesli"));
+        assert_eq!(paths.transcripts, dir.path().join("Documents/MeetingTranscripts"));
+        assert!(!paths.transcripts_set_by_environment());
+    }
+
+    #[test]
+    fn the_environment_overrides_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let platform = FakePaths::new(dir.path());
+        platform.set_env("MUESLI_SUPPORT_DIR", Some("~/support"));
+        platform.set_env("TRANSCRIPT_DIR", Some("/elsewhere/t"));
+        let paths = Paths::from_platform(&platform);
+        assert_eq!(paths.support, dir.path().join("support"));
+        assert_eq!(paths.models, paths.support, "an overridden support folder keeps the models too");
+        assert_eq!(paths.transcripts, std::path::PathBuf::from("/elsewhere/t"));
+        assert!(paths.transcripts_set_by_environment());
+        let mut prefs = muesli_core::Preferences::default();
+        prefs.transcripts_folder = Some("/chosen".into());
+        assert_eq!(paths.with_preferences(&prefs).transcripts, std::path::PathBuf::from("/elsewhere/t"));
+    }
+}

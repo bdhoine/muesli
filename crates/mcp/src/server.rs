@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use muesli_core::ports::Trash;
 use muesli_core::{Paths, VERSION};
 use serde_json::{json, Map, Value};
 
@@ -16,8 +19,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(paths: Paths) -> Self {
-        Self { tools: Tools::new(paths), refusal: Box::new(|| None), audit: Box::new(|_, _| {}) }
+    pub fn new(paths: Paths, trash: Arc<dyn Trash>) -> Self {
+        Self { tools: Tools::new(paths, trash), refusal: Box::new(|| None), audit: Box::new(|_, _| {}) }
     }
 
     /// A message when tool calls must be refused (integration switched off).

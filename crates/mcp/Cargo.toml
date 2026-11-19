@@ -18,7 +18,8 @@ muesli-core = { path = "../core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde", "clock"] }
-trash = "5"
+muesli-platform-common = { path = "../platform-common" }
 
 [dev-dependencies]
+muesli-platform-fake = { path = "../platform-fake" }
 tempfile = "3"

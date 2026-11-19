@@ -93,16 +93,17 @@ fn files_come_oldest_first() {
 
 #[test]
 fn cleanup_modes() {
-    let (_dir, _paths, drop) = setup();
+    let (dir, _paths, drop) = setup();
+    let trash = muesli_platform_fake::FolderTrash::new(dir.path().join("Trash"), "Trash");
     let keep = drop.join("keep.mp3");
     touch(&keep, 10);
-    clean_up(&keep, AudioCleanup::Keep).unwrap();
+    clean_up(&keep, AudioCleanup::Keep, &trash).unwrap();
     assert!(keep.exists());
     let gone = drop.join("gone.mp3");
     touch(&gone, 10);
-    clean_up(&gone, AudioCleanup::Delete).unwrap();
+    clean_up(&gone, AudioCleanup::Delete, &trash).unwrap();
     assert!(!gone.exists());
-    assert!(clean_up(&gone, AudioCleanup::Delete).is_err(), "already gone");
+    assert!(clean_up(&gone, AudioCleanup::Delete, &trash).is_err(), "already gone");
 }
 
 #[test]

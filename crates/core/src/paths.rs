@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::ports::PlatformPaths;
+
 /// Where Muesli keeps its data. Passed around explicitly instead of read from globals,
 /// so tests can run in parallel in their own folders.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,41 +13,41 @@ pub struct Paths {
     /// Where downloaded Whisper models live. The support folder, except on Windows, where large
     /// files belong in the local (non-roaming) profile.
     pub models: PathBuf,
+    /// `TRANSCRIPT_DIR` fixes the transcripts folder.
+    pub transcripts_locked: bool,
 }
 
 impl Paths {
     pub fn new(support: impl Into<PathBuf>, transcripts: impl Into<PathBuf>) -> Self {
         let support = support.into();
-        Self { models: support.clone(), support, transcripts: transcripts.into() }
+        Self { models: support.clone(), support, transcripts: transcripts.into(), transcripts_locked: false }
     }
 
     /// Platform defaults, with `MUESLI_SUPPORT_DIR` and `TRANSCRIPT_DIR` overriding them.
     ///
-    /// macOS: `~/Library/Application Support/Muesli`; Windows: `%APPDATA%\Muesli`.
-    /// Transcripts: `~/Documents/MeetingTranscripts`.
-    pub fn from_env() -> Self {
-        let support = std::env::var_os("MUESLI_SUPPORT_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("Muesli"));
-        let transcripts = std::env::var("TRANSCRIPT_DIR").map(|p| expand_tilde(&p)).unwrap_or_else(|_| {
-            dirs::document_dir().or_else(dirs::home_dir).unwrap_or_else(|| PathBuf::from(".")).join("MeetingTranscripts")
-        });
-        let overridden = std::env::var_os("MUESLI_SUPPORT_DIR").is_some();
-        let models = match dirs::data_local_dir() {
-            Some(local) if cfg!(windows) && !overridden => local.join("Muesli"),
-            _ => support.clone(),
-        };
-        Self { support, transcripts, models }
+    /// macOS: `~/Library/Application Support/Muesli`; Windows: `%APPDATA%\Muesli`, with models in
+    /// `%LOCALAPPDATA%\Muesli`. Transcripts: `~/Documents/MeetingTranscripts`.
+    pub fn from_platform(platform: &dyn PlatformPaths) -> Self {
+        let home = platform.home_dir();
+        let overridden = platform.env("MUESLI_SUPPORT_DIR").filter(|s| !s.is_empty());
+        let support = overridden.as_deref().map(|p| expand_tilde(p, &home)).unwrap_or_else(|| platform.data_dir().join("Muesli"));
+        let transcript_env = platform.env("TRANSCRIPT_DIR").filter(|s| !s.is_empty());
+        let transcripts = transcript_env
+            .as_deref()
+            .map(|p| expand_tilde(p, &home))
+            .unwrap_or_else(|| platform.documents_dir().join("MeetingTranscripts"));
+        let models = if overridden.is_some() { support.clone() } else { platform.local_data_dir().join("Muesli") };
+        Self { support, transcripts, models, transcripts_locked: transcript_env.is_some() }
     }
 
     /// Whether `TRANSCRIPT_DIR` fixes the transcripts folder (the user's choice is then ignored).
-    pub fn transcripts_set_by_environment() -> bool {
-        std::env::var_os("TRANSCRIPT_DIR").is_some()
+    pub fn transcripts_set_by_environment(&self) -> bool {
+        self.transcripts_locked
     }
 
     /// These paths with the transcripts folder the user chose, if any.
     pub fn with_preferences(mut self, prefs: &crate::Preferences) -> Self {
-        if !Self::transcripts_set_by_environment() {
+        if !self.transcripts_locked {
             if let Some(folder) = prefs.transcripts_folder.as_deref().filter(|f| !f.trim().is_empty()) {
                 self.transcripts = PathBuf::from(folder);
             }
@@ -75,7 +77,7 @@ impl Paths {
     /// Where exported transcripts live as far as other processes can tell: `TRANSCRIPT_DIR` if set,
     /// else the folder the running app recorded in `state.json`, else the default.
     pub fn export_folder(&self) -> PathBuf {
-        if std::env::var_os("TRANSCRIPT_DIR").is_some() {
+        if self.transcripts_locked {
             return self.transcripts.clone();
         }
         crate::status::AppStatus::read(self)
@@ -92,9 +94,9 @@ impl Paths {
     }
 }
 
-fn expand_tilde(path: &str) -> PathBuf {
-    match (path.strip_prefix("~/"), dirs::home_dir()) {
-        (Some(rest), Some(home)) => home.join(rest),
-        _ => PathBuf::from(path),
+fn expand_tilde(path: &str, home: &Path) -> PathBuf {
+    match path.strip_prefix("~/") {
+        Some(rest) => home.join(rest),
+        None => PathBuf::from(path),
     }
 }

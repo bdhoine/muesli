@@ -265,7 +265,7 @@ fn after_folder_file(ctx: &Ctx, path: &Path) {
     if mode == AudioCleanup::Keep {
         return;
     }
-    if let Err(problem) = clean_up(path, mode) {
+    if let Err(problem) = clean_up(path, mode, &*ctx.app.platform.trash) {
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         *ctx.app.files.error.lock().unwrap() = Some(format!("{name} was transcribed, but could not be removed: {problem}"));
     }

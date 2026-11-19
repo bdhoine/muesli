@@ -3,11 +3,10 @@
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
-use chrono::Utc;
-use muesli_audio::AudioCapture;
+use muesli_core::ports::{OnError, OnSamples};
 use muesli_core::status::LastReady;
 use muesli_core::store::MeetingStore;
-use muesli_core::{languages, AudioChunk, DetectedMeeting, Meeting, MeetingState};
+use muesli_core::{languages, AudioChunk, AudioChunker, DetectedMeeting, Meeting, MeetingState};
 use muesli_whisper::Transcriber;
 
 use crate::ctx::Ctx;
@@ -36,6 +35,7 @@ fn run_start(ctx: &Ctx, detected: DetectedMeeting) -> Result<(), String> {
 
     *ctx.app.capture_error.lock().unwrap() = None;
     let mut meeting = Meeting::new(&detected.title, &detected.source);
+    meeting.started_at = ctx.app.platform.clock.now();
     meeting.attendees = detected.attendees.clone();
     meeting.state = MeetingState::Recording;
     let paths = ctx.app.paths();
@@ -64,23 +64,31 @@ fn run_start(ctx: &Ctx, detected: DetectedMeeting) -> Result<(), String> {
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let (started_tx, started_rx) = mpsc::channel::<Result<(), String>>();
     let error_ctx = ctx.clone();
+    let (mic, system_audio) = (ctx.app.platform.mic.clone(), ctx.app.platform.system_audio.clone());
     let audio = std::thread::spawn(move || {
-        let mut capture = AudioCapture::new(
-            move |chunk| drop(chunk_tx.send(chunk)),
-            // A stream broke for good (device unplugged, permission revoked): keep what we have.
-            move |message| {
-                *error_ctx.app.capture_error.lock().unwrap() = Some(message);
-                stop(&error_ctx);
-            },
-        );
-        match capture.start() {
-            Ok(()) => {
+        let chunker = Arc::new(AudioChunker::new(move |chunk| drop(chunk_tx.send(chunk))));
+        // A stream broke for good (device unplugged, permission revoked): keep what we have.
+        let on_error: OnError = Arc::new(move |message| {
+            *error_ctx.app.capture_error.lock().unwrap() = Some(message);
+            stop(&error_ctx);
+        });
+        let feed = |speaker: &'static str| {
+            let chunker = chunker.clone();
+            Box::new(move |samples: &[f32]| chunker.append(speaker, samples)) as OnSamples
+        };
+        let streams =
+            mic.start(feed("You"), on_error.clone()).and_then(|m| system_audio.start(feed("Others"), on_error.clone()).map(|s| [m, s]));
+        match streams {
+            Ok(mut streams) => {
                 let _ = started_tx.send(Ok(()));
                 let _ = stop_rx.recv(); // until stop() or the sender is dropped
-                capture.stop(); // emits the tails, then dropping `capture` closes the channel
+                for stream in streams.iter_mut() {
+                    stream.stop(); // hands over what was still queued
+                }
+                chunker.finish(); // emits the tails; dropping the chunker closes the channel
             }
             Err(e) => {
-                let _ = started_tx.send(Err(e.to_string()));
+                let _ = started_tx.send(Err(e));
             }
         }
     });
@@ -122,7 +130,7 @@ pub fn stop(ctx: &Ctx) {
             let _ = consumer.join(); // finishes the last chunks
         }
         let mut m = session.meeting.lock().unwrap().clone();
-        MeetingStore::new(&ctx.app.paths()).finish(&mut m, Utc::now());
+        MeetingStore::new(&ctx.app.paths()).finish(&mut m, ctx.app.platform.clock.now());
         *ctx.app.last_ready.lock().unwrap() = Some(LastReady { id: m.id.clone(), title: m.title.clone(), ended_at: m.ended_at });
         ctx.set_status(match ctx.app.capture_error.lock().unwrap().take() {
             Some(why) => Status::Error { message: format!("Capture stopped: {why} The transcript so far was saved.") },

@@ -1,0 +1,11 @@
+[package]
+name = "muesli-platform-fake"
+description = "Fake adapters for every port: a manual clock, scripted detection, WAV playback as microphone and system audio, recorded notifications. Builds everywhere; used by tests and muesli-sim."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+muesli-core = { path = "../core" }
+muesli-audio = { path = "../audio" }
+chrono = "0.4"

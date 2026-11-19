@@ -20,7 +20,7 @@ pub fn helper_path_record(paths: crate::paths::PathSet, helper: String) {
 /// `~/Library/Application Support/Claude` on macOS.
 #[uniffi::export]
 pub fn claude_default_directory() -> String {
-    ClaudeDesktopConfig::default_directory().to_string_lossy().into_owned()
+    ClaudeDesktopConfig::default_directory(&muesli_platform_common::SystemPaths).to_string_lossy().into_owned()
 }
 
 /// Adds the Muesli entry to Claude Desktop's config; returns a status line.

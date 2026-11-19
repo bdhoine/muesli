@@ -57,7 +57,7 @@ fn replies_match_the_swift_server() {
     let paths = Paths::new(dir.path().join("support"), dir.path().join("transcripts"));
     copy_dir(&fixtures().join("support"), &paths.support);
 
-    let server = Server::new(paths.clone());
+    let server = Server::new(paths.clone(), trash(&dir));
     let requests = std::fs::read_to_string(fixtures().join("requests.jsonl")).unwrap();
     let expected = std::fs::read_to_string(fixtures().join("expected.jsonl")).unwrap();
 
@@ -80,8 +80,12 @@ fn replies_match_the_swift_server() {
 fn envelopes_are_byte_identical_for_simple_requests() {
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::new(dir.path().join("support"), dir.path().join("transcripts"));
-    let server = Server::new(paths);
+    let server = Server::new(paths, trash(&dir));
     let reply = server.handle(br#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#).unwrap();
     assert_eq!(String::from_utf8(reply).unwrap(), r#"{"id":2,"jsonrpc":"2.0","result":{}}"#);
     assert!(server.handle(br#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#).is_none());
+}
+
+fn trash(dir: &tempfile::TempDir) -> std::sync::Arc<muesli_platform_fake::FolderTrash> {
+    std::sync::Arc::new(muesli_platform_fake::FolderTrash::new(dir.path().join("Trash"), "Trash"))
 }

@@ -104,8 +104,8 @@ impl ClaudeDesktopConfig {
     pub const LEGACY_KEYS: [&'static str; 1] = ["muesli"];
 
     /// macOS: `~/Library/Application Support/Claude`; Windows: `%APPDATA%\Claude`.
-    pub fn default_directory() -> PathBuf {
-        dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("Claude")
+    pub fn default_directory(platform: &dyn crate::ports::PlatformPaths) -> PathBuf {
+        platform.data_dir().join("Claude")
     }
 
     fn file(directory: &Path) -> PathBuf {

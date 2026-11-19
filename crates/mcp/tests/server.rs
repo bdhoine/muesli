@@ -14,7 +14,7 @@ fn call(server: &Server, name: &str, args: Value) -> Value {
 #[test]
 fn refusal_blocks_every_tool_and_is_reported_as_an_error() {
     let dir = tempfile::tempdir().unwrap();
-    let server = Server::new(Paths::new(dir.path().join("s"), dir.path().join("t"))).with_refusal(|| Some("off".into()));
+    let server = Server::new(Paths::new(dir.path().join("s"), dir.path().join("t")), trash(&dir)).with_refusal(|| Some("off".into()));
     let reply = call(&server, "get_status", json!({}));
     assert_eq!(reply["result"]["isError"], json!(true));
     assert_eq!(reply["result"]["content"][0]["text"], json!("off"));
@@ -25,7 +25,7 @@ fn audit_sees_the_tool_and_the_meeting_id() {
     let dir = tempfile::tempdir().unwrap();
     let seen = Arc::new(Mutex::new(Vec::new()));
     let sink = seen.clone();
-    let server = Server::new(Paths::new(dir.path().join("s"), dir.path().join("t")))
+    let server = Server::new(Paths::new(dir.path().join("s"), dir.path().join("t")), trash(&dir))
         .with_audit(move |tool, id| sink.lock().unwrap().push((tool.to_string(), id.map(String::from))));
     call(&server, "rename_transcript", json!({"id": "a", "title": "x"}));
     call(&server, "get_status", json!({}));
@@ -36,7 +36,7 @@ fn audit_sees_the_tool_and_the_meeting_id() {
 fn a_fresh_heartbeat_is_reported_as_running_and_a_stale_one_is_not() {
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::new(dir.path().join("s"), dir.path().join("t"));
-    let server = Server::new(paths.clone());
+    let server = Server::new(paths.clone(), trash(&dir));
     let text = |v: &Value| serde_json::from_str::<Value>(v["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
 
     assert_eq!(text(&call(&server, "get_status", json!({})))["appState"], json!("notRunning"));
@@ -63,7 +63,7 @@ fn long_transcripts_are_paged_without_losing_segments() {
         .map(|i| TranscriptSegment { start: i as f64, end: i as f64 + 1.0, speaker: "You".into(), text: "word ".repeat(10) })
         .collect();
     MeetingStore::new(&paths).save(&m);
-    let server = Server::new(paths);
+    let server = Server::new(paths, trash(&dir));
 
     let mut from = 0.0;
     let mut total = 0;
@@ -89,4 +89,8 @@ fn equal_start_runs_larger_than_the_cap_are_sent_whole() {
     let (page2, next) = page(&segments[1..], 10, |_| 6);
     assert_eq!(page2.len(), 3);
     assert_eq!(next, Some(9.0));
+}
+
+fn trash(dir: &tempfile::TempDir) -> std::sync::Arc<muesli_platform_fake::FolderTrash> {
+    std::sync::Arc::new(muesli_platform_fake::FolderTrash::new(dir.path().join("Trash"), "Trash"))
 }

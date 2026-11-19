@@ -4,15 +4,12 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use muesli_core::ports::Question;
 use muesli_core::DetectedMeeting;
-use muesli_system::Question;
 
 use crate::ctx::Ctx;
 use crate::state::Prompt;
 use crate::{session, windows};
-
-/// The id Windows knows the app by; the same as the bundle identifier.
-pub const APP_ID: &str = "com.github.bdhoine.muesli";
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -41,7 +38,7 @@ fn ask(ctx: &Ctx, kind: &str, question: Question) {
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     *ctx.app.prompt.lock().unwrap() = Some(Prompt { id, kind: kind.into(), title: question.title.clone(), body: question.body.clone() });
     let answer_ctx = ctx.clone();
-    if muesli_system::ask(APP_ID, &question, move |accept| answer(&answer_ctx, Some(id), accept)).is_err() {
+    if ctx.app.platform.notifier.ask(&question, Box::new(move |accept| answer(&answer_ctx, Some(id), accept))).is_err() {
         windows::show(&ctx.handle, "prompt"); // no notification with buttons here: our own window
     }
 }

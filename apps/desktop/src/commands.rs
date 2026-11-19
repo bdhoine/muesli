@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use muesli_core::assistants::{AssistantClient, ExtensionState};
+use muesli_core::ports::{Access, Permission};
 use muesli_core::store::Store;
 use muesli_core::whisper_model::DEFAULT_MODEL;
 use muesli_core::{languages, DetectedMeeting, Preferences, VERSION};
@@ -154,7 +155,7 @@ struct Extension {
 
 fn assistants(app: &App) -> Assistants {
     let helper = bridge::helper_path();
-    let (state, version) = match bridge::extension_state() {
+    let (state, version) = match bridge::extension_state(app) {
         ExtensionState::ClaudeMissing => ("claudeMissing", None),
         ExtensionState::NotInstalled => ("notInstalled", None),
         ExtensionState::Installed { version } => ("installed", Some(version)),
@@ -177,9 +178,8 @@ fn assistants(app: &App) -> Assistants {
 }
 
 #[tauri::command]
-pub fn get_state(handle: AppHandle, app: Shared) -> UiState {
-    use muesli_system::status;
-    use tauri_plugin_autostart::ManagerExt;
+pub fn get_state(app: Shared) -> UiState {
+    let ports = &app.platform;
     let prefs = app.prefs();
     let paths = app.paths();
     let (legacy, legacy_bytes) = app.model.legacy_models();
@@ -202,10 +202,10 @@ pub fn get_state(handle: AppHandle, app: Shared) -> UiState {
         legacy_models: legacy.len(),
         legacy_bytes,
         system: SystemStatus {
-            microphone: status::microphone().as_str(),
-            notifications: status::notifications(crate::prompt::APP_ID).as_str(),
-            system_audio_needs_permission: cfg!(target_os = "macos"),
-            start_at_login: handle.autolaunch().is_enabled().unwrap_or(false),
+            microphone: access_word(ports.permissions.status(Permission::Microphone)),
+            notifications: access_word(ports.permissions.status(Permission::Notifications)),
+            system_audio_needs_permission: ports.permissions.status(Permission::SystemAudio) != Access::NotNeeded,
+            start_at_login: ports.login_item.is_enabled(),
         },
         recent: Store::recent_transcripts(&app.paths().transcripts, prefs.effective_recent_limit() as usize)
             .into_iter()
@@ -213,7 +213,7 @@ pub fn get_state(handle: AppHandle, app: Shared) -> UiState {
             .collect(),
         transcripts_folder: app.paths().transcripts,
         transcripts_folder_is_custom: prefs.transcripts_folder.is_some(),
-        transcripts_folder_locked: muesli_core::Paths::transcripts_set_by_environment(),
+        transcripts_folder_locked: app.paths().transcripts_set_by_environment(),
         assistants: assistants(&app),
         prefs,
     }
@@ -283,9 +283,7 @@ pub fn use_system_languages(handle: AppHandle, app: Shared, on: bool) {
 
 #[tauri::command]
 pub fn set_start_at_login(handle: AppHandle, app: Shared, on: bool) {
-    use tauri_plugin_autostart::ManagerExt;
-    let launcher = handle.autolaunch();
-    let _ = if on { launcher.enable() } else { launcher.disable() };
+    let _ = app.platform.login_item.set_enabled(on);
     ctx(&handle, &app).changed();
 }
 
@@ -408,12 +406,28 @@ pub fn finish_onboarding(handle: AppHandle, app: Shared) {
 
 /// Opens the system's microphone or system-audio prompt at the moment the user asks for it.
 #[tauri::command]
-pub async fn request_permission(kind: String) -> Result<(), String> {
-    let result = match kind.as_str() {
-        "microphone" => muesli_audio::probe_microphone(),
-        _ => muesli_audio::probe_system_audio(),
-    };
-    result.map_err(|e| e.to_string())
+pub async fn request_permission(app: Shared<'_>, kind: String) -> Result<(), String> {
+    let permissions = app.platform.permissions.clone();
+    let permission = permission_named(&kind);
+    tauri::async_runtime::spawn_blocking(move || permissions.request(permission)).await.map_err(|e| e.to_string())?
+}
+
+fn permission_named(kind: &str) -> Permission {
+    match kind {
+        "microphone" => Permission::Microphone,
+        "notifications" => Permission::Notifications,
+        "calendar" => Permission::Calendar,
+        _ => Permission::SystemAudio,
+    }
+}
+
+/// "allowed", "denied" or "unknown", as the Settings page expects.
+fn access_word(access: Access) -> &'static str {
+    match access {
+        Access::Allowed | Access::NotNeeded => "allowed",
+        Access::Denied => "denied",
+        Access::NotAsked | Access::Unknown => "unknown",
+    }
 }
 
 /// Opens Muesli's repository in the browser.
@@ -424,16 +438,8 @@ pub fn open_repository(handle: AppHandle) {
 }
 
 #[tauri::command]
-pub fn open_privacy_settings(handle: AppHandle, kind: String) {
-    use tauri_plugin_opener::OpenerExt;
-    let url = match (cfg!(windows), kind.as_str()) {
-        (true, "notifications") => "ms-settings:notifications",
-        (true, _) => "ms-settings:privacy-microphone",
-        (false, "microphone") => "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-        (false, "notifications") => "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
-        (false, _) => "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture",
-    };
-    let _ = handle.opener().open_url(url, None::<&str>);
+pub fn open_privacy_settings(app: Shared, kind: String) {
+    let _ = app.platform.permissions.open_settings(permission_named(&kind));
 }
 
 /// Opens a transcript or the transcripts folder. Anything outside that folder is refused, so a
