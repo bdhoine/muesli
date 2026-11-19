@@ -1,24 +1,20 @@
-mod bridge;
-mod commands;
-mod ctx;
-mod files;
-mod prompt;
-mod session;
-mod state;
+//! The Tauri shell: picks the adapters for this OS, runs the engine, draws the tray and the
+//! windows. Everything Muesli decides is in `muesli-engine`; keep this thin.
+
+mod host;
+mod speech;
 mod tray;
 mod windows;
 
+use std::sync::Arc;
 use std::time::Duration;
 
-use std::sync::Arc;
-
 use muesli_core::ports::{Platform, Tray};
-use muesli_core::store::MeetingStore;
-use muesli_core::{DetectionEvent, DetectionLogic};
-use tauri::RunEvent;
+use muesli_core::{languages, Paths};
+use muesli_engine::{Engine, Intent, Options, Window};
+use tauri::{RunEvent, State};
 
-use crate::ctx::Ctx;
-use crate::state::App;
+use crate::host::TauriHost;
 
 /// The adapters for this OS; the shell draws the tray.
 fn platform(tray: Arc<dyn Tray>) -> Platform {
@@ -39,147 +35,57 @@ fn platform(tray: Arc<dyn Tray>) -> Platform {
     }
 }
 
+type Shared<'a> = State<'a, Arc<Engine>>;
+
+/// A window's view state. The page knows which window it is from its label.
+#[tauri::command]
+fn view(engine: Shared, window: String) -> serde_json::Value {
+    Window::from_label(&window).map(|w| engine.view(w)).unwrap_or(serde_json::Value::Null)
+}
+
+/// What a window asks the engine to do.
+#[tauri::command]
+fn intent(engine: Shared, intent: Intent) {
+    let engine = engine.inner().clone();
+    // Intents may wait on files or threads; never on the UI thread.
+    std::thread::spawn(move || engine.intent(intent));
+}
+
 pub fn run() {
     let tray = Arc::new(tray::TauriTray::default());
-    let app_state = App::new(platform(tray.clone()));
+    let host = Arc::new(TauriHost::default());
+    let platform = platform(tray.clone());
+    let speech = Arc::new(speech::WhisperSpeech::new(Paths::from_platform(&*platform.paths)));
+    let engine = Engine::new(platform, speech, host.clone(), Options { system_languages: languages::system_defaults() });
 
-    let builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|handle, _, _| windows::show(handle, "settings")))
+    let for_setup = (engine.clone(), host.clone());
+    let for_second = engine.clone();
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(move |_, _, _| for_second.intent(Intent::OpenMuesli)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(app_state.clone())
-        .invoke_handler(tauri::generate_handler![
-            commands::get_state,
-            commands::update_prefs,
-            commands::download_model,
-            commands::cancel_download,
-            commands::transcribe_files,
-            commands::cancel_file,
-            commands::cancel_all_files,
-            commands::close_file_window,
-            commands::dismiss_file_error,
-            commands::choose_drop_folder,
-            commands::check_connection,
-            commands::remove_legacy_models,
-            commands::open_models_folder,
-            commands::use_system_languages,
-            commands::set_start_at_login,
-            commands::choose_model_file,
-            commands::choose_transcripts_folder,
-            commands::start_recording,
-            commands::stop_recording,
-            commands::dismiss,
-            commands::get_prompt,
-            commands::prompt_response,
-            commands::finish_onboarding,
-            commands::request_permission,
-            commands::open_privacy_settings,
-            commands::open_repository,
-            commands::open_path,
-            commands::install_extension,
-            commands::show_window,
-            commands::close_window,
-        ])
+        .manage(engine.clone())
+        .invoke_handler(tauri::generate_handler![view, intent])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory); // menu bar only, no Dock icon
-            let ctx = Ctx { app: app_state.clone(), handle: app.handle().clone() };
-            tray.attach(app.handle())?;
-            boot(&ctx);
+            let (engine, host) = for_setup;
+            host.attach(app.handle(), &engine);
+            tray.attach(app.handle(), host.clone())?;
+            engine.start();
+            let ticking = engine.clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(1));
+                ticking.tick();
+            });
             Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building Muesli")
+        .run(move |_handle, event| match event {
+            // Closing the last window must not quit a tray app.
+            RunEvent::ExitRequested { api, code: None, .. } => api.prevent_exit(),
+            RunEvent::Exit => engine.shutdown(),
+            _ => {}
         });
-
-    builder.build(tauri::generate_context!()).expect("error while building Muesli").run(|_handle, event| {
-        // Closing the last window must not quit a tray app.
-        if let RunEvent::ExitRequested { api, code, .. } = event {
-            if code.is_none() {
-                api.prevent_exit();
-            }
-        }
-    });
-}
-
-fn boot(ctx: &Ctx) {
-    let app = &ctx.app;
-    if !cfg!(debug_assertions) && !app.prefs().onboarding_done {
-        let _ = app.platform.login_item.set_enabled(true); // start at login unless switched off in Settings
-    }
-
-    let paths = app.paths();
-    let store = MeetingStore::new(&paths);
-    store.recover_interrupted();
-    store.import_transcripts(&app.paths().transcripts);
-    *app.last_ready.lock().unwrap() =
-        store.latest_ready().map(|m| muesli_core::status::LastReady { id: m.id, title: m.title, ended_at: m.ended_at });
-    bridge::apply(app, &app.prefs());
-
-    tray::refresh(ctx);
-
-    // Download the speech model and the voice activity model on the first start, and whenever
-    // one of them went missing.
-    let c = ctx.clone();
-    app.model.ensure_ready(move || c.changed());
-    if !app.prefs().onboarding_done {
-        windows::show(&ctx.handle, "onboarding");
-    } else if app.model.is_downloading() {
-        windows::show(&ctx.handle, "settings");
-    }
-    ctx.changed();
-
-    // state.json is the heartbeat other processes read; keep it fresh.
-    let c = ctx.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(10));
-        c.heartbeat();
-    });
-
-    // The drop folder, every few seconds (nothing happens until the user has chosen one).
-    let c = ctx.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(5));
-        if c.app.prefs().onboarding_done {
-            files::poll_folder(&c);
-        }
-    });
-
-    // Meeting detection, every few seconds, once onboarding is done.
-    let c = ctx.clone();
-    std::thread::spawn(move || {
-        let mut detector = DetectionLogic::default();
-        let (clock, sampler) = (c.app.platform.clock.clone(), c.app.platform.detector.clone());
-        loop {
-            std::thread::sleep(Duration::from_secs(5));
-            if !c.app.prefs().onboarding_done {
-                continue;
-            }
-            detector.end_delay = chrono::Duration::seconds(c.app.prefs().end_delay_seconds as i64);
-            let now = clock.now();
-            let events = detector.tick_sample(now, c.app.is_recording(), sampler.sample(now));
-            *c.app.detected.lock().unwrap() = detector.in_progress.clone();
-            for event in events {
-                match event {
-                    DetectionEvent::Suggest(m) => suggest(&c, m),
-                    DetectionEvent::CallEnded => call_ended(&c),
-                    DetectionEvent::InProgressChanged => c.changed(),
-                }
-            }
-        }
-    });
-}
-
-fn suggest(ctx: &Ctx, meeting: muesli_core::DetectedMeeting) {
-    if ctx.app.is_idle() && ctx.app.model.is_ready() {
-        prompt::suggest_start(ctx, meeting);
-    }
-}
-
-fn call_ended(ctx: &Ctx) {
-    if !ctx.app.is_recording() {
-        return;
-    }
-    if ctx.app.prefs().auto_stop {
-        session::stop(ctx);
-    } else {
-        prompt::suggest_stop(ctx);
-    }
 }

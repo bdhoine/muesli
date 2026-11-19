@@ -1,15 +1,10 @@
 {
-  "autoStop" : false,
   "claudeDesktopConfigEntry" : false,
-  "customModelPath" : "\/models\/x.bin",
-  "dropFolderCleanup" : "trash",
-  "dropFolder" : "\/Users\/me\/Audio",
-  "endDelaySeconds" : 60,
   "languages" : [
     "nl",
     "en"
   ],
   "mcpEnabled" : true,
   "onboardingDone" : true,
-  "recentLimit" : 5
+  "transcriptsFolder" : "\/Users\/me\/Documents\/Meetings"
 }

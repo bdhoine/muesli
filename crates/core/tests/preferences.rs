@@ -4,6 +4,7 @@ mod common;
 
 use common::Env;
 use muesli_core::languages;
+use muesli_core::preferences::REMOVED_KEYS;
 use muesli_core::status::{AppStatus, LastReady};
 use muesli_core::whisper_model::{legacy_models, remove_legacy_models, DEFAULT_MODEL, LEGACY_FILES, VAD_MODEL};
 use muesli_core::Preferences;
@@ -13,9 +14,6 @@ fn defaults_are_safe() {
     let p = Preferences::default();
     assert!(!p.mcp_enabled);
     assert!(!p.claude_desktop_config_entry);
-    assert!(!p.auto_stop);
-    assert_eq!(p.end_delay_seconds, 60);
-    assert_eq!(p.recent_limit, 5);
     assert!(p.languages.is_none());
     assert!(!p.onboarding_done);
 }
@@ -33,30 +31,45 @@ fn corrupt_or_missing_preferences_fall_back_to_defaults() {
 #[test]
 fn config_from_before_onboarding_counts_as_done() {
     let p: Preferences = serde_json::from_str(r#"{"autoStop":true}"#).unwrap();
-    assert!(p.auto_stop);
     assert!(p.onboarding_done);
-    assert!(p.custom_model_path.is_none());
 }
 
 #[test]
-fn the_old_model_choice_in_config_json_is_ignored_and_dropped() {
+fn old_keys_are_dropped_silently_and_the_rest_is_kept() {
     let env = Env::new();
     std::fs::create_dir_all(&env.paths.support).unwrap();
-    std::fs::write(env.paths.config(), r#"{"model":"medium","autoStop":true,"onboardingDone":true}"#).unwrap();
-    let p = Preferences::load(&env.paths);
-    assert!(p.auto_stop && p.onboarding_done);
-    p.save(&env.paths).unwrap();
-    assert!(!std::fs::read_to_string(env.paths.config()).unwrap().contains("\"model\""));
-    // Any other value, also one that is not even text, must not lose the rest of the file.
-    std::fs::write(env.paths.config(), r#"{"model":null,"autoStop":true}"#).unwrap();
-    assert!(Preferences::load(&env.paths).auto_stop);
+    let old = r#"{"autoStop":true,"endDelaySeconds":120,"recentLimit":3,"customModelPath":"/m/x.bin","savedLanguages":["fr"],
+        "dropFolder":"/Users/me/Audio","dropFolderCleanup":"trash","model":"medium",
+        "mcpEnabled":true,"claudeDesktopConfigEntry":true,"languages":["nl","en"],"onboardingDone":true,"transcriptsFolder":"/t"}"#;
+    std::fs::write(env.paths.config(), old).unwrap();
+    let (p, dropped) = Preferences::migrate(&env.paths);
+    assert_eq!(dropped.len(), REMOVED_KEYS.len());
+    assert!(p.mcp_enabled && p.claude_desktop_config_entry && p.onboarding_done);
+    assert_eq!(p.languages, Some(vec!["nl".to_string(), "en".to_string()]));
+    assert_eq!(p.transcripts_folder.as_deref(), Some("/t"));
+    let written = std::fs::read_to_string(env.paths.config()).unwrap();
+    for key in REMOVED_KEYS {
+        assert!(!written.contains(&format!("\"{key}\"")), "{key} is still in config.json");
+    }
+    assert_eq!(Preferences::load(&env.paths), p);
+    // A second run finds nothing to do and leaves the file alone.
+    assert!(Preferences::migrate(&env.paths).1.is_empty());
+}
+
+#[test]
+fn a_current_config_is_not_rewritten_by_the_migration() {
+    let env = Env::new();
+    std::fs::create_dir_all(&env.paths.support).unwrap();
+    std::fs::write(env.paths.config(), r#"{"mcpEnabled":true}"#).unwrap();
+    let (p, dropped) = Preferences::migrate(&env.paths);
+    assert!(dropped.is_empty() && p.mcp_enabled);
+    assert_eq!(std::fs::read_to_string(env.paths.config()).unwrap(), r#"{"mcpEnabled":true}"#);
 }
 
 #[test]
 fn preferences_round_trip() {
     let env = Env::new();
     let mut p = Preferences::default();
-    p.custom_model_path = Some("/x/y.bin".into());
     p.languages = Some(vec!["fr".into()]);
     p.onboarding_done = true;
     p.save(&env.paths).unwrap();
@@ -64,15 +77,28 @@ fn preferences_round_trip() {
 }
 
 #[test]
-fn model_path_prefers_the_custom_file() {
+fn there_is_one_model_and_one_voice_model() {
     let env = Env::new();
-    let mut p = Preferences::default();
+    let p = Preferences::default();
     assert_eq!(p.model_path(&env.paths), env.paths.support.join("ggml-large-v3-turbo-q5_0.bin"));
-    p.custom_model_path = Some("/tmp/my-model.bin".into());
-    assert_eq!(p.model_path(&env.paths).to_str(), Some("/tmp/my-model.bin"));
-    assert_eq!(p.vad_model_path(&env.paths), env.paths.support.join("ggml-silero-v5.1.2.bin")); // not custom
-    p.custom_model_path = Some(String::new());
-    assert_eq!(p.model_path(&env.paths), DEFAULT_MODEL.path(&env.paths));
+    assert_eq!(p.vad_model_path(&env.paths), env.paths.support.join("ggml-silero-v5.1.2.bin"));
+}
+
+#[test]
+fn languages_are_added_removed_and_reset() {
+    let defaults = vec!["nl".to_string(), "en".to_string()];
+    let mut p = Preferences::default();
+    p.add_language("fr-BE", &defaults);
+    assert_eq!(p.languages, Some(vec!["nl".to_string(), "en".to_string(), "fr".to_string()]));
+    p.add_language("fr", &defaults); // no duplicates
+    p.add_language("xx", &defaults); // not supported
+    assert_eq!(p.effective_languages(&defaults).len(), 3);
+    p.remove_language("nl", &defaults);
+    p.remove_language("en", &defaults);
+    p.remove_language("fr", &defaults); // the last one stays
+    assert_eq!(p.effective_languages(&defaults), vec!["fr".to_string()]);
+    p.reset_languages();
+    assert_eq!(p.effective_languages(&defaults), defaults);
 }
 
 #[test]
@@ -123,15 +149,6 @@ fn chosen_languages_are_validated() {
     assert_eq!(p.effective_languages(&fallback), ["fr", "de"]);
     p.languages = Some(vec!["xx".into()]);
     assert_eq!(p.effective_languages(&fallback), fallback);
-}
-
-#[test]
-fn recent_limit_is_clamped() {
-    let mut p = Preferences::default();
-    p.recent_limit = 99;
-    assert_eq!(p.effective_recent_limit(), 10);
-    p.recent_limit = -3;
-    assert_eq!(p.effective_recent_limit(), 0);
 }
 
 #[test]

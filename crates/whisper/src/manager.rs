@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muesli_core::whisper_model::{file_is_at_least, DEFAULT_MODEL, VAD_MODEL};
-use muesli_core::{Paths, Preferences};
+use muesli_core::whisper_model::{DEFAULT_MODEL, VAD_MODEL};
+use muesli_core::Paths;
 
 use crate::download::{check_reachable, download, DownloadError, DownloadSpec, Reach};
 
@@ -33,7 +33,6 @@ struct Job {
 
 #[derive(Default)]
 struct Inner {
-    settings: Preferences,
     job: Option<Job>,
     last_error: Option<String>,
     /// The address that failed, for `last_error`.
@@ -50,33 +49,26 @@ pub struct ModelManager {
 }
 
 impl ModelManager {
-    pub fn new(paths: Paths, settings: Preferences) -> Self {
+    /// Also deletes what earlier versions left behind: partial downloads and the model files of
+    /// the old model choice (Small, Medium, Large).
+    pub fn new(paths: Paths) -> Self {
+        muesli_core::whisper_model::remove_legacy_models(&paths);
         // A download that was cut off by quitting leaves its partial file behind.
         for entry in std::fs::read_dir(&paths.models).into_iter().flatten().flatten() {
             if entry.file_name().to_string_lossy().ends_with(".part") {
                 let _ = std::fs::remove_file(entry.path());
             }
         }
-        let inner = Inner { settings, ..Default::default() };
-        Self { paths, inner: Arc::new(Mutex::new(inner)) }
-    }
-
-    pub fn apply(&self, settings: Preferences) {
-        self.inner.lock().unwrap().settings = settings;
+        Self { paths, inner: Arc::new(Mutex::new(Inner::default())) }
     }
 
     pub fn phase(&self) -> Phase {
         let inner = self.inner.lock().unwrap();
-        let custom = inner.settings.custom_model_url();
-        if let Some(custom) = custom.as_ref().filter(|c| !file_is_at_least(c, 1)) {
-            return Phase::Failed(format!("The chosen model file was not found: {}", custom.display()));
-        }
         if let Some(job) = &inner.job {
             return Phase::Downloading { received: job.received, total: job.total };
         }
-        let model_ok = custom.is_some() || DEFAULT_MODEL.is_installed(&self.paths);
-        if model_ok && VAD_MODEL.is_installed(&self.paths) {
-            return Phase::Ready(inner.settings.model_path(&self.paths));
+        if DEFAULT_MODEL.is_installed(&self.paths) && VAD_MODEL.is_installed(&self.paths) {
+            return Phase::Ready(DEFAULT_MODEL.path(&self.paths));
         }
         match &inner.last_error {
             Some(e) => Phase::Failed(e.clone()),
@@ -122,20 +114,14 @@ impl ModelManager {
     /// Asks each server Muesli downloads from whether it can be reached (headers only). Blocks
     /// for up to a few seconds per address: call it off the UI thread.
     pub fn check_connection(&self) -> Vec<Reach> {
-        let custom = self.inner.lock().unwrap().settings.custom_model_url().is_some();
-        [(VAD_MODEL, true), (DEFAULT_MODEL, !custom)]
-            .into_iter()
-            .filter(|(_, needed)| *needed)
-            .map(|(model, _)| check_reachable(model.url))
-            .collect()
+        [VAD_MODEL, DEFAULT_MODEL].into_iter().map(|model| check_reachable(model.url)).collect()
     }
 
-    /// What is missing: the voice activity model, then the speech model unless the user chose a file.
+    /// What is missing: the voice activity model, then the speech model.
     pub fn missing_downloads(&self) -> Vec<DownloadSpec> {
-        let custom = self.inner.lock().unwrap().settings.custom_model_url().is_some();
         let mut specs = Vec::new();
-        for (model, needed) in [(VAD_MODEL, true), (DEFAULT_MODEL, !custom)] {
-            if needed && !model.is_installed(&self.paths) {
+        for model in [VAD_MODEL, DEFAULT_MODEL] {
+            if !model.is_installed(&self.paths) {
                 specs.push(DownloadSpec {
                     url: model.url.to_string(),
                     dest: model.path(&self.paths),
@@ -222,17 +208,6 @@ impl ModelManager {
         if let Some(job) = inner.job.take() {
             job.cancel.store(true, Ordering::Relaxed);
         }
-    }
-
-    /// Old model files (earlier versions let the user pick Small, Medium or Large) and the space
-    /// removing them frees.
-    pub fn legacy_models(&self) -> (Vec<PathBuf>, u64) {
-        muesli_core::whisper_model::legacy_models(&self.paths)
-    }
-
-    /// Deletes the old model files. Returns how many were removed.
-    pub fn remove_legacy_models(&self) -> usize {
-        muesli_core::whisper_model::remove_legacy_models(&self.paths)
     }
 
     /// Blocks until a running download ends (tests and shutdown).

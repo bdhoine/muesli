@@ -5,7 +5,21 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Changed
-- A meeting or call is suggested only once. If you dismiss the prompt, ignore it or never join, Muesli does not ask again for the same call, however long it lasts and however often you mute. A call counts as new only after the microphone has been free for the call-end delay (60 seconds by default). Stopping a recording while the call goes on, and a call that runs past its calendar meeting, do not trigger a new prompt either.
+- A meeting or call is suggested only once. If you dismiss the prompt, ignore it or never join, Muesli does not ask again for the same call, however long it lasts and however often you mute. A call counts as new only after the microphone has been free for 60 seconds. Stopping while the call goes on, and a call that runs past its calendar meeting, do not trigger a new prompt either.
+- Muesli always asks before it starts transcribing ("Looks like a meeting… Start transcribing?") and never starts by itself.
+- When the call seems to be over (the microphone has been free for 60 seconds), Muesli always asks "Stop and save the transcript?". If you do not answer within 5 minutes, it stops, saves and tells you so, with a button to open the transcript.
+- When notifications are off, or cannot be shown, a small Muesli window asks the same questions.
+- The menu shows your three latest transcripts; clicking one opens it in Muesli's window. While the speech model downloads, the menu shows "Getting Ready" with its progress, and starting or transcribing a file waits until it is done.
+- Muesli says "transcribe" everywhere instead of "record".
+- Model files left by earlier versions (Small, Medium, Large) are deleted automatically.
+- Settings from earlier versions carry over; the ones that no longer exist are dropped quietly.
+
+### Removed
+- The setting to stop automatically at the end of a call, and the call-end delay setting.
+- The setting for how many recent transcripts the menu shows.
+- The "use my computer's languages" switch: the language list starts from your system language and English, and Reset brings that back.
+- Using your own model file.
+- The drop folder. Transcribe audio files from the menu instead; Muesli never moves or deletes them.
 
 ## [0.0.2] - 2026-11-17
 

@@ -2,7 +2,7 @@ name: Tests
 run-name: Tests on ${{ github.ref_name }} (${{ github.sha }})
 
 # Started by hand (Actions tab, or `gh workflow run Tests`). Put `push` and `pull_request` here to run
-# it automatically. Rust runs on macOS, Windows and Linux; the Swift app is tested on macOS.
+# it automatically. Rust runs on macOS, Windows and Linux.
 on:
   workflow_dispatch:
 
@@ -26,20 +26,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
-
-  swift:
-    name: Swift tests, macOS app
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-      - name: Build the shared Rust core for Swift
-        run: scripts/build-ffi.sh
-      - run: swift test
-        working-directory: macos
 
   icons:
     name: Generated files up to date (icons, plugin, launcher)

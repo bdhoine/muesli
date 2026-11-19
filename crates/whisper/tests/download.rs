@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use muesli_core::whisper_model::{DEFAULT_MODEL, LEGACY_FILES, VAD_MODEL};
-use muesli_core::{Paths, Preferences};
+use muesli_core::Paths;
 use muesli_whisper::{check_reachable, download, DownloadError, DownloadSpec, ModelManager, Phase};
 
 /// Serves `body` once with the given status line and optional lying Content-Length.
@@ -71,9 +71,9 @@ fn a_cancelled_download_leaves_no_partial_file() {
     assert!(std::fs::read_dir(dir.path()).unwrap().next().is_none());
 }
 
-fn manager(dir: &std::path::Path, prefs: Preferences) -> (ModelManager, Paths) {
+fn manager(dir: &std::path::Path) -> (ModelManager, Paths) {
     let paths = Paths::new(dir, dir.join("t"));
-    (ModelManager::new(paths.clone(), prefs), paths)
+    (ModelManager::new(paths.clone()), paths)
 }
 
 fn spec_to(url: String, dest: std::path::PathBuf, bytes: u64) -> DownloadSpec {
@@ -83,7 +83,7 @@ fn spec_to(url: String, dest: std::path::PathBuf, bytes: u64) -> DownloadSpec {
 #[test]
 fn what_is_missing_is_the_voice_model_first_and_then_the_speech_model() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, _) = manager(dir.path(), Preferences::default());
+    let (m, _) = manager(dir.path());
     assert_eq!(m.phase(), Phase::Missing);
     let urls: Vec<String> = m.missing_downloads().into_iter().map(|s| s.url).collect();
     assert_eq!(urls, [VAD_MODEL.url, DEFAULT_MODEL.url]);
@@ -92,7 +92,7 @@ fn what_is_missing_is_the_voice_model_first_and_then_the_speech_model() {
 #[test]
 fn the_speech_model_is_only_ready_together_with_the_voice_model() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, paths) = manager(dir.path(), Preferences::default());
+    let (m, paths) = manager(dir.path());
     std::fs::write(DEFAULT_MODEL.path(&paths), vec![0u8; DEFAULT_MODEL.minimum_valid_bytes() as usize]).unwrap();
     assert_eq!(m.phase(), Phase::Missing); // the small voice file is still missing
     assert_eq!(m.missing_downloads().len(), 1);
@@ -102,27 +102,9 @@ fn the_speech_model_is_only_ready_together_with_the_voice_model() {
 }
 
 #[test]
-fn a_custom_model_replaces_the_speech_download_but_not_the_voice_model() {
-    let dir = tempfile::tempdir().unwrap();
-    let custom = dir.path().join("mine.bin");
-    let mut prefs = Preferences::default();
-    prefs.custom_model_path = Some(custom.to_string_lossy().into_owned());
-    let (m, paths) = manager(dir.path(), prefs);
-    assert!(matches!(m.phase(), Phase::Failed(_))); // the file is not there yet
-    std::fs::write(&custom, b"model").unwrap();
-    assert_eq!(m.phase(), Phase::Missing); // still needs the voice model
-    assert_eq!(m.missing_downloads().len(), 1);
-    assert_eq!(m.missing_downloads()[0].url, VAD_MODEL.url);
-    std::fs::write(VAD_MODEL.path(&paths), vec![0u8; VAD_MODEL.minimum_valid_bytes() as usize]).unwrap();
-    assert_eq!(m.phase(), Phase::Ready(custom));
-    m.ensure_ready(|| {});
-    assert!(!m.is_downloading());
-}
-
-#[test]
 fn downloads_run_in_order_and_progress_spans_all_files() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, paths) = manager(dir.path(), Preferences::default());
+    let (m, paths) = manager(dir.path());
     let seen = Arc::new(Mutex::new(Vec::new()));
     let sink = seen.clone();
     let probe = m.clone();
@@ -147,7 +129,7 @@ fn downloads_run_in_order_and_progress_spans_all_files() {
 #[test]
 fn failures_are_remembered_until_the_next_attempt() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, paths) = manager(dir.path(), Preferences::default());
+    let (m, paths) = manager(dir.path());
     let url = serve("500 Internal Server Error", vec![], None);
     m.download_all(vec![spec_to(url, VAD_MODEL.path(&paths), 1)], || {});
     m.wait();
@@ -183,7 +165,7 @@ fn serve_slowly(body_len: usize) -> String {
 #[test]
 fn cancel_takes_effect_at_once_and_leaves_nothing_behind() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, paths) = manager(dir.path(), Preferences::default());
+    let (m, paths) = manager(dir.path());
     m.download_all(vec![spec_to(serve_slowly(5_000_000), DEFAULT_MODEL.path(&paths), 5_000_000)], || {});
     std::thread::sleep(std::time::Duration::from_millis(60));
     assert!(m.is_downloading());
@@ -201,7 +183,7 @@ fn cancel_takes_effect_at_once_and_leaves_nothing_behind() {
 #[test]
 fn a_second_start_while_downloading_does_nothing() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, paths) = manager(dir.path(), Preferences::default());
+    let (m, paths) = manager(dir.path());
     m.download_all(vec![spec_to(serve_slowly(1_000_000), VAD_MODEL.path(&paths), 1_000_000)], || {});
     m.download_all(vec![spec_to("http://127.0.0.1:9/none".into(), DEFAULT_MODEL.path(&paths), 1)], || {});
     m.wait();
@@ -214,25 +196,23 @@ fn partial_files_from_an_interrupted_run_are_cleared() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("ggml-large-v3-turbo-q5_0.bin.123-0.part"), b"half").unwrap();
     std::fs::write(dir.path().join("config.json"), b"{}").unwrap();
-    let _ = ModelManager::new(Paths::new(dir.path(), dir.path().join("t")), Preferences::default());
+    let _ = ModelManager::new(Paths::new(dir.path(), dir.path().join("t")));
     let names: Vec<_> = std::fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name()).collect();
     assert_eq!(names, ["config.json"]);
 }
 
 #[test]
-fn old_model_files_can_be_listed_and_removed() {
+fn old_model_files_are_deleted_on_start() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, _) = manager(dir.path(), Preferences::default());
     std::fs::write(dir.path().join(LEGACY_FILES[1]), vec![0u8; 7]).unwrap();
-    assert_eq!(m.legacy_models().1, 7);
-    assert_eq!(m.remove_legacy_models(), 1);
-    assert_eq!(m.legacy_models(), (vec![], 0));
+    let _ = manager(dir.path());
+    assert!(!dir.path().join(LEGACY_FILES[1]).exists());
 }
 
 #[test]
 fn a_server_that_cannot_be_reached_fails_with_the_address() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, paths) = manager(dir.path(), Preferences::default());
+    let (m, paths) = manager(dir.path());
     let closed = TcpListener::bind("127.0.0.1:0").unwrap();
     let url = format!("http://{}/model.bin", closed.local_addr().unwrap());
     drop(closed); // nothing listens here any more
@@ -259,7 +239,7 @@ fn the_connection_check_reports_each_address() {
 #[test]
 fn the_downloads_cover_the_addresses_the_check_asks() {
     let dir = tempfile::tempdir().unwrap();
-    let (m, _) = manager(dir.path(), Preferences::default());
+    let (m, _) = manager(dir.path());
     // The check itself needs the internet, so only the addresses it would ask are compared.
     let wanted: Vec<String> = m.missing_downloads().into_iter().map(|s| s.url).collect();
     assert_eq!(wanted, vec![VAD_MODEL.url.to_string(), DEFAULT_MODEL.url.to_string()]);

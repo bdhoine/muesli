@@ -1,0 +1,50 @@
+use serde::Serialize;
+
+pub use muesli_import::SpeechToText;
+
+/// A loaded speech model: turns 30 s chunks into text. Moved to the thread that uses it.
+pub type Transcriber = Box<dyn SpeechToText + Send>;
+
+/// Where the speech model (and the voice activity model) stands.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ModelStatus {
+    /// Nothing downloaded yet and no download running.
+    Missing,
+    /// Bytes over everything that is being downloaded.
+    Downloading {
+        received: u64,
+        total: u64,
+    },
+    Ready,
+    /// The last download failed: why, and the address it tried.
+    Failed {
+        message: String,
+        url: Option<String>,
+    },
+}
+
+impl ModelStatus {
+    pub fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready)
+    }
+
+    /// 0..1 while downloading.
+    pub fn fraction(&self) -> Option<f64> {
+        match self {
+            Self::Downloading { received, total } if *total > 0 => Some((*received as f64 / *total as f64).min(1.0)),
+            _ => None,
+        }
+    }
+}
+
+/// The speech model: whisper.cpp in the app (`crates/whisper`), a fake in tests and the simulator.
+/// Downloading is the only network request Muesli makes.
+pub trait SpeechModel: Send + Sync {
+    fn status(&self) -> ModelStatus;
+    /// Starts downloading whatever is missing, in the background. Does nothing when all is there
+    /// or a download runs. `on_change` is called on progress and at the end.
+    fn download(&self, on_change: Box<dyn Fn() + Send + Sync>);
+    /// Loads the model for these languages. Only called while `status()` is ready.
+    fn transcriber(&self, languages: Vec<String>) -> Result<Transcriber, String>;
+}

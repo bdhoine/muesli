@@ -2,92 +2,43 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::import::AudioCleanup;
 use crate::json::{self, to_pretty_sorted};
 use crate::languages;
 use crate::paths::Paths;
 use crate::whisper_model::{DEFAULT_MODEL, VAD_MODEL};
 
-pub const RECENT_LIMIT_OPTIONS: [i32; 4] = [0, 3, 5, 10];
-pub const MAX_RECENT_LIMIT: i32 = 10;
-pub const END_DELAY_OPTIONS: [i32; 4] = [30, 60, 120, 300];
-
 /// Preferences shared by the app (writes) and muesli-mcp (reads): `config.json`.
 ///
 /// Missing keys take their default. `onboarding_done` is the exception: a `config.json` that
 /// predates onboarding counts as finished, while no file at all does not.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+///
+/// Keys from earlier versions (`autoStop`, `endDelaySeconds`, `recentLimit`, `customModelPath`,
+/// `savedLanguages`, `dropFolder`, `dropFolderCleanup`, `model`) are read and dropped: the next
+/// save leaves them out. [`Preferences::migrate`] says which ones a file still had.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
     pub mcp_enabled: bool,
     pub claude_desktop_config_entry: bool,
-    pub auto_stop: bool,
-    pub end_delay_seconds: i32,
+    /// The languages Whisper may pick from. `None`: the defaults (the system language and English).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub languages: Option<Vec<String>>,
-    pub recent_limit: i32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom_model_path: Option<String>,
     #[serde(default = "done_when_missing")]
     pub onboarding_done: bool,
-    /// Where transcripts are written, when the user chose a folder. Both apps keep it here
-    /// (the macOS app moved it over from its own defaults once).
+    /// Where transcripts are written, when the user chose a folder.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcripts_folder: Option<String>,
-    /// The user's own language list, kept while "use my computer's languages" is on, so it comes back.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub saved_languages: Option<Vec<String>>,
-    /// A folder to drop audio files in; they are transcribed as they appear. Off (none) until chosen.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub drop_folder: Option<String>,
-    /// What happens to a file from the drop folder after it is transcribed.
-    pub drop_folder_cleanup: AudioCleanup,
 }
+
+/// The keys earlier versions wrote that this one no longer has.
+pub const REMOVED_KEYS: [&str; 8] =
+    ["autoStop", "endDelaySeconds", "recentLimit", "customModelPath", "savedLanguages", "dropFolder", "dropFolderCleanup", "model"];
 
 fn done_when_missing() -> bool {
     true
 }
 
-impl Default for Preferences {
-    fn default() -> Self {
-        Self {
-            mcp_enabled: false,
-            claude_desktop_config_entry: false,
-            auto_stop: false,
-            end_delay_seconds: 60,
-            languages: None,
-            recent_limit: 5,
-            custom_model_path: None,
-            onboarding_done: false,
-            transcripts_folder: None,
-            saved_languages: None,
-            drop_folder: None,
-            drop_folder_cleanup: AudioCleanup::Keep,
-        }
-    }
-}
-
 impl Preferences {
-    pub fn effective_recent_limit(&self) -> i32 {
-        self.recent_limit.clamp(0, MAX_RECENT_LIMIT)
-    }
-
-    /// Whether the languages follow the system (`languages` is unset).
-    pub fn uses_system_languages(&self) -> bool {
-        self.languages.is_none()
-    }
-
-    /// Switches between the system's languages and the user's own list without losing that list.
-    pub fn set_uses_system_languages(&mut self, on: bool, system_defaults: &[String]) {
-        if on {
-            if let Some(own) = self.languages.take() {
-                self.saved_languages = Some(own);
-            }
-        } else if self.languages.is_none() {
-            self.languages = Some(self.saved_languages.clone().unwrap_or_else(|| system_defaults.to_vec()));
-        }
-    }
-
     /// The languages Whisper may pick from: the chosen ones, else the system defaults.
     pub fn effective_languages(&self, system_defaults: &[String]) -> Vec<String> {
         let chosen = languages::unique(
@@ -100,21 +51,38 @@ impl Preferences {
         }
     }
 
-    /// A model file the user chose themselves; it replaces the downloadable models.
-    pub fn custom_model_url(&self) -> Option<PathBuf> {
-        let path = self.custom_model_path.as_deref().filter(|p| !p.is_empty())?;
-        match (path.strip_prefix("~/"), dirs::home_dir()) {
-            (Some(rest), Some(home)) => Some(home.join(rest)),
-            _ => Some(PathBuf::from(path)),
+    /// Adds a language to the list (starting from the defaults the first time).
+    pub fn add_language(&mut self, code: &str, system_defaults: &[String]) {
+        let code = languages::base_code(code);
+        if !languages::is_supported(&code) {
+            return;
+        }
+        let mut list = self.effective_languages(system_defaults);
+        if !list.contains(&code) {
+            list.push(code);
+        }
+        self.languages = Some(list);
+    }
+
+    /// Removes a language. The last one stays: Whisper needs at least one.
+    pub fn remove_language(&mut self, code: &str, system_defaults: &[String]) {
+        let list: Vec<String> = self.effective_languages(system_defaults).into_iter().filter(|l| l != code).collect();
+        if !list.is_empty() {
+            self.languages = Some(list);
         }
     }
 
-    /// The file Whisper will load: the custom model if set, else the default download.
-    pub fn model_path(&self, paths: &Paths) -> PathBuf {
-        self.custom_model_url().unwrap_or_else(|| DEFAULT_MODEL.path(paths))
+    /// Back to the system language and English.
+    pub fn reset_languages(&mut self) {
+        self.languages = None;
     }
 
-    /// The voice activity model. Always the downloaded one, also with a custom speech model.
+    /// The speech model Whisper loads. There is one model and nothing to choose.
+    pub fn model_path(&self, paths: &Paths) -> PathBuf {
+        DEFAULT_MODEL.path(paths)
+    }
+
+    /// The voice activity model.
     pub fn vad_model_path(&self, paths: &Paths) -> PathBuf {
         VAD_MODEL.path(paths)
     }
@@ -126,5 +94,20 @@ impl Preferences {
 
     pub fn save(&self, paths: &Paths) -> std::io::Result<()> {
         json::write_atomic(&paths.config(), &to_pretty_sorted(self))
+    }
+
+    /// Loads `config.json` and, if it still has keys from an earlier version, writes it back
+    /// without them. Returns the preferences and the keys that were dropped.
+    pub fn migrate(paths: &Paths) -> (Self, Vec<&'static str>) {
+        let prefs = Self::load(paths);
+        let old: Vec<&'static str> = std::fs::read_to_string(paths.config())
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&text).ok())
+            .map(|map| REMOVED_KEYS.iter().copied().filter(|k| map.contains_key(*k)).collect())
+            .unwrap_or_default();
+        if !old.is_empty() {
+            let _ = prefs.save(paths);
+        }
+        (prefs, old)
     }
 }

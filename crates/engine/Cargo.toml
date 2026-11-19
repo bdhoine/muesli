@@ -1,0 +1,17 @@
+[package]
+name = "muesli-engine"
+description = "Muesli's behaviour without an OS or a UI: detection prompts, transcribing, saving, imports, the main window, Settings and setup as view states and intents. Talks to the OS only through the ports."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+muesli-core = { path = "../core" }
+muesli-import = { path = "../import" }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+muesli-platform-fake = { path = "../platform-fake" }
+tempfile = "3"
