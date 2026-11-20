@@ -1,0 +1,15 @@
+{
+  "name": "A silent stretch",
+  "description": "Ten minutes of silence in a call, then one sentence. The silence never reaches the speech model; the sentence appears at its real time.",
+  "setupDone": true,
+  "model": "ready",
+  "steps": [
+    { "do": "call", "teams": true, "seconds": 20 },
+    { "do": "answer", "accept": true },
+    { "do": "wait", "ms": 300 },
+    { "do": "silence", "seconds": 600 },
+    { "do": "talk", "who": "you", "seconds": 3 },
+    { "do": "silence", "seconds": 2 },
+    { "do": "intent", "intent": { "type": "openMuesli" } }
+  ]
+}

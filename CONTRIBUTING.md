@@ -43,12 +43,12 @@ apps/desktop (Tauri)  ── Host, Tray, Updater ──►  crates/engine (muesl
 
 | Crate | What it holds |
 |---|---|
-| `crates/core` | Models, preferences (with the migration of old keys), `state.json`, languages, chunker, detection rules, store (append, finish, recover), editor, assistant setup and Claude Desktop config, the ports |
-| `crates/engine` | The behaviour, the view states (`views.rs`), the intents, fakes for the speech model and the host |
+| `crates/core` | Models, preferences (with the migration of old keys), `state.json`, languages, chunker (fixed blocks) and segmenter (live blocks that follow pauses, `SpeechDetector`, `Pacer`), detection rules, store (append, finish, recover), editor, assistant setup and Claude Desktop config, the ports |
+| `crates/engine` | The behaviour, the view states (`views.rs`), the intents, the live audio worker (`live.rs`: capture callbacks hand samples to it, it owns the segmenters), fakes for the speech model and the host |
 | `crates/mcp` | `muesli-mcp`, the MCP server (stdio) |
 | `crates/audio` | Resampling (`rubato`) and `decode_file` (any audio file to 16 kHz mono, with `symphonia`). No device code. |
 | `crates/import` | `import_file`: decode, 30 s chunks, transcribe, save as a meeting with source `file` |
-| `crates/whisper` | Model download and validation (`ModelManager`, deletes old model files), whisper.cpp transcriber with voice activity detection |
+| `crates/whisper` | Model download and validation (`ModelManager`, deletes old model files), whisper.cpp transcriber with voice activity detection, `SileroDetector` for the live segmenter |
 | `crates/platform-common` | Clock, folders (`dirs`), trash (`trash`), Teams process scan (`sysinfo`), microphone and system audio (`cpal`, feature `capture`: WASAPI loopback on Windows, Core Audio tap on macOS) |
 | `crates/platform-windows` | WASAPI sessions (mic in use), toasts with buttons, privacy switches, the Run key for start at login. Compiles to nothing elsewhere. |
 | `crates/platform-macos` | Core Audio process list and EventKit (detection), UNUserNotificationCenter with a delegate, permissions (AVFoundation, EventKit, notification settings), NSFileManager trash, SMAppService, SF Symbols on the menu bar menu (`menu_icons.rs`, added when the menu opens because Tauri menus cannot show template images). Compiles to nothing elsewhere. |

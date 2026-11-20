@@ -2,7 +2,7 @@
 // shown, measured on the rendered page. When the design changes, change the numbers here with it.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { startSim } from "./sim.mjs";
+import { eventually, startSim } from "./sim.mjs";
 
 const OAT = "rgb(234, 223, 200)";
 const MILK = "rgb(246, 241, 231)";
@@ -115,6 +115,15 @@ describe("macOS skin matches the design", () => {
       await page.getByTestId("live-row").click();
       await sim.act({ do: "talk", seconds: 31 });
       await page.getByTestId("transcript").getByText("You").first().waitFor();
+      // Text comes in a block per pause (at most 10 s), so wait until the last block is in.
+      let count = -1;
+      await eventually(async () => {
+        await page.waitForTimeout(400);
+        const now = await page.locator(".transcript .line").count();
+        const settled = now === count;
+        count = now;
+        return settled;
+      }, "the last block", 10000);
 
       // No Start button while transcribing; Stop and Save in the header instead.
       assert.equal(await page.locator(".fab").count(), 0);
@@ -127,7 +136,7 @@ describe("macOS skin matches the design", () => {
       assert.equal(await opacity(last), "0.6");
       if (last > 0) assert.equal(await opacity(0), "1");
       // "Listening" with three dots, 58 px in so it lines up with the text after the time column.
-      await page.getByRole("status").getByText("Listening · text appears after each pause").waitFor();
+      await page.getByRole("status").getByText("Listening · text follows each pause").waitFor();
       assert.equal(await page.locator(".listening .bounce span").count(), 3);
       const listening = await look(page, ".listening", ["padding-left", "font-size"]);
       assert.deepEqual([listening["padding-left"], listening["font-size"]], ["58px", "13.5px"]);

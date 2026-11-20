@@ -1,0 +1,14 @@
+{
+  "name": "A long monologue",
+  "description": "Someone in the call talks for 45 seconds without a pause. The text comes in blocks of at most 10 seconds, cut at the quietest moment, and the rest after the pause.",
+  "setupDone": true,
+  "model": "ready",
+  "steps": [
+    { "do": "call", "teams": true, "seconds": 20 },
+    { "do": "answer", "accept": true },
+    { "do": "wait", "ms": 300 },
+    { "do": "talk", "who": "others", "seconds": 45 },
+    { "do": "silence", "seconds": 2 },
+    { "do": "intent", "intent": { "type": "openMuesli" } }
+  ]
+}

@@ -1,8 +1,9 @@
 use serde::Serialize;
 
+pub use muesli_core::SpeechDetector;
 pub use muesli_import::SpeechToText;
 
-/// A loaded speech model: turns chunks of speech (up to 30 s) into text. Moved to the thread that uses it.
+/// A loaded speech model: turns blocks of audio into text. Moved to the thread that uses it.
 pub type Transcriber = Box<dyn SpeechToText + Send>;
 
 /// Where the speech model (and the voice activity model) stands.
@@ -47,4 +48,7 @@ pub trait SpeechModel: Send + Sync {
     fn download(&self, on_change: Box<dyn Fn() + Send + Sync>);
     /// Loads the model for these languages. Only called while `status()` is ready.
     fn transcriber(&self, languages: Vec<String>) -> Result<Transcriber, String>;
+    /// A voice activity detector for one live stream (each speaker gets their own). Only called
+    /// while `status()` is ready. Never fails: without the model, a loudness detector stands in.
+    fn speech_detector(&self) -> Box<dyn SpeechDetector>;
 }

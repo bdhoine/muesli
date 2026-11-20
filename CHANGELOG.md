@@ -10,11 +10,12 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 - Muesli keeps itself up to date. Once a day it checks GitHub for a new version and downloads it in the background. When it is ready, the menu offers **Restart to Update**, the menu bar or tray icon gets a small green dot, Muesli's window shows a banner and you get one notification; nothing interrupts a meeting you are transcribing. Quitting Muesli with an update ready installs it too. Settings shows your version with **What's new**, **Check for Updates**, and a switch to turn automatic checks off. After an update Muesli tells you once, and on a Mac it opens the permissions screen if macOS asks for them again.
 - When Claude Desktop has an older Muesli extension, Muesli tells you: a notification with **Update** (once per Muesli version) and a banner at the top of its window with **Update** and **Not now**. Update opens the new extension and Claude asks to install it, so you no longer have to look in Settings.
 - The menu shows the length and day of each recent transcript ("32 min · Today 14:30"), and while transcribing, how long the recording has run (macOS).
-- macOS: Muesli's window has a round **Start transcribing** button in the corner. While a meeting is transcribed, the newest line shows faded until it settles, and "Listening · text appears after each pause" with three moving dots says more is coming (the dots stand still if your system asks for less motion).
+- macOS: Muesli's window has a round **Start transcribing** button in the corner. While a meeting is transcribed, the newest line shows faded until it settles, and "Listening · text follows each pause" with three moving dots says more is coming (the dots stand still if your system asks for less motion).
 - The setup and Settings use the wording of the Muesli design: shorter promises, a line under each step, and "Speech model" with its size.
 
 ### Changed
-- Live text appears a few seconds after someone pauses, instead of every 30 seconds. Long stretches of speech are cut at the latest every 10 seconds, at their quietest moment, and silence is skipped. Audio files are still handled in 30-second steps.
+- Live text now appears a few seconds after a sentence ends, instead of every 30 seconds. On a slower computer Muesli waits for longer stretches so it keeps up. Silence is never sent to the speech model.
+- A short reply ("Yes.") keeps the language of what you said before it, unless Muesli is sure it is another language.
 - Settings: the Muesli version sits on the right of its row.
 
 ### Fixed

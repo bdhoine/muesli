@@ -9,7 +9,8 @@
 use std::path::PathBuf;
 
 use muesli_core::AudioChunk;
-use muesli_whisper::Transcriber;
+use muesli_core::Segmenter;
+use muesli_whisper::{SileroDetector, Transcriber};
 
 const RATE: usize = 16_000;
 
@@ -107,6 +108,42 @@ fn without_voice_detection_for_comparison() {
         let (words, _) = text(&t, audio, 0.0);
         println!("WITHOUT VAD, {name}: {words:?}");
     }
+}
+
+/// The live path with the real voice model: speech, a pause, speech again, then silence. Prints
+/// each block and its text and the time Whisper took against the block's length.
+#[test]
+#[ignore]
+fn live_blocks_follow_the_pauses_with_silero() {
+    let speech = read_wav(&env("MUESLI_TEST_WAV"));
+    let seconds = speech.len() as f64 / RATE as f64;
+    let mut audio = noise(3);
+    audio.extend(&speech);
+    audio.extend(noise(3));
+    audio.extend(&speech);
+    audio.extend(noise(10));
+    let mut segmenter = Segmenter::new("You", Box::new(SileroDetector::new(&env("MUESLI_TEST_VAD")).expect("vad loads")));
+    let mut blocks = Vec::new();
+    for piece in audio.chunks(480) {
+        blocks.extend(segmenter.push(piece));
+    }
+    let before_stop = blocks.len();
+    blocks.extend(segmenter.finish());
+    let t = transcriber(true);
+    for block in &blocks {
+        let started = std::time::Instant::now();
+        let (words, spans) = text(&t, block.samples.clone(), block.offset_seconds);
+        let length = block.samples.len() as f64 / RATE as f64;
+        println!(
+            "block at {:.2} s, {length:.2} s long, Whisper {:.2} s: {words} {spans:?}",
+            block.offset_seconds,
+            started.elapsed().as_secs_f64()
+        );
+    }
+    assert!(seconds <= 10.0 || blocks.len() > 2, "a sentence over 10 s is cut");
+    assert!(before_stop >= 2, "both sentences were sent after their pauses, before stop");
+    assert!(blocks.iter().all(|b| b.samples.len() <= 10 * RATE));
+    assert!((blocks[0].offset_seconds - 3.0).abs() < 0.5, "the first block starts near the speech: {}", blocks[0].offset_seconds);
 }
 
 #[test]

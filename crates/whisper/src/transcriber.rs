@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use muesli_core::{languages, AudioChunk, TranscriptSegment};
+use muesli_core::{languages, AudioChunk, SpeechDetector, TranscriptSegment};
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperVadContext, WhisperVadContextParams, WhisperVadParams,
 };
@@ -16,8 +16,8 @@ pub struct Transcriber {
     languages: Vec<String>,
     state: Mutex<whisper_rs::WhisperState>,
     vad: Option<Vad>,
-    /// The language of the last chunk long enough to judge it by (see `JUDGE_SECONDS`).
-    last_language: Mutex<Option<String>>,
+    /// Each speaker's language in their previous block, kept for short blocks.
+    previous: Mutex<HashMap<String, String>>,
 }
 
 /// Voice activity detection. Whisper invents text ("Thank you.", subtitle credits) for silence and
@@ -39,10 +39,6 @@ fn vad_params() -> WhisperVadParams {
 }
 
 const SAMPLE_RATE: usize = 16_000;
-
-/// Live chunks end at pauses and can be a second or two long, too little to tell Dutch from
-/// English by: speech shorter than this keeps the language of the last chunk that was long enough.
-const JUDGE_SECONDS: usize = 3;
 
 /// whisper.cpp's abort callback: `data` is the `AtomicBool` passed to `transcribe_until`.
 unsafe extern "C" fn abort_requested(data: *mut c_void) -> bool {
@@ -77,7 +73,7 @@ impl Transcriber {
         };
         let context = WhisperContext::new_with_params(model.to_str()?, WhisperContextParameters::default()).ok()?;
         let state = context.create_state().ok()?;
-        Some(Self { context, languages, state: Mutex::new(state), vad, last_language: Mutex::new(None) })
+        Some(Self { context, languages, state: Mutex::new(state), vad, previous: Mutex::new(HashMap::new()) })
     }
 
     /// The parts of `samples` that contain speech, or `None` when voice detection is off or fails
@@ -116,18 +112,10 @@ impl Transcriber {
         let mut state = self.state.lock().unwrap();
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8)) as i32;
         // The language is judged on the speech alone, not on the noise around it.
-        let heard = speech.as_deref().unwrap_or(&chunk.samples);
-        let last = self.last_language.lock().unwrap().clone(); // not held across the match below
-        let language = match last {
-            Some(last) if heard.len() < JUDGE_SECONDS * SAMPLE_RATE && self.languages.contains(&last) => last,
-            _ => {
-                let found = self.detect_language(&mut state, heard, threads);
-                if heard.len() >= JUDGE_SECONDS * SAMPLE_RATE || self.languages.len() <= 1 {
-                    *self.last_language.lock().unwrap() = Some(found.clone());
-                }
-                found
-            }
-        };
+        let speech_samples = speech.as_deref().unwrap_or(&chunk.samples);
+        let previous = self.previous.lock().unwrap().get(&chunk.speaker).cloned();
+        let language = self.detect_language(&mut state, speech_samples, threads, previous.as_deref());
+        self.previous.lock().unwrap().insert(chunk.speaker.clone(), language.clone());
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(threads);
@@ -173,7 +161,8 @@ impl Transcriber {
     }
 
     /// Picks the most probable of the allowed languages; one allowed language needs no detection.
-    fn detect_language(&self, state: &mut whisper_rs::WhisperState, samples: &[f32], threads: i32) -> String {
+    /// A short block keeps the speaker's `previous` language unless detection is confident.
+    fn detect_language(&self, state: &mut whisper_rs::WhisperState, samples: &[f32], threads: i32, previous: Option<&str>) -> String {
         let fallback = self.languages.first().cloned().unwrap_or_else(|| "en".into());
         if self.languages.len() <= 1 {
             return fallback;
@@ -190,10 +179,38 @@ impl Transcriber {
                 }
             }
         }
-        languages::best(&by_code, &self.languages).unwrap_or(fallback)
+        let seconds = samples.len() as f64 / SAMPLE_RATE as f64;
+        languages::choose(&by_code, &self.languages, previous, seconds).unwrap_or(fallback)
     }
 
     pub fn context(&self) -> &WhisperContext {
         &self.context
+    }
+}
+
+/// Silero voice activity for the live segmenter (`muesli_core::Segmenter`): one per speaker,
+/// because the model keeps state while it runs over a window.
+pub struct SileroDetector {
+    context: WhisperVadContext,
+}
+
+impl SileroDetector {
+    /// `None` when the file is missing or cannot be loaded.
+    pub fn new(model: &Path) -> Option<Self> {
+        if !model.exists() {
+            return None;
+        }
+        let mut params = WhisperVadContextParams::new();
+        // The model is tiny: one thread is three times faster than four (docs/AUDIO-SPIKE.md).
+        params.set_n_threads(1);
+        params.set_use_gpu(false);
+        WhisperVadContext::new(model.to_str()?, params).ok().map(|context| Self { context })
+    }
+}
+
+impl SpeechDetector for SileroDetector {
+    fn probabilities(&mut self, window: &[f32]) -> Result<Vec<f32>, String> {
+        self.context.detect_speech(window).map_err(|e| e.to_string())?;
+        Ok(self.context.probabilities().to_vec())
     }
 }

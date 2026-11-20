@@ -13,6 +13,7 @@ mod engine;
 pub mod fake;
 mod host;
 mod intent;
+mod live;
 mod speech;
 pub mod views;
 

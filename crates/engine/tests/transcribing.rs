@@ -102,7 +102,13 @@ fn starting_shows_the_meeting_in_the_menu_with_a_red_dot() {
 fn the_live_transcript_grows_in_the_main_window_and_is_read_only() {
     let h = transcribing_a_call();
     h.talk(31.0);
-    wait_for("text", || h.engine.main_view().reader.is_some_and(|r| r.lines.len() >= 2));
+    let both = |h: &Harness| {
+        h.engine.main_view().reader.is_some_and(|r| {
+            let speakers: Vec<_> = r.lines.iter().map(|l| l.speaker.clone()).collect();
+            speakers.contains(&"You".to_string()) && speakers.contains(&"Others".to_string())
+        })
+    };
+    wait_for("text from both", || both(&h));
     let view = h.engine.main_view();
     let live = view.live.expect("the live meeting is at the top");
     assert_eq!(live.title, "Teams call");
@@ -112,6 +118,46 @@ fn the_live_transcript_grows_in_the_main_window_and_is_read_only() {
     assert_eq!(reader.lines[0].time, "00:00");
     let speakers: Vec<_> = reader.lines.iter().map(|l| l.speaker.as_str()).collect();
     assert!(speakers.contains(&"You") && speakers.contains(&"Others"));
+}
+
+#[test]
+fn text_appears_soon_after_a_pause_not_after_thirty_seconds() {
+    let h = transcribing_a_call();
+    h.fakes.mic.feed_seconds(3.0); // a sentence
+    h.fakes.mic.feed_silence(1.5); // and a pause
+    wait_for("the sentence", || h.engine.main_view().reader.is_some_and(|r| r.lines.len() == 1));
+    let reader = h.engine.main_view().reader.unwrap();
+    assert_eq!(reader.lines[0].speaker, "You");
+    assert_eq!(reader.lines[0].time, "00:00");
+}
+
+#[test]
+fn silence_is_never_transcribed() {
+    let h = Harness::ready();
+    let speech = h.speech.clone();
+    h.engine.intent(Intent::StartTranscribing);
+    wait_for("transcribing", || h.transcribing());
+    for _ in 0..30 {
+        h.fakes.mic.feed_silence(60.0);
+        h.fakes.system_audio.feed_silence(60.0);
+    }
+    h.engine.intent(Intent::Tray { id: "stop".into() });
+    wait_for("saved", || h.idle());
+    assert_eq!(speech.transcribed.load(std::sync::atomic::Ordering::SeqCst), 0, "no block reached Whisper");
+    let meeting = &h.engine.main_view().meetings[0];
+    assert_eq!(muesli_core::store::MeetingStore::new(&h.engine.paths()).load(&meeting.id).unwrap().transcript.len(), 0);
+}
+
+#[test]
+fn stopping_sends_the_sentence_still_being_spoken() {
+    let h = transcribing_a_call();
+    h.fakes.system_audio.feed_seconds(4.0); // no pause yet
+    h.engine.intent(Intent::Tray { id: "stop".into() });
+    wait_for("saved", || h.idle());
+    let meeting = &h.engine.main_view().meetings[0];
+    let segments = muesli_core::store::MeetingStore::new(&h.engine.paths()).load(&meeting.id).unwrap().transcript;
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].speaker, "Others");
 }
 
 #[test]

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muesli_core::{AudioChunk, TranscriptSegment};
+use muesli_core::{AudioChunk, EnergyDetector, SpeechDetector, TranscriptSegment};
 use muesli_import::SpeechToText;
 
 use crate::host::{Host, Window};
@@ -27,6 +27,8 @@ pub struct FakeSpeech {
     pub hold_files: Arc<AtomicBool>,
     /// How many chunks of files have been held (reached the slow model).
     pub held_chunks: Arc<AtomicUsize>,
+    /// Blocks handed to the transcribers, so tests can see that silence never got that far.
+    pub transcribed: Arc<AtomicUsize>,
 }
 
 impl FakeSpeech {
@@ -40,6 +42,7 @@ impl FakeSpeech {
             load_error: Mutex::new(None),
             hold_files: Arc::new(AtomicBool::new(false)),
             held_chunks: Arc::new(AtomicUsize::new(0)),
+            transcribed: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -95,7 +98,16 @@ impl SpeechModel for FakeSpeech {
         if let Some(why) = self.load_error.lock().unwrap().clone() {
             return Err(why);
         }
-        Ok(Box::new(ScriptedTranscriber { hold: self.hold_files.clone(), held: self.held_chunks.clone(), ..Default::default() }))
+        Ok(Box::new(ScriptedTranscriber {
+            hold: self.hold_files.clone(),
+            held: self.held_chunks.clone(),
+            calls: self.transcribed.clone(),
+            ..Default::default()
+        }))
+    }
+
+    fn speech_detector(&self) -> Box<dyn SpeechDetector> {
+        Box::new(EnergyDetector::default())
     }
 }
 
@@ -116,7 +128,7 @@ const OTHERS: [&str; 6] = [
     "Thursday works for me.",
 ];
 
-/// "Transcribes" a chunk that has sound into one sentence per speaker, in turn. Silence gives
+/// "Transcribes" a block that has sound into one sentence per speaker, in turn. Silence gives
 /// nothing, as with the real voice activity model.
 #[derive(Default)]
 pub struct ScriptedTranscriber {
@@ -125,6 +137,8 @@ pub struct ScriptedTranscriber {
     /// While set, `transcribe_until` waits for the cancel (as a slow model would).
     hold: Arc<AtomicBool>,
     held: Arc<AtomicUsize>,
+    /// Blocks it was given.
+    pub calls: Arc<AtomicUsize>,
 }
 
 impl SpeechToText for ScriptedTranscriber {
@@ -143,6 +157,7 @@ impl SpeechToText for ScriptedTranscriber {
     }
 
     fn transcribe(&self, chunk: &AudioChunk) -> Result<Vec<TranscriptSegment>, String> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
         let loud = chunk.samples.iter().any(|s| s.abs() > 0.01);
         if !loud || chunk.samples.is_empty() {
             return Ok(Vec::new());

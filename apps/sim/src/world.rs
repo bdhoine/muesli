@@ -264,9 +264,22 @@ impl World {
                 self.advance(num("seconds", 0.0) as i64);
             }
             "talk" => {
+                // Speech from "you", "others" or "both" (the default), then the time it took.
                 let seconds = num("seconds", 31.0);
-                self.fakes.mic.feed_seconds(seconds);
-                self.fakes.system_audio.feed_seconds(seconds);
+                let who = text("who", "both");
+                if who != "others" {
+                    self.fakes.mic.feed_seconds(seconds);
+                }
+                if who != "you" {
+                    self.fakes.system_audio.feed_seconds(seconds);
+                }
+                self.advance(seconds as i64);
+            }
+            "silence" => {
+                // Nobody speaks: both streams go on, silent. A pause ends the block before it.
+                let seconds = num("seconds", 2.0);
+                self.fakes.mic.feed_silence(seconds);
+                self.fakes.system_audio.feed_silence(seconds);
                 self.advance(seconds as i64);
             }
             "advance" => self.advance(num("seconds", 60.0) as i64),

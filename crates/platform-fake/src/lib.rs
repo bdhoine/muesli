@@ -94,11 +94,16 @@ impl FakeAudio {
         }
     }
 
-    /// `seconds` of a quiet tone, enough for the chunker to cut chunks.
+    /// `seconds` of a steady tone: speech, as far as the stand-in voice detector can tell.
     pub fn feed_seconds(&self, seconds: f64) {
         let n = (seconds * 16_000.0) as usize;
         let tone: Vec<f32> = (0..n).map(|i| 0.1 * ((i as f32) * 0.05).sin()).collect();
         self.feed(&tone);
+    }
+
+    /// `seconds` of digital silence.
+    pub fn feed_silence(&self, seconds: f64) {
+        self.feed(&vec![0.0; (seconds * 16_000.0) as usize]);
     }
 
     /// Decodes an audio file (any format `muesli-audio` reads) and feeds all of it at once.

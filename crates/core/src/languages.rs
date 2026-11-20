@@ -47,6 +47,30 @@ pub fn best(probabilities: &std::collections::HashMap<String, f32>, allowed: &[S
     best.cloned()
 }
 
+/// A block with less speech than this keeps the language of the speaker's previous block...
+pub const SHORT_SPEECH_SECONDS: f64 = 5.0;
+/// ...unless one allowed language has at least this share of the allowed languages' probability.
+pub const CONFIDENT_SHARE: f32 = 0.8;
+
+/// The language for a block: the most probable allowed one, except that a short block keeps the
+/// `previous` language unless detection is confident. Short blocks give unsteady detections, and a
+/// "Yes." should not switch a Dutch conversation to English.
+pub fn choose(
+    probabilities: &std::collections::HashMap<String, f32>,
+    allowed: &[String],
+    previous: Option<&str>,
+    speech_seconds: f64,
+) -> Option<String> {
+    let best = best(probabilities, allowed)?;
+    let Some(previous) = previous.filter(|p| allowed.iter().any(|a| a == p)) else { return Some(best) };
+    if speech_seconds >= SHORT_SPEECH_SECONDS || best == previous {
+        return Some(best);
+    }
+    let total: f32 = allowed.iter().filter_map(|c| probabilities.get(c)).filter(|p| **p > 0.0).sum();
+    let share = probabilities.get(&best).copied().unwrap_or(0.0) / total.max(f32::MIN_POSITIVE);
+    Some(if share >= CONFIDENT_SHARE { best } else { previous.to_string() })
+}
+
 pub fn unique(codes: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     codes.into_iter().filter(|c| seen.insert(c.clone())).collect()

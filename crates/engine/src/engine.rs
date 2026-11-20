@@ -7,13 +7,12 @@ use std::thread::JoinHandle;
 use chrono::{DateTime, Duration, Utc};
 use muesli_core::assistants::{AssistantClient, ClaudeDesktopConfig, ClaudeDesktopExtension, ExtensionState};
 use muesli_core::editor::MeetingEditor;
-use muesli_core::ports::{Access, Click, Notice, OnError, OnSamples, Permission, Platform, Question, TrayItem, TrayMenu, Updater};
+use muesli_core::ports::{Access, Click, Notice, OnError, Permission, Platform, Question, TrayItem, TrayMenu, Updater};
 use muesli_core::status::{Activity as StatusActivity, AppStatus, Current, Detected, FileJob, LastReady};
 use muesli_core::store::{menu_subtitle_local, shorten_title, MeetingStore, Store};
 use muesli_core::whisper_model::DEFAULT_MODEL;
 use muesli_core::{
-    languages, AudioChunk, AudioChunker, DetectedMeeting, DetectionEvent, DetectionLogic, Meeting, MeetingState, Paths, Preferences,
-    VERSION,
+    languages, AudioChunk, DetectedMeeting, DetectionEvent, DetectionLogic, Meeting, MeetingState, Pacer, Paths, Preferences, VERSION,
 };
 use serde::Serialize;
 
@@ -23,6 +22,7 @@ pub use updates::{CHECK_EVERY, FIRST_CHECK_AFTER};
 
 use crate::host::{Host, Window};
 use crate::intent::Intent;
+use crate::live::Live;
 use crate::speech::{ModelStatus, SpeechModel};
 use crate::views::*;
 
@@ -573,13 +573,19 @@ impl Engine {
         let id = meeting.id.clone();
         let meeting = Arc::new(Mutex::new(meeting));
 
-        // Chunks go to one consumer, so one model is never used from two threads.
+        // Blocks go to one consumer, so one model is never used from two threads. It also times
+        // Whisper, so blocks grow when it falls behind (`Pacer`).
         let (chunk_tx, chunk_rx) = mpsc::channel::<AudioChunk>();
+        let pacer = Arc::new(Mutex::new(Pacer::default()));
         let consumer = {
-            let (me, meeting) = (self.me(), meeting.clone());
+            let (me, meeting, pacer) = (self.me(), meeting.clone(), pacer.clone());
             std::thread::spawn(move || {
                 for chunk in chunk_rx {
-                    if let Ok(segments) = transcriber.transcribe(&chunk) {
+                    let started = std::time::Instant::now();
+                    let result = transcriber.transcribe(&chunk);
+                    let audio = chunk.samples.len() as f64 / muesli_core::segmenter::SAMPLE_RATE as f64;
+                    pacer.lock().unwrap().record(audio, started.elapsed().as_secs_f64());
+                    if let Ok(segments) = result {
                         if !segments.is_empty() {
                             let paths = me.paths(); // the engine's lock first, then the meeting's
                             MeetingStore::new(&paths).append(&mut meeting.lock().unwrap(), segments);
@@ -595,8 +601,9 @@ impl Engine {
         let (started_tx, started_rx) = mpsc::channel::<Result<(), String>>();
         let (mic, system_audio) = (self.platform.mic.clone(), self.platform.system_audio.clone());
         let me = self.me.clone();
+        let detectors = vec![("You", self.speech.speech_detector()), ("Others", self.speech.speech_detector())];
         let audio = std::thread::spawn(move || {
-            let chunker = Arc::new(AudioChunker::live(move |chunk| drop(chunk_tx.send(chunk))));
+            let live = Live::start(detectors, pacer, chunk_tx);
             // A stream broke for good (device unplugged, permission revoked): keep what we have.
             let on_error: OnError = Arc::new(move |message| {
                 if let Some(engine) = me.upgrade() {
@@ -604,12 +611,9 @@ impl Engine {
                     engine.stop(StopReason::Asked);
                 }
             });
-            let feed = |speaker: &'static str| {
-                let chunker = chunker.clone();
-                Box::new(move |samples: &[f32]| chunker.append(speaker, samples)) as OnSamples
-            };
-            let streams =
-                mic.start(feed("You"), on_error.clone()).and_then(|m| system_audio.start(feed("Others"), on_error).map(|s| [m, s]));
+            let streams = mic
+                .start(live.feed("You"), on_error.clone())
+                .and_then(|m| system_audio.start(live.feed("Others"), on_error).map(|s| [m, s]));
             match streams {
                 Ok(mut streams) => {
                     let _ = started_tx.send(Ok(()));
@@ -617,9 +621,11 @@ impl Engine {
                     for stream in streams.iter_mut() {
                         stream.stop(); // hands over what was still queued
                     }
-                    chunker.finish(); // the tails; dropping the chunker closes the channel
+                    drop(streams);
+                    live.finish(); // the rest of each stream; the worker's end closes the channel
                 }
                 Err(e) => {
+                    live.finish();
                     let _ = started_tx.send(Err(e));
                 }
             }
@@ -1396,7 +1402,7 @@ impl Engine {
                 editable: !is_live,
                 empty_text: m.transcript.is_empty().then(|| {
                     if is_live {
-                        "Text appears here, a few seconds after someone speaks, while Muesli transcribes.".to_string()
+                        "Text appears here a few seconds after each sentence while Muesli transcribes.".to_string()
                     } else {
                         "Nothing was said, or nothing could be transcribed.".to_string()
                     }

@@ -16,16 +16,18 @@ pub mod models;
 pub mod paths;
 pub mod ports;
 pub mod preferences;
+pub mod segmenter;
 pub mod status;
 pub mod store;
 pub mod update;
 pub mod whisper_model;
 
-pub use chunker::{AudioChunker, Pauses};
+pub use chunker::AudioChunker;
 pub use detection::{DetectionEvent, DetectionLogic};
 pub use models::{AudioChunk, DetectedMeeting, Meeting, MeetingState, TranscriptSegment};
 pub use paths::Paths;
 pub use preferences::Preferences;
+pub use segmenter::{EnergyDetector, Pacer, Segmenter, SpeechDetector};
 pub use status::AppStatus;
 pub use whisper_model::ModelSpec;
 

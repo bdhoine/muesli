@@ -3,6 +3,7 @@
 
 use muesli_core::whisper_model::{DEFAULT_MODEL, VAD_MODEL};
 use muesli_core::Paths;
+use muesli_core::{EnergyDetector, SpeechDetector};
 use muesli_engine::{ModelStatus, SpeechModel, Transcriber};
 use muesli_whisper::{ModelManager, Phase};
 
@@ -37,5 +38,12 @@ impl SpeechModel for WhisperSpeech {
         muesli_whisper::Transcriber::new(&model, Some(&vad), languages)
             .map(|t| Box::new(t) as Transcriber)
             .ok_or_else(|| format!("The speech model could not be loaded: {}", model.display()))
+    }
+
+    fn speech_detector(&self) -> Box<dyn SpeechDetector> {
+        match muesli_whisper::SileroDetector::new(&VAD_MODEL.path(&self.paths)) {
+            Some(silero) => Box::new(silero),
+            None => Box::new(EnergyDetector::default()),
+        }
     }
 }
