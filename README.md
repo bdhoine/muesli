@@ -91,7 +91,7 @@ Muesli speaks the Model Context Protocol (MCP), so Claude and other assistants (
 
 Everything stays on your Mac: the assistant starts Muesli's MCP server itself and talks to it directly, and nothing is exposed to the network. Claude Desktop gets Muesli as an extension, with its name and icon, in one click, and when a new version of Muesli comes with a newer extension, a notification and a banner in Muesli's window offer the update. For the other assistants, Settings shows the command or config to copy. On your phone there is no direct connection, but a Claude conversation started on your Mac syncs to the Claude app.
 
-Assistants can read transcripts and manage finished meetings: rename them, set attendees, rename speakers and delete them (deleted files go to the Trash). They cannot start or stop transcribing, and they have to ask: Muesli cannot notify a conversation when a transcript is ready. What an assistant reads is sent to its provider.
+Assistants can read transcripts and manage finished meetings: rename them, set attendees, rename speakers and delete them (deleted files go to the Trash). They can also add names and terms to Muesli's vocabulary; with the plugin, Claude does that when you correct a misheard name. They cannot start or stop transcribing, and they have to ask: Muesli cannot notify a conversation when a transcript is ready. What an assistant reads is sent to its provider.
 
 Setup steps are in [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md).
 
@@ -148,6 +148,8 @@ Settings → General shows your version with **What's new**, **Check for Updates
 
 - Speakers are "You" and "Others". Muesli does not tell the other participants apart.
 - Headphones are not needed. Without them your microphone also hears the call from the speakers; Muesli removes that copy before transcribing, so the others' words appear once, as Others, even when you talk at the same time.
+- When the call is over, Muesli goes over the whole meeting once more, in longer stretches and more carefully, and replaces the live text with the better version. The menu shows how far it is ("Improving the transcript… 40%"); on a slower computer this can take a while. Starting the next meeting stops it and keeps the live text.
+- Settings has a **Vocabulary**: names and terms Muesli should spell right (people, products, jargon). The meeting's title and the calendar attendees are used too.
 - Text appears a few seconds after each sentence. During a long stretch without a pause it comes every ten seconds or so, and on a slower computer in larger steps, up to thirty seconds.
 - Meetings in your calendar are recognised when they have other attendees or a Teams, Zoom, Google Meet or Webex link.
 - On Windows, meetings are noticed from other apps using the microphone and from Teams. There is no calendar detection, because Windows has no system calendar that apps can read; an in-person meeting has to be started by hand. [Why the two apps differ](docs/PLATFORMS.md).

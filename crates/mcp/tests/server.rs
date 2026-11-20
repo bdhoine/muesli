@@ -94,3 +94,14 @@ fn equal_start_runs_larger_than_the_cap_are_sent_whole() {
 fn trash(dir: &tempfile::TempDir) -> std::sync::Arc<muesli_platform_fake::FolderTrash> {
     std::sync::Arc::new(muesli_platform_fake::FolderTrash::new(dir.path().join("Trash"), "Trash"))
 }
+
+#[test]
+fn the_vocabulary_is_audited_and_untouched_while_access_is_off() {
+    assert!(muesli_mcp::tools::Tools::MANAGE_NAMES.contains(&"update_vocabulary"), "audited like the other changes");
+    let dir = tempfile::tempdir().unwrap();
+    let paths = Paths::new(dir.path().join("s"), dir.path().join("t"));
+    let server = Server::new(paths.clone(), trash(&dir)).with_refusal(|| Some("off".into()));
+    let reply = call(&server, "update_vocabulary", json!({"add": ["LocalVQE"]}));
+    assert_eq!(reply["result"]["isError"], json!(true));
+    assert!(!paths.vocabulary().exists());
+}

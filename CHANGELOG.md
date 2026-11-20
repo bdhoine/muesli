@@ -5,6 +5,9 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Added
+- When the call is over, Muesli transcribes the meeting once more, in longer stretches and more carefully, and replaces the live text with the better version. You can follow it in the menu and in Muesli's window; starting the next meeting stops it and keeps the live text.
+- Settings: a **Vocabulary** of names and terms Muesli should spell right. The meeting's title and calendar attendees help too.
+- AI assistants can read and extend the vocabulary (`get_vocabulary`, `update_vocabulary`). With the Claude plugin, Claude adds a name or term when you correct how it was transcribed.
 - Without headphones, your microphone's copy of the call is removed before transcribing, so the others' words show up once, as Others, also when you talk at the same time. If that ever fails, Muesli carries on with the microphone as it is.
 - Clicking the "Looks like a meeting" notification now starts transcribing, like its **Start transcribing** button. Clicking "The call seems to have ended" only opens Muesli's window; stopping stays a button press.
 - Settings: a small green light before "Connected" for Claude Desktop (amber when an older version is connected).

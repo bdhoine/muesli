@@ -5,7 +5,8 @@ use muesli_core::editor::{EditError, MeetingEditor, MAX_ATTENDEES, MAX_SPEAKER_L
 use muesli_core::json::{iso_date, iso_date_opt, to_pretty_sorted};
 use muesli_core::status::{Current, Detected, LastReady};
 use muesli_core::store::{MeetingStore, Store};
-use muesli_core::{AppStatus, Meeting, MeetingState, Paths, TranscriptSegment};
+use muesli_core::vocabulary::{MAX_TERMS, MAX_TERM_LENGTH};
+use muesli_core::{AppStatus, Meeting, MeetingState, Paths, TranscriptSegment, Vocabulary};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 
@@ -34,8 +35,8 @@ impl From<EditError> for ToolError {
 
 type Discard = Box<dyn Fn(&Path) + Send + Sync>;
 
-/// Three read tools, plus four tools that manage finished meetings in the store and the
-/// transcripts folder.
+/// Four read tools, plus four tools that manage finished meetings in the store and the
+/// transcripts folder and one that changes the vocabulary.
 pub struct Tools {
     paths: Paths,
     discard: Discard,
@@ -43,14 +44,15 @@ pub struct Tools {
 
 pub fn instructions() -> String {
     format!(
-        "Access to Muesli, a local meeting transcriber. Use get_status to see whether a meeting is detected or being recorded, list_transcripts to find meetings, and get_transcript to read one. A transcript is complete when its state is \"ready\". Finished meetings can be managed: rename_transcript, set_attendees, rename_speaker (for example \"Others\" to a person's name) and delete_transcript, which moves the files to the {}. Confirm with the user before deleting. Recordings cannot be started or stopped.",
+        "Access to Muesli, a local meeting transcriber. Use get_status to see whether a meeting is detected or being recorded, list_transcripts to find meetings, and get_transcript to read one. A transcript is complete when its state is \"ready\". Finished meetings can be managed: rename_transcript, set_attendees, rename_speaker (for example \"Others\" to a person's name) and delete_transcript, which moves the files to the {}. Confirm with the user before deleting. Recordings cannot be started or stopped. The vocabulary (get_vocabulary, update_vocabulary) holds names and terms Muesli spells right in future transcripts: when the user corrects a misheard name or term, add the right spelling.",
         trash_name()
     )
 }
 
 impl Tools {
-    pub const READ_NAMES: [&'static str; 3] = ["get_status", "list_transcripts", "get_transcript"];
-    pub const MANAGE_NAMES: [&'static str; 4] = ["rename_transcript", "set_attendees", "rename_speaker", "delete_transcript"];
+    pub const READ_NAMES: [&'static str; 4] = ["get_status", "list_transcripts", "get_transcript", "get_vocabulary"];
+    pub const MANAGE_NAMES: [&'static str; 5] =
+        ["rename_transcript", "set_attendees", "rename_speaker", "delete_transcript", "update_vocabulary"];
 
     pub fn is_tool(name: &str) -> bool {
         Self::READ_NAMES.contains(&name) || Self::MANAGE_NAMES.contains(&name)
@@ -146,6 +148,23 @@ impl Tools {
                 "annotations": update,
             },
             {
+                "name": "get_vocabulary",
+                "title": "Get vocabulary",
+                "description": "The names and terms Muesli asks its speech model to spell right (people, products, jargon, acronyms), oldest first.",
+                "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
+                "annotations": read_only,
+            },
+            {
+                "name": "update_vocabulary",
+                "title": "Update vocabulary",
+                "description": "Add or remove names and terms Muesli should spell right in future transcripts. Add the correct spelling when the user corrects a misheard name or term; never ordinary words. Existing transcripts are not changed. Returns the whole list.",
+                "inputSchema": schema(json!({
+                    "add": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": MAX_TERM_LENGTH }, "maxItems": MAX_TERMS, "description": "Terms to add, spelled as they should appear." },
+                    "remove": { "type": "array", "items": { "type": "string" }, "maxItems": MAX_TERMS, "description": "Terms to remove." },
+                }), json!([])),
+                "annotations": update,
+            },
+            {
                 "name": "delete_transcript",
                 "title": "Delete transcript",
                 "description": format!("Delete a finished meeting. Its transcript files are moved to the {}, so the user can restore them. Ask the user to confirm first.", trash_name()),
@@ -178,6 +197,27 @@ impl Tools {
                     return Err(ToolError::new("from and to are required"));
                 };
                 self.managed(args, |editor, id| editor.rename_speaker(id, from, to))
+            }
+            "get_vocabulary" => Ok(json_text(&VocabularyOut { terms: Vocabulary::load(&self.paths).terms, max_terms: MAX_TERMS })),
+            "update_vocabulary" => {
+                let list = |key: &str| -> Result<Vec<String>, ToolError> {
+                    match args.get(key) {
+                        None => Ok(Vec::new()),
+                        Some(Value::Array(a)) if a.iter().all(Value::is_string) => {
+                            Ok(a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                        }
+                        Some(_) => Err(ToolError::new(format!("{key} must be a list of terms"))),
+                    }
+                };
+                let (add, remove) = (list("add")?, list("remove")?);
+                if add.is_empty() && remove.is_empty() {
+                    return Err(ToolError::new("Give terms to add or remove"));
+                }
+                let mut vocabulary = Vocabulary::load(&self.paths);
+                vocabulary.remove(&remove);
+                vocabulary.add(&add).map_err(ToolError::new)?;
+                vocabulary.save(&self.paths).map_err(|e| ToolError::new(format!("The vocabulary could not be saved: {e}")))?;
+                Ok(json_text(&VocabularyOut { terms: vocabulary.terms, max_terms: MAX_TERMS }))
             }
             "delete_transcript" => {
                 let id = str_arg(args, "id").ok_or_else(|| ToolError::new("id is required"))?;
@@ -408,6 +448,13 @@ struct Deleted {
     deleted: String,
     title: String,
     moved_to_trash: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VocabularyOut {
+    terms: Vec<String>,
+    max_terms: usize,
 }
 
 // MARK: helpers

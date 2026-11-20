@@ -200,7 +200,8 @@ fn manifest_has_what_claude_desktop_needs() {
     assert_eq!(m["server"]["entry_point"], "server/muesli-mcp");
     assert_eq!(m["server"]["mcp_config"]["command"], "${__dirname}/server/muesli-mcp");
     let tools: Vec<&str> = m["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(tools.len(), 7);
+    assert_eq!(tools.len(), 9);
+    assert!(tools.contains(&"update_vocabulary"));
     assert!(tools.contains(&"delete_transcript"));
     assert!(!text.contains(r"\/"));
 }

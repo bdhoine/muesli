@@ -23,7 +23,7 @@ In the Claude desktop app, open **Customize → Plugins**, choose **Add → Add 
 
 ## What it runs
 
-The plugin starts `node server/muesli-mcp.js`, a short script (about 80 lines, in this folder) that finds the `muesli-mcp` server inside the installed app and runs it, passing standard input and output through. It looks in this order: the path in the `MUESLI_MCP` environment variable, the file `mcp-path` in Muesli's support folder (the app writes its own location there every time it starts), then the usual install folders (`/Applications/Muesli.app` on macOS; `%LOCALAPPDATA%\Muesli`, `%LOCALAPPDATA%\Programs\Muesli` and `%ProgramFiles%\Muesli` on Windows). The server talks to Claude over standard input and output only. It opens no network connection and no port, downloads nothing and installs nothing. It reads Muesli's files in the support folder (`~/Library/Application Support/Muesli` on macOS, `%APPDATA%\Muesli` on Windows) and your transcripts folder, and it can rename and delete transcripts there. Apart from the launcher, the plugin contains only this configuration, one skill with instructions for Claude, and an icon.
+The plugin starts `node server/muesli-mcp.js`, a short script (about 80 lines, in this folder) that finds the `muesli-mcp` server inside the installed app and runs it, passing standard input and output through. It looks in this order: the path in the `MUESLI_MCP` environment variable, the file `mcp-path` in Muesli's support folder (the app writes its own location there every time it starts), then the usual install folders (`/Applications/Muesli.app` on macOS; `%LOCALAPPDATA%\Muesli`, `%LOCALAPPDATA%\Programs\Muesli` and `%ProgramFiles%\Muesli` on Windows). The server talks to Claude over standard input and output only. It opens no network connection and no port, downloads nothing and installs nothing. It reads Muesli's files in the support folder (`~/Library/Application Support/Muesli` on macOS, `%APPDATA%\Muesli` on Windows) and your transcripts folder, and it can rename and delete transcripts there and change the vocabulary (`vocabulary.json`). Apart from the launcher, the plugin contains only this configuration, one skill with instructions for Claude, and an icon.
 
 ## Tools
 
@@ -36,10 +36,12 @@ The plugin starts `node server/muesli-mcp.js`, a short script (about 80 lines, i
 | `set_attendees` | Replaces a finished meeting's attendee list |
 | `rename_speaker` | Renames a speaker label, for example "Others" to a person's name |
 | `delete_transcript` | Moves a finished meeting to the Trash or Recycle Bin. Claude asks you first |
+| `get_vocabulary` | Lists the names and terms Muesli spells right |
+| `update_vocabulary` | Adds or removes names and terms for future transcripts |
 
 Claude cannot start or stop transcribing.
 
-The plugin's skill also tells Claude how to summarise a meeting: give a generic meeting a proper title, set the attendees and real speaker names when the conversation makes them clear, and write the summary in a fixed shape (purpose, key points, decisions, action items, open questions, next steps) from `skills/muesli/summary-template.md`.
+The plugin's skill also tells Claude how to summarise a meeting: give a generic meeting a proper title, set the attendees and real speaker names when the conversation makes them clear, and write the summary in a fixed shape (purpose, key points, decisions, action items, open questions, next steps) from `skills/muesli/summary-template.md`. When you correct a misheard name or term, Claude adds the right spelling to Muesli's vocabulary, so the next transcripts get it right.
 
 ## Privacy
 

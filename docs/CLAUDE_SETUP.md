@@ -47,8 +47,10 @@ There is no direct connection from claude.ai or the Claude mobile app to Muesli.
 | `set_attendees` | Sets the attendees of a finished meeting |
 | `rename_speaker` | Renames a speaker in a finished meeting, for example "Others" to "Ann" |
 | `delete_transcript` | Moves a finished meeting's files to the Trash or Recycle Bin |
+| `get_vocabulary` | Returns the names and terms Muesli asks its speech model to spell right |
+| `update_vocabulary` | Adds or removes names and terms (`add`, `remove`); used from the next transcript on |
 
-The first three only read. The others work only on meetings that are no longer recording.
+`get_status`, `list_transcripts`, `get_transcript` and `get_vocabulary` only read. The meeting tools work only on meetings that are no longer recording.
 
 A transcript is complete when its `state` is `ready`. The assistant has to ask; Muesli cannot notify a conversation.
 

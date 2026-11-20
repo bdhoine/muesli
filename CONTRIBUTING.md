@@ -106,6 +106,10 @@ cargo build -p muesli-sim && cd apps/sim && npm ci && npx playwright install chr
 
 `recording → finalizing → ready`, or `failed` (the values in the files keep these names). The meeting is saved to the store when transcribing starts and again after every transcribed chunk, so a crash loses at most the audio not yet transcribed. On launch, `MeetingStore::recover_interrupted` turns leftovers into `ready` with `partial: true`, or `failed` when nothing was transcribed. It then runs `MeetingStore::import_transcripts`, which copies any `.json` in the transcripts folder whose id is not in the store yet; it never overwrites a stored meeting.
 
+### End-of-meeting pass and vocabulary
+
+The live consumer keeps every block it transcribed (16-bit, in memory) and hands back the loaded model when the meeting stops. `final_pass.rs` regroups the blocks per speaker into chunks of up to 30 s and transcribes them again with beam search and a prompt; the result replaces the live text. The engine's `Activity::Improving` shows progress and lets Start and Quit cancel it. Every chunk carries its prompt (`AudioChunk::prompt`) and whether to decode carefully (`best`): `vocabulary::whisper_prompt` builds it from `vocabulary.json` and the meeting's title and attendees. The fake transcriber answers `best` chunks with "Improved: …" sentences and records every prompt, so the engine tests see both.
+
 ### Echo cancellation
 
 Without headphones the microphone hears the call. The live worker sends both streams through `EchoStage` (`crates/core/src/aec.rs`) before the microphone's segmenter: the system audio is the reference. The stage estimates the echo delay (cross-correlation of 10 ms loudness envelopes, −300 to +800 ms, re-checked every second; a changed delay must win three times), shifts the reference by it (LocalVQE only aligns the last few tens of milliseconds itself), fills gaps where the system audio delivered nothing (Windows loopback is silent between sounds), and restarts the canceller after a change. It passes the microphone through untouched while the far end has been quiet for 2 s, and drops the canceller for the rest of the meeting on an error or when it uses more than half of real time. The canceller is LocalVQE (`crates/aec`, one CPU thread, about 12% of an M1 core); measurements are in `docs/AUDIO-SPIKE.md`. The text filter (`echo.rs`) still removes what slips through. Tests use `StandInCanceller`, which subtracts the reference at the lag and gain it learns.
@@ -123,6 +127,7 @@ One code path (`muesli-import`). Files come from **Transcribe Audio File…** (m
 | `<support>/meetings/<id>.json` | app | Canonical copy of every meeting, rewritten while transcribing |
 | `<support>/state.json` | app | Current state and heartbeat, rewritten on change and every 10 s |
 | `<support>/config.json` | app | Preferences shared with `muesli-mcp`: `mcpEnabled`, `claudeDesktopConfigEntry`, `languages`, `onboardingDone`, `transcriptsFolder`, `extensionUpdateNotified`, `extensionUpdateDismissed`, and for updates `autoUpdateCheck` (default true), `updateLastChecked`, `updateNotified`, `lastRunVersion`. Keys of earlier versions are dropped on start (`Preferences::migrate`). |
+| `<support>/vocabulary.json` | app (Settings) and `muesli-mcp` (`update_vocabulary`) | `schemaVersion`, `terms`: names and terms for Whisper's prompt. Read on every use, never cached, because both write it |
 | `<support>/mcp-path` | app | Where `muesli-mcp` is, for the Claude plugin |
 | `<support>/audit.log` | `muesli-mcp` | One JSON line per management tool call (time, tool, meetingId); read calls are not logged |
 
@@ -149,7 +154,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_status
 
 Rules to keep:
 
-- No tool may start or stop transcribing or change settings. Management tools only touch meetings in state `ready` or `failed`, never overwrite another meeting's files, and delete by moving to the Trash. Read tools are annotated `readOnlyHint`, delete as `destructiveHint`.
+- No tool may start or stop transcribing or change settings; the vocabulary (`update_vocabulary`) is the one shared list it may change. Management tools only touch meetings in state `ready` or `failed`, never overwrite another meeting's files, and delete by moving to the Trash. Read tools are annotated `readOnlyHint`, delete as `destructiveHint`.
 - The stdio server refuses tool calls unless access is switched on.
 - Management tool calls are written to `audit.log`.
 

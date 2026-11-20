@@ -22,6 +22,12 @@
 {"jsonrpc": "2.0", "id": 21, "method": "tools/call", "params": {"name": "rename_transcript", "arguments": {"id": "gamma-3", "title": "x"}}}
 {"jsonrpc": "2.0", "id": 22, "method": "tools/call", "params": {"name": "delete_transcript", "arguments": {"id": "missing"}}}
 {"jsonrpc": "2.0", "id": 23, "method": "tools/call", "params": {"name": "delete_transcript", "arguments": {"id": "gamma-3"}}}
+{"jsonrpc": "2.0", "id": 101, "method": "tools/call", "params": {"name": "get_vocabulary", "arguments": {}}}
+{"jsonrpc": "2.0", "id": 102, "method": "tools/call", "params": {"name": "update_vocabulary", "arguments": {"add": ["LocalVQE", "  Anna\nPeeters ", "localvqe"]}}}
+{"jsonrpc": "2.0", "id": 103, "method": "tools/call", "params": {"name": "update_vocabulary", "arguments": {"remove": ["localvqe"]}}}
+{"jsonrpc": "2.0", "id": 104, "method": "tools/call", "params": {"name": "update_vocabulary", "arguments": {}}}
+{"jsonrpc": "2.0", "id": 105, "method": "tools/call", "params": {"name": "update_vocabulary", "arguments": {"add": ["xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]}}}
+{"jsonrpc": "2.0", "id": 106, "method": "tools/call", "params": {"name": "get_vocabulary", "arguments": {}}}
 {"jsonrpc": "2.0", "id": 24, "method": "tools/call", "params": {"name": "start_recording", "arguments": {}}}
 {"jsonrpc": "2.0", "id": 25, "method": "nope"}
 {"jsonrpc": "2.0", "id": 26}
