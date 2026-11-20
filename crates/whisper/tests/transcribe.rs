@@ -169,3 +169,33 @@ fn the_vocabulary_prompt_spells_a_name_right() {
     assert!(with.contains(&name), "{with}");
     assert!(with_best.contains(&name), "{with_best}");
 }
+
+/// What the end-of-meeting pass costs: a long speech clip in 30 s chunks with beam search (the
+/// pass) and greedy (as before), and in 8 s greedy blocks (live). Prints seconds of compute per
+/// minute of speech.   MUESLI_TEST_LONG_WAV=long.wav (plus the models above)
+#[test]
+#[ignore]
+fn end_pass_speed() {
+    let t = transcriber(true);
+    let samples = read_wav(&env("MUESLI_TEST_LONG_WAV"));
+    let minutes = samples.len() as f64 / RATE as f64 / 60.0;
+    let run = |seconds: usize, best: bool| {
+        let started = std::time::Instant::now();
+        let mut words = 0;
+        for (i, part) in samples.chunks(seconds * RATE).enumerate() {
+            let chunk = AudioChunk {
+                speaker: "You".into(),
+                offset_seconds: (i * seconds) as f64,
+                samples: part.to_vec(),
+                best,
+                ..Default::default()
+            };
+            words += t.transcribe(&chunk).unwrap().iter().map(|s| s.text.split_whitespace().count()).sum::<usize>();
+        }
+        (started.elapsed().as_secs_f64() / minutes, words)
+    };
+    for (label, seconds, best) in [("live, 8 s greedy", 8, false), ("30 s greedy", 30, false), ("end pass, 30 s beam", 30, true)] {
+        let (per_minute, words) = run(seconds, best);
+        eprintln!("{label}: {per_minute:.1} s per minute of speech ({:.0} min per hour), {words} words", per_minute);
+    }
+}

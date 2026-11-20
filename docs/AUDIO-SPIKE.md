@@ -132,3 +132,18 @@ Apple M1, macOS, LocalVQE at the pinned commit built as a shared library (`LOCAL
 - **What Whisper hears** (150 ms echo, reference not shifted): echo alone, raw gives the whole far-end sentence as "You"; cleaned gives "4. The budget for the second pool." (a residue, from the poor alignment at 150 ms). Double talk: raw and cleaned both give the near sentence exactly, and the cleaned one has no far-end words.
 
 Plan change: `EchoStage` (M2 step 1) gets a delay estimator: it tracks the echo delay from the envelopes of both streams, shifts the reference by it, and re-estimates during the meeting (clock drift, a change of output device).
+
+## End-of-meeting pass: cost on a Mac (20 Nov 2026)
+
+Apple M1, Whisper Large v3 Turbo q5_0 (the Metal build), Silero voice activity on, languages English and Dutch (so each chunk also runs language detection). A 3.5-minute clip of continuous speech (a `say` voice), transcribed three ways (`crates/whisper/tests/transcribe.rs`, `end_pass_speed`):
+
+| How | Compute per minute of speech | Per hour of speech | Words |
+| --- | --- | --- | --- |
+| Live-sized blocks, 8 s, greedy | 37.3 s | 37 min | 702 |
+| 30 s chunks, greedy | 17.3 s | 17 min | 702 |
+| 30 s chunks, beam search (the end pass) | 19.8 s | 20 min | 703 |
+
+- The end pass costs about **20 minutes per hour of speech** on an M1. A one-hour meeting has roughly an hour of speech across both speakers, so expect about that after a long call. It is cancellable (Start, Quit) and keeps the live text then.
+- Beam search adds only about 15% over greedy; the 30 s chunks themselves are half the cost of live-sized blocks (whisper.cpp pads every block to 30 s, section 3).
+- Synthetic speech is too clean to show a quality difference (the word counts match); judge quality on real meetings.
+- Not measured: a Windows laptop (CPU only, expect several times slower), and how much the per-chunk language detection (a second encoder run when more than one language is chosen) adds.
