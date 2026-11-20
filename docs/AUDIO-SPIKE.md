@@ -84,3 +84,28 @@ Recommendation:
 
 1. AEC engine: `sonora` is recommended; `webrtc-audio-processing` (the same algorithm in C++) is acceptable but needs meson in CI. Go with `sonora`?
 2. With `sonora` there is no model to bundle or download. Agreed?
+
+## M2 decision: LocalVQE (20 Nov 2026)
+
+The maintainer chose LocalVQE (best double talk for a transcriber) over `sonora`. Nothing of M2 is built yet. What was found, and the plan, for whoever continues:
+
+**Facts checked** (source cloned from `https://github.com/localai-org/LocalVQE`, commit `7f61cd05095d42e56a135b303f5bb4d761da22b9`, 19 Oct 2026):
+
+- Apache-2.0 code; the README says the weights are trained on the ICASSP 2023 DNS Challenge (CC BY 4.0) and fine-tuned on the ICASSP 2022/2023 AEC Challenge data, whose terms it does not give. **Check the AEC Challenge data terms before shipping.** Ship its LICENSE (and attribution) with the app.
+- C API (`ggml/localvqe_api.h`): `localvqe_new(path)`, `localvqe_options_set_threads`, `localvqe_process_frame_f32(ctx, mic, ref, 256, out)` per 256-sample hop (16 ms at 16 kHz), `localvqe_reset`, `localvqe_last_error`, `localvqe_free`. Mic and reference go in together per hop; `ggml/test_align.cpp` suggests it aligns them itself. Verify how much delay it tolerates before relying on that (E3).
+- Model for Muesli: **`localvqe-v1.4-aec-200K-f32.gguf`** (echo only, ~3 MB, 203 K params). It keeps voice, noise and room unchanged, which suits Whisper (trained on noisy audio; noise suppression often hurts recognition). The joint v1.3 (19 MB) also suppresses noise and reverb; compare only if v1.4-AEC leaves too much. SHA-256 from its allowlist (`ggml/model_hash.cpp`): `b6e43138588a83bfe903ab5e143b4020b91c1e1629f5a575ac5855ff0003c731`. LocalVQE refuses files not on that allowlist.
+- Its README (not measured here): v1.4-AEC, 1 thread, Ryzen 9 7900: 1.29 ms p50 per 16 ms hop (8% of a core); double-talk echo MOS 4.20.
+- Weights are only on Hugging Face (`https://huggingface.co/LocalAI-io/LocalVQE`), blocked in the environment where this was written, so **nothing was run**: no model, no speed or quality numbers.
+- Build: CMake ≥ 3.20, C++17, and a **patched ggml** (git submodule `ggml/vendor/ggml` plus `ggml/patches/ggml-gru.patch`, applied at configure time). On x86 its CMake builds ggml CPU variants as separately loaded `.so`s (`GGML_BACKEND_DL`); force `GGML_BACKEND_DL=OFF`, `GGML_STATIC=ON`, `GGML_NATIVE=OFF` for a self-contained library.
+
+**The risk to solve first: two ggml copies.** whisper-rs links whisper.cpp's ggml statically; LocalVQE has its own patched ggml with the same symbol names. Linking both statically into one binary fails or, worse, mixes them. Plan: build LocalVQE as a **shared library** (`LOCALVQE_BUILD_SHARED=ON`, ggml inside it, ggml symbols hidden: `-fvisibility=hidden`, `-Wl,--exclude-libs,ALL` on Linux) and **load it at run time** with `libloading`. macOS (two-level namespace) and Windows (per-DLL imports) keep the two apart; check Linux too since the workspace builds there. Loading at run time also gives the fail-safe for free: no library or no model means passthrough (E6).
+
+**Plan:**
+
+1. `crates/core`: `EchoCanceller` trait (one hop of mic plus reference in, cleaned mic out) and an `EchoStage` holding the framing (256-sample hops), the reference buffer (E3), passthrough when the far end has been silent for a while (E4), and the fail-safe (E6: an error, or more than about half real time spent over a window of hops, means raw microphone for the rest of the meeting, no message). Tests with a stand-in canceller and seeded synthetic signals.
+2. `crates/engine/src/live.rs`: the worker already sees both streams in arrival order. "Others" samples feed the stage's reference before going to their segmenter; "You" samples go through the stage, then to theirs. Get the canceller from a factory in `Options` (or `SpeechModel`), `None` in tests by default, a stand-in in the simulator.
+3. `crates/aec` (`muesli-aec`): LocalVQE as a git submodule (pinned commit, nested ggml submodule), `build.rs` with the `cmake` crate behind a `localvqe` feature (like `transcribe` in `crates/whisper`), the `libloading` wrapper implementing `EchoCanceller`. Set threads to 1. Ignored quality tests read clips from env vars (`MUESLI_AEC_MIC_WAV`, `MUESLI_AEC_REF_WAV`, `MUESLI_AEC_NEAR_WAV`): echo reduction ≥ 20 dB on single talk; near-end words kept, ideally scored by Whisper's output.
+4. `apps/desktop`: bundle the shared library (Tauri resources; on macOS sign it with the app) and the 3 MB model. E8: under ~5 MB, so bundle it, fetched in CI at build time with the SHA-256 above and never committed. REQUIREMENTS A10 then still names exactly two downloads; say there that echo cancellation runs locally from a bundled model.
+5. Simulator scenario where the microphone contains delayed system audio; docs (README, CONTRIBUTING, AGENTS, REQUIREMENTS A10/A10a, PLATFORMS, CHANGELOG "Without headphones, your microphone's copy of the call is removed before transcribing").
+
+To run anything real, the environment needs `huggingface.co` allowed (Network access in the cloud environment's settings); that also allows real Whisper and Silero runs for sections 1 and 3 above.
