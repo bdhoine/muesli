@@ -176,7 +176,10 @@ fn the_vocabulary_prompt_spells_a_name_right() {
 #[test]
 #[ignore]
 fn end_pass_speed() {
+    // Core ML compiles its model for the Neural Engine on the first load, then caches it.
+    let loading = std::time::Instant::now();
     let t = transcriber(true);
+    eprintln!("model loaded in {:.1} s", loading.elapsed().as_secs_f64());
     let samples = read_wav(&env("MUESLI_TEST_LONG_WAV"));
     let minutes = samples.len() as f64 / RATE as f64 / 60.0;
     let run = |seconds: usize, best: bool| {

@@ -147,3 +147,19 @@ Apple M1, Whisper Large v3 Turbo q5_0 (the Metal build), Silero voice activity o
 - Beam search adds only about 15% over greedy; the 30 s chunks themselves are half the cost of live-sized blocks (whisper.cpp pads every block to 30 s, section 3).
 - Synthetic speech is too clean to show a quality difference (the word counts match); judge quality on real meetings.
 - Not measured: a Windows laptop (CPU only, expect several times slower), and how much the per-chunk language detection (a second encoder run when more than one language is chosen) adds.
+
+## Core ML on an M1 (20 Nov 2026)
+
+Can whisper.cpp's Core ML encoder (the Neural Engine) speed Muesli up on a Mac? Same M1, model, settings and 3.5-minute clip as above, `end_pass_speed` with the `coreml` feature of `crates/whisper` (off by default). The Core ML encoder is `ggml-large-v3-turbo-encoder.mlmodelc` from Hugging Face (`ggerganov/whisper.cpp`, a 1.17 GB zip, 1.2 GB unpacked), which whisper.cpp loads from next to `ggml-large-v3-turbo-q5_0.bin`.
+
+| Per hour of speech | Metal (today) | Core ML encoder | Core ML build, encoder missing |
+| --- | --- | --- | --- |
+| Live-sized blocks, 8 s, greedy | 37 min | **11 min** (3.4×) | 37 min |
+| 30 s chunks, greedy | 17 min | **6 min** (2.8×) | 17 min |
+| End pass, 30 s beam search | 20 min | **9 min** (2.3×) | 20 min |
+| Model load | 0.9 s | 96 s the first time on this Mac (Core ML compiles for the device), 0.6 s after | 0.4 s |
+
+- Metal was really in use before (`whisper_backend_init_gpu: using Metal backend`, the model on the GPU); flash attention was off (`flash attn = 0`), which is still untried.
+- The text is the same (702/703 words in each case).
+- Without the encoder file the Core ML build falls back to the normal encoder at the same speed (`WHISPER_COREML_ALLOW_FALLBACK`), so the build can ship before anyone has the file.
+- What shipping would take: a second, optional download of 1.2 GB on Macs (REQUIREMENTS A10 names two downloads today), unzipped next to the speech model; a first transcription that waits about a minute and a half while Core ML compiles (once per Mac, and again after a macOS update may invalidate the cache); and the `coreml` feature on in the app. Not measured: energy use, an M2/M3/M4, and whether the compile cache survives a Muesli update.
