@@ -149,6 +149,15 @@ for (const skin of ["mac", "windows"]) {
         await page.getByRole("button", { name: "Reset" }).click();
         await eventually(async () => (await page.getByTestId("chip-de").count()) === 0, "reset");
 
+        // Vocabulary: add with Enter, shown as a chip, removed with its ×.
+        const term = page.getByTestId("add-term").getByRole("textbox", { name: "Name or term" });
+        await term.fill("LocalVQE");
+        await term.press("Enter");
+        await page.getByTestId("term").getByText("LocalVQE").waitFor();
+        assert.equal(await term.inputValue(), "", "the field is empty again");
+        await page.getByRole("button", { name: "Remove LocalVQE" }).click();
+        await eventually(async () => (await page.getByTestId("term").count()) === 0, "removed");
+
         assert.equal(await page.getByTestId("command").count(), 0, "assistants are off by default");
         await page.getByTestId("assistants").check();
         await page.getByText("Connect Claude Desktop").waitFor();

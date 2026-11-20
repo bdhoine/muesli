@@ -12,7 +12,8 @@ use muesli_core::status::{Activity as StatusActivity, AppStatus, Current, Detect
 use muesli_core::store::{menu_subtitle_local, shorten_title, MeetingStore, Store};
 use muesli_core::whisper_model::DEFAULT_MODEL;
 use muesli_core::{
-    languages, AudioChunk, DetectedMeeting, DetectionEvent, DetectionLogic, Meeting, MeetingState, Pacer, Paths, Preferences, VERSION,
+    languages, AudioChunk, DetectedMeeting, DetectionEvent, DetectionLogic, Meeting, MeetingState, Pacer, Paths, Preferences, Vocabulary,
+    VERSION,
 };
 use serde::Serialize;
 
@@ -167,6 +168,8 @@ struct Inner {
     claude_status: Option<String>,
     assistant: String,
     capture_error: Option<String>,
+    /// Why the last term could not be added to the vocabulary (Settings).
+    vocabulary_error: Option<String>,
     started: bool,
     quitting: bool,
     update: updates::UpdateState,
@@ -259,6 +262,7 @@ impl Engine {
                 claude_status: None,
                 assistant: AssistantClient::ClaudeCode.name().to_string(),
                 capture_error: None,
+                vocabulary_error: None,
                 started: false,
                 quitting: false,
                 update: updates::UpdateState::default(),
@@ -604,7 +608,7 @@ impl Engine {
         let mut meeting = Meeting::new(&detected.title, &detected.source);
         meeting.started_at = self.now();
         meeting.attendees = detected.attendees.clone();
-        let prompt = muesli_core::vocabulary::whisper_prompt(&muesli_core::Vocabulary::load(&paths), &meeting.title, &meeting.attendees);
+        let prompt = muesli_core::vocabulary::whisper_prompt(&Vocabulary::load(&paths), &meeting.title, &meeting.attendees);
         meeting.state = MeetingState::Recording;
         MeetingStore::new(&paths).save(&meeting);
         let id = meeting.id.clone();
@@ -1137,6 +1141,21 @@ impl Engine {
             }
             Intent::ResetLanguages => {
                 self.save_prefs(|p| p.reset_languages());
+                self.changed();
+            }
+            Intent::AddTerm { term } => {
+                let paths = self.paths();
+                let mut vocabulary = Vocabulary::load(&paths);
+                let result = vocabulary.add(&[term]).and_then(|_| vocabulary.save(&paths).map_err(|e| e.to_string()));
+                self.lock().vocabulary_error = result.err();
+                self.changed();
+            }
+            Intent::RemoveTerm { term } => {
+                let paths = self.paths();
+                let mut vocabulary = Vocabulary::load(&paths);
+                vocabulary.remove(&[term]);
+                let _ = vocabulary.save(&paths);
+                self.lock().vocabulary_error = None;
                 self.changed();
             }
             Intent::SetAssistantsEnabled { on } => {
@@ -1723,9 +1742,9 @@ impl Engine {
         let claude_installed = self.host.claude_installed();
         let extension = self.extension_state();
         let helper = self.host.helper_path();
-        let (prefs, assistant, claude_status) = {
+        let (prefs, assistant, claude_status, vocabulary_error) = {
             let s = self.lock();
-            (s.prefs.clone(), s.assistant.clone(), s.claude_status.clone())
+            (s.prefs.clone(), s.assistant.clone(), s.claude_status.clone(), s.vocabulary_error.clone())
         };
         let client = AssistantClient::ALL.into_iter().find(|c| c.name() == assistant).unwrap_or(AssistantClient::ClaudeCode);
         // Terminal or PowerShell, and how to quote, follow the platform's words, not the build.
@@ -1768,6 +1787,11 @@ impl Engine {
             transcripts_folder_locked: paths.transcripts_set_by_environment(),
             start_at_login: self.platform.login_item.is_enabled(),
             languages: self.languages_view(),
+            vocabulary: VocabularyView {
+                terms: Vocabulary::load(&paths).terms,
+                error: vocabulary_error,
+                max_length: muesli_core::vocabulary::MAX_TERM_LENGTH,
+            },
             assistants,
             model: self.model_view(),
             permissions: self.permission_rows(),

@@ -295,8 +295,20 @@ pub struct SettingsView {
     pub transcripts_folder_locked: bool,
     pub start_at_login: bool,
     pub languages: LanguagesView,
+    pub vocabulary: VocabularyView,
     pub assistants: AssistantsView,
     pub model: ModelView,
     pub permissions: Vec<PermissionRow>,
     pub updates: UpdatesView,
+}
+
+/// Names and terms for Whisper (`vocabulary.json`, also changed by AI assistants).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VocabularyView {
+    /// Oldest first, as stored.
+    pub terms: Vec<String>,
+    /// Why the last term could not be added (too long, the list is full).
+    pub error: Option<String>,
+    pub max_length: usize,
 }

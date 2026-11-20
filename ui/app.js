@@ -4,7 +4,7 @@
 (function () {
   const { label, view, send, onChange, inApp } = window.muesli;
   const root = document.getElementById("app");
-  const local = { renaming: null, draft: "" };
+  const local = { renaming: null, draft: "", term: "" };
   let current = null;
 
   // ------------------------------------------------------------------------------------------
@@ -248,6 +248,21 @@
       ${reset ? `<span class="reset">${button("Reset", { type: "resetLanguages" }, { kind: "link", disabled: !l.canReset })}</span>` : ""}</div>`;
   }
 
+  // Names and terms Whisper should spell right; AI assistants add to it too.
+  function vocabulary(v) {
+    const chips = v.terms
+      .map(
+        (t) => `<span class="chip" data-testid="term">${esc(t)}
+          <button class="chip-x" aria-label="Remove ${esc(t)}" data-intent='${esc(JSON.stringify({ type: "removeTerm", term: t }))}'>${icons.x}</button></span>`,
+      )
+      .join("");
+    return `${v.terms.length ? `<div class="chips">${chips}</div>` : ""}
+      <form class="add-term" data-testid="add-term"><input type="text" name="term" value="${esc(local.term)}" maxlength="${v.maxLength}"
+        placeholder="A name or term" aria-label="Name or term" autocomplete="off" spellcheck="false">
+        <button class="btn" type="submit">Add</button></form>
+      ${v.error ? `<span class="error-text" role="alert">${esc(v.error)}</span>` : ""}`;
+  }
+
   function model(m) {
     const state = m.error ? "warn" : m.text === "Ready" ? "ok" : "";
     return `<div class="setting" data-testid="model">
@@ -326,6 +341,11 @@
       <section class="card"><div class="setting stack">
         <span class="sub">Spoken in your meetings. For each stretch of speech Muesli picks the most likely one; fewer languages, fewer mistakes.</span>
         ${languages(v.languages, { reset: true })}
+      </div></section>
+      <h2>Vocabulary</h2>
+      <section class="card"><div class="setting stack">
+        <span class="sub">Names and terms Muesli should spell right. AI assistants can add to it when you correct them.</span>
+        ${vocabulary(v.vocabulary)}
       </div></section>
       <h2>AI assistants</h2>
       <section class="card">
@@ -458,9 +478,18 @@
 
   root.addEventListener("input", (event) => {
     if (event.target.matches(".rename input")) local.draft = event.target.value;
+    if (event.target.matches(".add-term input")) local.term = event.target.value;
   });
 
   root.addEventListener("submit", (event) => {
+    if (event.target.matches(".add-term")) {
+      event.preventDefault();
+      const term = local.term.trim();
+      local.term = "";
+      if (term) send({ type: "addTerm", term });
+      renderers[label]?.(current);
+      return;
+    }
     if (!event.target.matches(".rename")) return;
     event.preventDefault();
     const title = local.draft.trim();

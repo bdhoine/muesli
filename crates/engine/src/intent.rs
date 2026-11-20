@@ -81,6 +81,13 @@ pub enum Intent {
         code: String,
     },
     ResetLanguages,
+    /// Settings: a name or term for the vocabulary.
+    AddTerm {
+        term: String,
+    },
+    RemoveTerm {
+        term: String,
+    },
     SetAssistantsEnabled {
         on: bool,
     },

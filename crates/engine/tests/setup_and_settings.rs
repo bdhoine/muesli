@@ -282,3 +282,24 @@ fn an_outdated_claude_extension_is_announced() {
     assert!(engine.main_view().extension_update.is_none());
     assert_eq!(fakes.notifier.notices().len(), notices);
 }
+
+#[test]
+fn the_vocabulary_is_edited_in_settings_and_shared_through_its_file() {
+    let h = Harness::ready();
+    assert!(h.engine.settings_view().vocabulary.terms.is_empty());
+    h.engine.intent(Intent::AddTerm { term: "  LocalVQE ".into() });
+    h.engine.intent(Intent::AddTerm { term: "localvqe".into() });
+    assert_eq!(h.engine.settings_view().vocabulary.terms, ["LocalVQE"]);
+    // An AI assistant (muesli-mcp, another process) adds one: Settings shows it.
+    let paths = h.engine.paths();
+    let mut v = muesli_core::Vocabulary::load(&paths);
+    v.add(&["Anna Peeters".to_string()]).unwrap();
+    v.save(&paths).unwrap();
+    assert_eq!(h.engine.settings_view().vocabulary.terms, ["LocalVQE", "Anna Peeters"]);
+    h.engine.intent(Intent::AddTerm { term: "x".repeat(61) });
+    assert!(h.engine.settings_view().vocabulary.error.unwrap().contains("longer than 60"));
+    h.engine.intent(Intent::RemoveTerm { term: "LocalVQE".into() });
+    let view = h.engine.settings_view().vocabulary;
+    assert_eq!(view.terms, ["Anna Peeters"]);
+    assert_eq!(view.error, None);
+}

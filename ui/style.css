@@ -214,6 +214,8 @@ select.add-language {
   border: 1px dashed var(--control-line); border-radius: 16px; height: 32px; padding: 0 14px; cursor: pointer;
 }
 .chips .reset { margin-left: auto; }
+.add-term { display: flex; gap: 8px; align-items: center; }
+.add-term input { flex: 1; min-width: 0; }
 details summary { cursor: pointer; list-style: none; }
 details summary::-webkit-details-marker { display: none; }
 .disclosure { display: inline-flex; align-items: center; gap: 8px; }

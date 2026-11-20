@@ -156,7 +156,7 @@ describe("macOS skin matches the design", () => {
 
       // One page: uppercase headings above white cards, rows 18 px in, 44 × 26 switches.
       const headings = (await page.locator(".settings > h2").allTextContents()).map((t) => t.trim());
-      assert.deepEqual(headings, ["General", "Languages", "AI assistants"]);
+      assert.deepEqual(headings, ["General", "Languages", "Vocabulary", "AI assistants"]); // Vocabulary is ours, after the design
       const h2 = await look(page, ".settings > h2", ["font-size", "text-transform", "color", "letter-spacing"]);
       assert.deepEqual([h2["font-size"], h2["text-transform"], h2.color], ["12.5px", "uppercase", MUTED]);
       const card = await look(page, ".card", ["background-color", "border-top-color", "border-radius"]);
