@@ -109,3 +109,26 @@ The maintainer chose LocalVQE (best double talk for a transcriber) over `sonora`
 5. Simulator scenario where the microphone contains delayed system audio; docs (README, CONTRIBUTING, AGENTS, REQUIREMENTS A10/A10a, PLATFORMS, CHANGELOG "Without headphones, your microphone's copy of the call is removed before transcribing").
 
 To run anything real, the environment needs `huggingface.co` allowed (Network access in the cloud environment's settings); that also allows real Whisper and Silero runs for sections 1 and 3 above.
+
+## M2 step 0: LocalVQE measured on a Mac (20 Nov 2026)
+
+Apple M1, macOS, LocalVQE at the pinned commit built as a shared library (`LOCALVQE_BUILD_SHARED=ON`; on arm64 its CMake already builds ggml statically, CPU only), model `localvqe-v1.4-aec-200K-f32.gguf` (2.9 MB, SHA-256 matches the allowlist above). Code: `scripts/audio-spike/localvqe/`. Speech: two `say` voices (16 kHz), the far end played through a synthetic echo path (delay plus four reflections). Whisper Large v3 Turbo q5_0 (Metal) transcribed the results **in the same process**.
+
+- **Two ggml copies in one process work**: whisper-rs's (static, Metal) and LocalVQE's (inside its dylib, loaded with `libloading`). No crash, both give correct output. The dylib still exports its ggml symbols (870); `RTLD_LOCAL` plus macOS's two-level namespace keep them apart. Not checked on Windows or Linux.
+- **Speed**: 1.89 ms p50, 2.1 ms p99 per 16 ms hop on one thread: 12% of one M1 core (its README: 8% on a Ryzen 9).
+- **Delay is the catch**: LocalVQE's own alignment covers only a short lag (`dmax=16`). Echo reduction (ERLE, single talk) by echo delay:
+
+| Echo delay | Reference as captured | Reference shifted by (delay − 20 ms) |
+| --- | --- | --- |
+| 40 ms | 48.3 dB | 62.5 dB |
+| 150 ms | 11.1 dB | 60.3 dB |
+| 280 ms | 8.2 dB | 55.3 dB |
+| 500 ms | 0 dB | 62.4 dB |
+
+  Real delays (output buffers, Bluetooth, the speaker-to-microphone path) are often over 100 ms, so Muesli has to **estimate the delay and shift the reference itself**, leaving LocalVQE the last few tens of milliseconds. A cross-correlation of 10 ms energy envelopes found a 280 ms echo exactly.
+- **Near end kept**: microphone alone (far end silent, or headphones) comes out at ±0.0 dB.
+- **Output latency**: `localvqe_process_frame_f32` returns each hop one hop late (256 samples, 16 ms). The stage has to drop that much at the start and flush it at the end, so timestamps and the passthrough switch stay aligned.
+- **Double talk** (150 ms echo, reference not shifted, latency corrected): near-to-echo 12.0 dB in, 17.1 dB out.
+- **What Whisper hears** (150 ms echo, reference not shifted): echo alone, raw gives the whole far-end sentence as "You"; cleaned gives "4. The budget for the second pool." (a residue, from the poor alignment at 150 ms). Double talk: raw and cleaned both give the near sentence exactly, and the cleaned one has no far-end words.
+
+Plan change: `EchoStage` (M2 step 1) gets a delay estimator: it tracks the echo delay from the envelopes of both streams, shifts the reference by it, and re-estimates during the meeting (clock drift, a change of output device).
