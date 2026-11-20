@@ -107,14 +107,18 @@ Muesli supports **macOS 14.4 or later** (Apple Silicon) and **Windows 10/11 (64-
 | Other side of the call | System audio recording (one permission) | System audio loopback (no permission) |
 | Notices meetings from | Calendar, microphone in use, Teams | Microphone in use, Teams (Windows has no system calendar) |
 | Deleted transcripts go to | Trash | Recycle Bin |
+| Transcribes on | The GPU (Metal) | The graphics card (Vulkan) when its driver supports it, otherwise the processor |
 
 Releases appear on the repository's [Releases page](https://github.com/bdhoine/muesli/releases) once the first one is published. Test builds come from GitHub Actions: on the repository's **Actions** tab, run the **Release** workflow by hand and download the `muesli-aarch64-apple-darwin` (macOS, a `.dmg`) or `muesli-x86_64-pc-windows-msvc` (Windows) artifact. Neither is signed with a certificate yet, so macOS and Windows SmartScreen ask you to confirm.
 
-To build it yourself you need [Rust](https://rustup.rs) and CMake (on Windows also the Visual Studio C++ build tools; on macOS the Xcode command line tools):
+To build it yourself you need [Rust](https://rustup.rs), CMake and Python 3 (on Windows also the Visual Studio C++ build tools and the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home); on macOS the Xcode command line tools):
 
 ```bash
-git clone https://github.com/bdhoine/muesli.git
-cd muesli/apps/desktop
+git clone --recursive https://github.com/bdhoine/muesli.git
+cd muesli
+python3 scripts/fetch-aec-model.py         # the echo cancellation model the app bundles
+python3 scripts/fetch-vulkan-loader.py     # Windows only: the Vulkan loader it bundles
+cd apps/desktop
 cargo install tauri-cli --version "^2" --locked
 cargo tauri build
 ```
@@ -171,4 +175,4 @@ Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) co
 
 [MIT](LICENSE).
 
-Muesli bundles [LocalVQE](https://github.com/localai-org/LocalVQE) (Apache-2.0) for echo cancellation; its licence ships with the app.
+Muesli bundles [LocalVQE](https://github.com/localai-org/LocalVQE) (Apache-2.0) for echo cancellation and, on Windows, the [Vulkan loader](https://github.com/KhronosGroup/Vulkan-Loader) (Apache-2.0 and MIT); their licences ship with the app.

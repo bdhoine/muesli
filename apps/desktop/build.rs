@@ -2,7 +2,21 @@ use std::path::Path;
 
 fn main() {
     bundle_echo_canceller();
+    check_vulkan_loader();
     tauri_build::build()
+}
+
+/// Windows: whisper.cpp uses Vulkan, so the app links vulkan-1.dll. `tauri.windows.conf.json`
+/// bundles the loader next to muesli.exe, so Muesli also starts on a PC without a GPU driver.
+fn check_vulkan_loader() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    let loader = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/vulkan/vulkan-1.dll");
+    println!("cargo:rerun-if-changed={}", loader.display());
+    if !loader.exists() {
+        panic!("The Vulkan loader is missing: run `python3 scripts/fetch-vulkan-loader.py`");
+    }
 }
 
 /// Puts LocalVQE (built by `muesli-aec` on macOS and Windows) with its model and licence in

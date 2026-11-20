@@ -16,7 +16,8 @@ apps/sim/         muesli-sim: the engine with fakes and the real UI in a browser
 ui/               The web UI (plain JS and CSS, no build step), skins/mac.css and skins/windows.css
 fixtures/         Frozen file formats and MCP replies, audio samples, simulator scenarios
 assets/brand/     The one source for logo, icons and colours
-scripts/          build-mcpb.py (Claude Desktop extension), fetch-aec-model.py, sync-icons.py, sync-plugin.py
+scripts/          build-mcpb.py (Claude Desktop extension), fetch-aec-model.py, fetch-vulkan-loader.py,
+                  sync-icons.py, sync-plugin.py
 plugin/           The Claude plugin
 docs/             REQUIREMENTS.md, PLATFORMS.md, CLAUDE_SETUP.md
 macos/            The retired SwiftUI app. Kept until the Tauri app is verified on a Mac; not built.
@@ -60,7 +61,7 @@ apps/desktop (Tauri)  ── Host, Tray, Updater ──►  crates/engine (muesl
 
 ## Build and run
 
-You need [Rust](https://rustup.rs) and CMake (whisper.cpp, LocalVQE). Clone with `git clone --recursive`, or run `git submodule update --init --recursive` once: LocalVQE is a submodule (its own build patches its ggml in place; `.gitmodules` ignores that). Run `python3 scripts/fetch-aec-model.py` once for the echo cancellation model (2.9 MB, checked by SHA-256, never committed); without it a debug build warns and transcribes the microphone as it is, and a release build stops. On Windows also the Visual Studio C++ build tools; on macOS the Xcode command line tools; on Linux WebKitGTK (`libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`).
+You need [Rust](https://rustup.rs) and CMake (whisper.cpp, LocalVQE). Clone with `git clone --recursive`, or run `git submodule update --init --recursive` once: LocalVQE is a submodule (its own build patches its ggml in place; `.gitmodules` ignores that). Run `python3 scripts/fetch-aec-model.py` once for the echo cancellation model (2.9 MB, checked by SHA-256, never committed); without it a debug build warns and transcribes the microphone as it is, and a release build stops. On Windows also the Visual Studio C++ build tools and the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) (`VULKAN_SDK` set; whisper.cpp builds its Vulkan backend), and run `python3 scripts/fetch-vulkan-loader.py` once: the app bundles `vulkan-1.dll` next to `muesli.exe` (`tauri.windows.conf.json`), so it also starts on a PC without a GPU driver and then transcribes on the CPU; on macOS the Xcode command line tools; on Linux WebKitGTK (`libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`).
 
 ```bash
 cargo run -p muesli-app                      # the app (on Linux: real folders, fakes for audio and the OS)

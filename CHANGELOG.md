@@ -5,6 +5,7 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Added
+- Windows: transcription uses the graphics card (Vulkan) when its driver supports it, which is several times faster; without one it runs on the processor as before.
 - When the call is over, Muesli transcribes the meeting once more, in longer stretches and more carefully, and replaces the live text with the better version. You can follow it in the menu and in Muesli's window; starting the next meeting stops it and keeps the live text.
 - Settings: a **Vocabulary** of names and terms Muesli should spell right. The meeting's title and calendar attendees help too.
 - AI assistants can read and extend the vocabulary (`get_vocabulary`, `update_vocabulary`). With the Claude plugin, Claude adds a name or term when you correct how it was transcribed.

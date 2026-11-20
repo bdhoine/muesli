@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/vulkan/vulkan-1.dll": "vulkan-1.dll",
+      "resources/vulkan/VulkanRT-License.txt": "VulkanRT-License.txt"
+    }
+  }
+}

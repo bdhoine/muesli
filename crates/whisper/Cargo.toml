@@ -9,6 +9,10 @@ license.workspace = true
 default = ["transcribe"]
 # whisper.cpp itself. Off, the model manager still builds (needs no C++ toolchain).
 transcribe = ["dep:whisper-rs"]
+# macOS: whisper.cpp's encoder through Core ML (the Neural Engine) when
+# ggml-large-v3-turbo-encoder.mlmodelc lies next to the model, the normal encoder otherwise.
+# Off: only measured so far (docs/AUDIO-SPIKE.md).
+coreml = ["whisper-rs?/coreml"]
 
 [dependencies]
 muesli-core = { path = "../core" }
@@ -17,6 +21,12 @@ whisper-rs = { version = "0.16", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 whisper-rs = { version = "0.16", optional = true, features = ["metal"] }
+
+# Windows: the graphics card through Vulkan when its driver is there, the CPU otherwise (ggml
+# falls back by itself). Building needs the Vulkan SDK (VULKAN_SDK); the app bundles the loader
+# (scripts/fetch-vulkan-loader.py) so it also starts on a PC without a GPU driver.
+[target.'cfg(windows)'.dependencies]
+whisper-rs = { version = "0.16", optional = true, features = ["vulkan"] }
 
 [dev-dependencies]
 tempfile = "3"

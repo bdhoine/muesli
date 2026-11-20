@@ -22,3 +22,5 @@ scripts/audio-spike/*/Cargo.lock
 # LocalVQE: the model (scripts/fetch-aec-model.py) and what the app bundles
 crates/aec/model/
 apps/desktop/resources/aec/
+# The Vulkan loader the Windows app bundles (scripts/fetch-vulkan-loader.py)
+apps/desktop/resources/vulkan/
