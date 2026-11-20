@@ -305,6 +305,8 @@ impl World {
             "updateError" => self.updater.set_server(FakeServer::NetworkError(text("reason", "Could not connect to github.com"))),
             "wait" => std::thread::sleep(std::time::Duration::from_millis(num("ms", 200.0) as u64)),
             "meeting" => self.add_meeting(step),
+            // A slow speech model: files wait for it until they are cancelled.
+            "holdFiles" => self.speech.hold_files.store(step.get("on").and_then(Value::as_bool).unwrap_or(true), std::sync::atomic::Ordering::SeqCst),
             "dropFile" => {
                 // An audio file dropped on Muesli's window.
                 let name = text("name", "Voice memo.flac");
