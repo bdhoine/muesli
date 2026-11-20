@@ -2,10 +2,23 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muesli_core::whisper_model::{DEFAULT_MODEL, VAD_MODEL};
+use muesli_core::whisper_model::{coreml_installed, COREML_ENCODER, DEFAULT_MODEL, USES_COREML, VAD_MODEL};
 use muesli_core::Paths;
 
 use crate::download::{check_reachable, download, DownloadError, DownloadSpec, Reach};
+
+/// A file that only speeds transcribing up (the Core ML encoder).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Extra {
+    Ready,
+    /// Before the required files, or not started yet.
+    Waiting,
+    Downloading {
+        received: u64,
+        total: u64,
+    },
+    Failed,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Phase {
@@ -26,6 +39,8 @@ pub enum Phase {
 struct Job {
     received: u64,
     total: u64,
+    /// The bytes of the files transcribing needs (the rest, the Core ML encoder, only speeds it up).
+    required: u64,
     /// The file being fetched right now.
     url: String,
     cancel: Arc<AtomicBool>,
@@ -59,16 +74,19 @@ impl ModelManager {
                 let _ = std::fs::remove_file(entry.path());
             }
         }
+        crate::unpack::remove_leftovers(&paths.models);
         Self { paths, inner: Arc::new(Mutex::new(Inner::default())) }
     }
 
     pub fn phase(&self) -> Phase {
         let inner = self.inner.lock().unwrap();
-        if let Some(job) = &inner.job {
-            return Phase::Downloading { received: job.received, total: job.total };
-        }
+        // Ready once the speech and voice models are there, even while the Core ML encoder
+        // still downloads: it only makes transcribing faster.
         if DEFAULT_MODEL.is_installed(&self.paths) && VAD_MODEL.is_installed(&self.paths) {
             return Phase::Ready(DEFAULT_MODEL.path(&self.paths));
+        }
+        if let Some(job) = &inner.job {
+            return Phase::Downloading { received: job.received.min(job.required), total: job.required };
         }
         match &inner.last_error {
             Some(e) => Phase::Failed(e.clone()),
@@ -97,6 +115,26 @@ impl ModelManager {
         self.inner.lock().unwrap().job.as_ref().map(|j| (j.received, j.total))
     }
 
+    /// The Core ML encoder (macOS): `None` where it is not used, else whether it is in place,
+    /// downloading (bytes received, total) or failed.
+    pub fn coreml(&self) -> Option<Extra> {
+        if !USES_COREML {
+            return None;
+        }
+        if coreml_installed(&self.paths) {
+            return Some(Extra::Ready);
+        }
+        let inner = self.inner.lock().unwrap();
+        Some(match &inner.job {
+            Some(job) if job.received >= job.required => {
+                Extra::Downloading { received: job.received - job.required, total: job.total - job.required }
+            }
+            Some(_) => Extra::Waiting,
+            None if inner.last_error.is_some() => Extra::Failed,
+            None => Extra::Waiting,
+        })
+    }
+
     pub fn last_error(&self) -> Option<String> {
         self.inner.lock().unwrap().last_error.clone()
     }
@@ -114,10 +152,15 @@ impl ModelManager {
     /// Asks each server Muesli downloads from whether it can be reached (headers only). Blocks
     /// for up to a few seconds per address: call it off the UI thread.
     pub fn check_connection(&self) -> Vec<Reach> {
-        [VAD_MODEL, DEFAULT_MODEL].into_iter().map(|model| check_reachable(model.url)).collect()
+        let mut models = vec![VAD_MODEL, DEFAULT_MODEL];
+        if USES_COREML {
+            models.push(COREML_ENCODER);
+        }
+        models.into_iter().map(|model| check_reachable(model.url)).collect()
     }
 
-    /// What is missing: the voice activity model, then the speech model.
+    /// What is missing: the voice activity model, then the speech model, then (macOS) the Core
+    /// ML encoder, which is a zip to unpack.
     pub fn missing_downloads(&self) -> Vec<DownloadSpec> {
         let mut specs = Vec::new();
         for model in [VAD_MODEL, DEFAULT_MODEL] {
@@ -127,8 +170,19 @@ impl ModelManager {
                     dest: model.path(&self.paths),
                     min_bytes: model.minimum_valid_bytes(),
                     approximate_bytes: model.approximate_bytes,
+                    unpack: false,
                 });
             }
+        }
+        if USES_COREML && !coreml_installed(&self.paths) {
+            let model = COREML_ENCODER;
+            specs.push(DownloadSpec {
+                url: model.url.to_string(),
+                dest: model.path(&self.paths),
+                min_bytes: model.minimum_valid_bytes(),
+                approximate_bytes: model.approximate_bytes,
+                unpack: true,
+            });
         }
         specs
     }
@@ -146,6 +200,7 @@ impl ModelManager {
         }
         let cancel = Arc::new(AtomicBool::new(false));
         let total: u64 = specs.iter().map(|s| s.approximate_bytes).sum();
+        let required: u64 = specs.iter().filter(|s| !s.unpack).map(|s| s.approximate_bytes).sum();
         {
             let mut inner = self.inner.lock().unwrap();
             if inner.job.is_some() {
@@ -153,7 +208,7 @@ impl ModelManager {
             }
             inner.last_error = None;
             inner.last_url = None;
-            inner.job = Some(Job { received: 0, total, url: specs[0].url.clone(), cancel: cancel.clone() });
+            inner.job = Some(Job { received: 0, total, required, url: specs[0].url.clone(), cancel: cancel.clone() });
         }
         let me = self.clone();
         std::thread::spawn(move || {
@@ -166,20 +221,30 @@ impl ModelManager {
                 if let Some(job) = me.inner.lock().unwrap().job.as_mut().filter(|j| Arc::ptr_eq(&j.cancel, &cancel)) {
                     job.url = spec.url.clone();
                 }
-                result = download(
-                    spec,
-                    &mut |received, _| {
-                        let mut inner = me.inner.lock().unwrap();
-                        if mine(&inner) {
-                            if let Some(job) = inner.job.as_mut() {
-                                job.received = done_before + received;
+                // A zip left by a run that stopped before unpacking it only needs unpacking.
+                let have_zip = spec.unpack && muesli_core::whisper_model::file_is_at_least(&spec.dest, spec.min_bytes);
+                result = if have_zip {
+                    Ok(())
+                } else {
+                    download(
+                        spec,
+                        &mut |received, _| {
+                            let mut inner = me.inner.lock().unwrap();
+                            if mine(&inner) {
+                                if let Some(job) = inner.job.as_mut() {
+                                    job.received = done_before + received;
+                                }
+                                drop(inner);
+                                on_change();
                             }
-                            drop(inner);
-                            on_change();
-                        }
-                    },
-                    &cancel,
-                );
+                        },
+                        &cancel,
+                    )
+                };
+                if result.is_ok() && spec.unpack {
+                    let dir = spec.dest.parent().map(PathBuf::from).unwrap_or_default();
+                    result = crate::unpack::unpack(&spec.dest, &dir).map_err(DownloadError::Failed);
+                }
                 if result.is_err() {
                     failed_url = Some(spec.url.clone());
                     break;

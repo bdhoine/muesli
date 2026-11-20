@@ -268,6 +268,7 @@
     return `<div class="setting" data-testid="model">
       <div class="text"><span class="title">${esc(m.title)}</span>
       <span class="sub">${esc(m.detail)}${m.progress != null ? ` · ${esc(m.text)}` : ""}</span>
+      ${m.acceleration ? `<span class="sub" data-testid="acceleration">${esc(m.acceleration)}</span>` : ""}
       ${m.progress != null ? progress(m.progress) : ""}
       ${m.error ? `<div class="error-text">${esc(m.error)}${m.url ? `<br><code>${esc(m.url)}</code>` : ""}</div>` : ""}</div>
       <div class="controls">

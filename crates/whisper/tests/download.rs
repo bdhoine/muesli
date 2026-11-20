@@ -5,9 +5,9 @@ use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muesli_core::whisper_model::{DEFAULT_MODEL, LEGACY_FILES, VAD_MODEL};
+use muesli_core::whisper_model::{coreml_installed, COREML_ENCODER, DEFAULT_MODEL, LEGACY_FILES, USES_COREML, VAD_MODEL};
 use muesli_core::Paths;
-use muesli_whisper::{check_reachable, download, DownloadError, DownloadSpec, ModelManager, Phase};
+use muesli_whisper::{check_reachable, download, DownloadError, DownloadSpec, Extra, ModelManager, Phase};
 
 /// Serves `body` once with the given status line and optional lying Content-Length.
 fn serve(status: &'static str, body: Vec<u8>, content_length: Option<usize>) -> String {
@@ -26,7 +26,7 @@ fn serve(status: &'static str, body: Vec<u8>, content_length: Option<usize>) -> 
 }
 
 fn spec(url: String, dir: &std::path::Path, min: u64) -> DownloadSpec {
-    DownloadSpec { url, dest: dir.join("ggml-small.bin"), min_bytes: min, approximate_bytes: 3_000_000 }
+    DownloadSpec { url, dest: dir.join("ggml-small.bin"), min_bytes: min, approximate_bytes: 3_000_000, unpack: false }
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn manager(dir: &std::path::Path) -> (ModelManager, Paths) {
 }
 
 fn spec_to(url: String, dest: std::path::PathBuf, bytes: u64) -> DownloadSpec {
-    DownloadSpec { url, dest, min_bytes: 1, approximate_bytes: bytes }
+    DownloadSpec { url, dest, min_bytes: 1, approximate_bytes: bytes, unpack: false }
 }
 
 #[test]
@@ -86,7 +86,16 @@ fn what_is_missing_is_the_voice_model_first_and_then_the_speech_model() {
     let (m, _) = manager(dir.path());
     assert_eq!(m.phase(), Phase::Missing);
     let urls: Vec<String> = m.missing_downloads().into_iter().map(|s| s.url).collect();
-    assert_eq!(urls, [VAD_MODEL.url, DEFAULT_MODEL.url]);
+    assert_eq!(urls, all_urls());
+}
+
+/// The voice model, the speech model and, on a Mac, the Core ML encoder last.
+fn all_urls() -> Vec<String> {
+    let mut urls = vec![VAD_MODEL.url.to_string(), DEFAULT_MODEL.url.to_string()];
+    if USES_COREML {
+        urls.push(COREML_ENCODER.url.to_string());
+    }
+    urls
 }
 
 #[test]
@@ -95,10 +104,13 @@ fn the_speech_model_is_only_ready_together_with_the_voice_model() {
     let (m, paths) = manager(dir.path());
     std::fs::write(DEFAULT_MODEL.path(&paths), vec![0u8; DEFAULT_MODEL.minimum_valid_bytes() as usize]).unwrap();
     assert_eq!(m.phase(), Phase::Missing); // the small voice file is still missing
-    assert_eq!(m.missing_downloads().len(), 1);
+    assert_eq!(m.missing_downloads().len(), 1 + USES_COREML as usize);
     std::fs::write(VAD_MODEL.path(&paths), vec![0u8; VAD_MODEL.minimum_valid_bytes() as usize]).unwrap();
+    // Ready: the Core ML encoder (macOS) only speeds transcribing up and never holds it back.
     assert_eq!(m.phase(), Phase::Ready(DEFAULT_MODEL.path(&paths)));
-    assert!(m.is_ready() && m.missing_downloads().is_empty());
+    assert!(m.is_ready());
+    assert_eq!(m.missing_downloads().len(), USES_COREML as usize);
+    assert_eq!(m.coreml(), USES_COREML.then_some(Extra::Waiting));
 }
 
 #[test]
@@ -242,5 +254,81 @@ fn the_downloads_cover_the_addresses_the_check_asks() {
     let (m, _) = manager(dir.path());
     // The check itself needs the internet, so only the addresses it would ask are compared.
     let wanted: Vec<String> = m.missing_downloads().into_iter().map(|s| s.url).collect();
-    assert_eq!(wanted, vec![VAD_MODEL.url.to_string(), DEFAULT_MODEL.url.to_string()]);
+    assert_eq!(wanted, all_urls());
+}
+
+/// A zip like the Core ML encoder's: a folder with a file and a subfolder, and Finder's
+/// `__MACOSX` leftovers.
+fn encoder_zip() -> Vec<u8> {
+    use zip::write::SimpleFileOptions;
+    let mut out = std::io::Cursor::new(Vec::new());
+    let mut zip = zip::ZipWriter::new(&mut out);
+    let deflated = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    zip.add_directory("x.mlmodelc/", deflated).unwrap();
+    zip.start_file("x.mlmodelc/coremldata.bin", deflated).unwrap();
+    zip.write_all(&[7u8; 5000]).unwrap();
+    zip.start_file("x.mlmodelc/weights/weight.bin", SimpleFileOptions::default()).unwrap();
+    zip.write_all(b"weights").unwrap();
+    zip.start_file("__MACOSX/x.mlmodelc/._coremldata.bin", deflated).unwrap();
+    zip.write_all(b"junk").unwrap();
+    zip.finish().unwrap();
+    out.into_inner()
+}
+
+fn unpack_spec(url: String, dir: &std::path::Path, bytes: u64) -> DownloadSpec {
+    DownloadSpec { url, dest: dir.join("x.mlmodelc.zip"), min_bytes: 1, approximate_bytes: bytes, unpack: true }
+}
+
+#[test]
+fn a_zip_is_unpacked_into_place_and_removed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m, _) = manager(dir.path());
+    let zip = encoder_zip();
+    let url = serve("200 OK", zip.clone(), None);
+    m.download_all(vec![unpack_spec(url, dir.path(), zip.len() as u64)], || {});
+    m.wait();
+    assert_eq!(m.last_error(), None);
+    assert_eq!(std::fs::read(dir.path().join("x.mlmodelc/coremldata.bin")).unwrap(), vec![7u8; 5000]);
+    assert_eq!(std::fs::read(dir.path().join("x.mlmodelc/weights/weight.bin")).unwrap(), b"weights");
+    assert!(!dir.path().join("x.mlmodelc.zip").exists(), "the zip is deleted");
+    assert!(!dir.path().join("__MACOSX").exists(), "Finder's leftovers are skipped");
+    let leftovers: Vec<_> =
+        std::fs::read_dir(dir.path()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with(".unpack")).collect();
+    assert!(leftovers.is_empty());
+}
+
+#[test]
+fn a_zip_left_by_an_earlier_run_is_unpacked_without_downloading() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m, _) = manager(dir.path());
+    std::fs::write(dir.path().join("x.mlmodelc.zip"), encoder_zip()).unwrap();
+    // Nothing listens at this address: a download would fail.
+    m.download_all(vec![unpack_spec("http://127.0.0.1:9/x.zip".into(), dir.path(), 1)], || {});
+    m.wait();
+    assert_eq!(m.last_error(), None);
+    assert!(dir.path().join("x.mlmodelc/coremldata.bin").exists());
+}
+
+#[test]
+fn a_broken_zip_fails_and_leaves_no_folder() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m, _) = manager(dir.path());
+    let url = serve("200 OK", b"not a zip at all".to_vec(), None);
+    m.download_all(vec![unpack_spec(url, dir.path(), 16)], || {});
+    m.wait();
+    assert!(m.last_error().unwrap().contains("Not a valid archive"));
+    assert!(!dir.path().join("x.mlmodelc").exists());
+}
+
+#[test]
+fn the_core_ml_encoder_counts_as_installed_with_its_two_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let (m, paths) = manager(dir.path());
+    let folder = paths.models.join(muesli_core::whisper_model::COREML_DIR);
+    std::fs::create_dir_all(folder.join("weights")).unwrap();
+    std::fs::write(folder.join("coremldata.bin"), b"x").unwrap();
+    assert!(!coreml_installed(&paths));
+    std::fs::write(folder.join("weights/weight.bin"), b"x").unwrap();
+    assert!(coreml_installed(&paths));
+    assert_eq!(m.coreml(), USES_COREML.then_some(Extra::Ready));
 }

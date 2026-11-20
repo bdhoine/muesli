@@ -3,20 +3,31 @@
 
 use muesli_core::whisper_model::{DEFAULT_MODEL, VAD_MODEL};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
+use muesli_core::whisper_model::coreml_installed;
 use muesli_core::Paths;
 use muesli_core::{EchoCanceller, EnergyDetector, SpeechDetector};
 use muesli_engine::{ModelStatus, SpeechModel, Transcriber};
-use muesli_whisper::{ModelManager, Phase};
+use muesli_whisper::{Extra, ModelManager, Phase};
 
 pub struct WhisperSpeech {
     paths: Paths,
     manager: ModelManager,
+    warm: Arc<Mutex<Warm>>,
+}
+
+/// The background load (`prepare`): whether one runs, and whether the last one had the Core ML
+/// encoder to compile.
+#[derive(Default)]
+struct Warm {
+    running: bool,
+    done: Option<bool>,
 }
 
 impl WhisperSpeech {
     pub fn new(paths: Paths) -> Self {
-        Self { manager: ModelManager::new(paths.clone()), paths }
+        Self { manager: ModelManager::new(paths.clone()), paths, warm: Arc::new(Mutex::new(Warm::default())) }
     }
 }
 
@@ -47,6 +58,46 @@ impl SpeechModel for WhisperSpeech {
             Some(silero) => Box::new(silero),
             None => Box::new(EnergyDetector::default()),
         }
+    }
+
+    /// Loads the model once on a background thread and drops it: on a Mac the first load compiles
+    /// the Core ML encoder for this device (about a minute and a half, then cached by macOS), and
+    /// that should not happen when a meeting starts. Again once the encoder has arrived.
+    fn prepare(&self) {
+        if !self.manager.is_ready() {
+            return;
+        }
+        let with_coreml = coreml_installed(&self.paths);
+        {
+            let mut warm = self.warm.lock().unwrap();
+            if warm.running || warm.done == Some(with_coreml) || (warm.done == Some(true) && !with_coreml) {
+                return;
+            }
+            warm.running = true;
+        }
+        let (paths, warm) = (self.paths.clone(), self.warm.clone());
+        std::thread::spawn(move || {
+            let loaded =
+                muesli_whisper::Transcriber::new(&DEFAULT_MODEL.path(&paths), Some(&VAD_MODEL.path(&paths)), vec!["en".into()]).is_some();
+            let mut warm = warm.lock().unwrap();
+            warm.running = false;
+            if loaded {
+                warm.done = Some(with_coreml);
+            }
+        });
+    }
+
+    fn acceleration(&self) -> Option<String> {
+        let what = "Neural Engine (Core ML)";
+        Some(match self.manager.coreml()? {
+            Extra::Ready if self.warm.lock().unwrap().running => format!("{what}: preparing for this Mac, once"),
+            Extra::Ready => format!("{what}: ready"),
+            Extra::Downloading { received, total } => {
+                format!("{what}: downloading · {}%", (received * 100).checked_div(total).unwrap_or(0))
+            }
+            Extra::Waiting => format!("{what}: downloads after the speech model"),
+            Extra::Failed => format!("{what}: download failed; Download again retries"),
+        })
     }
 
     /// LocalVQE from the app's resources; in development the library this build made and the

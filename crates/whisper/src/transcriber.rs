@@ -45,6 +45,10 @@ unsafe extern "C" fn abort_requested(data: *mut c_void) -> bool {
     (*(data as *const AtomicBool)).load(Ordering::Relaxed)
 }
 
+/// One model load at a time: on a Mac the first load compiles the Core ML encoder for the device
+/// (about a minute and a half); a second load meanwhile waits and then finds it compiled.
+static LOADING: Mutex<()> = Mutex::new(());
+
 #[derive(Debug)]
 pub struct TranscribeError(pub String);
 
@@ -63,6 +67,7 @@ impl Transcriber {
         if !model.exists() {
             return None;
         }
+        let _one_at_a_time = LOADING.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let vad = match vad_model {
             Some(path) => {
                 let model = path.to_str()?.to_string();

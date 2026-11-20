@@ -32,6 +32,8 @@ chrono = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 muesli-platform-macos = { path = "../../crates/platform-macos" }
+# The Core ML encoder (Neural Engine) when it is downloaded, Metal otherwise.
+muesli-whisper = { path = "../../crates/whisper", features = ["coreml"] }
 muesli-aec = { path = "../../crates/aec", features = ["localvqe"] }
 
 [target.'cfg(windows)'.dependencies]

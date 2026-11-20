@@ -56,4 +56,13 @@ pub trait SpeechModel: Send + Sync {
     fn echo_canceller(&self) -> Option<Box<dyn EchoCanceller>> {
         None
     }
+    /// Loads the model once in the background, so the first transcription does not wait for
+    /// one-time work (on a Mac, Core ML compiling the encoder). Called at start and when a
+    /// download moves on; does nothing when there is nothing (new) to prepare.
+    fn prepare(&self) {}
+    /// What speeds the model up on this computer and how far it is, for Settings ("Neural Engine
+    /// (Core ML): ready"); `None` when there is nothing to say.
+    fn acceleration(&self) -> Option<String> {
+        None
+    }
 }

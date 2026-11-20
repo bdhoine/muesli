@@ -12,6 +12,8 @@ pub struct DownloadSpec {
     pub min_bytes: u64,
     /// Used for progress until the server says how large the file is.
     pub approximate_bytes: u64,
+    /// A zip of folders, unpacked next to it once downloaded (the Core ML encoder).
+    pub unpack: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

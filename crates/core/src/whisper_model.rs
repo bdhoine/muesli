@@ -33,6 +33,31 @@ pub const VAD_MODEL: ModelSpec = ModelSpec {
     approximate_bytes: 885_098,
 };
 
+/// macOS: the speech model's encoder for Core ML (Apple's Neural Engine), a zipped folder that
+/// whisper.cpp loads from next to the speech model ([`COREML_DIR`]). It makes transcribing about
+/// three times faster (docs/AUDIO-SPIKE.md). Downloaded after the two required models; without it
+/// whisper.cpp uses Metal, so it never blocks transcribing.
+pub const COREML_ENCODER: ModelSpec = ModelSpec {
+    title: "Core ML encoder",
+    summary: "Runs the speech model on the Neural Engine",
+    file_name: "ggml-large-v3-turbo-encoder.mlmodelc.zip",
+    url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-encoder.mlmodelc.zip",
+    approximate_bytes: 1_173_393_014,
+};
+
+/// The folder [`COREML_ENCODER`] unpacks to: the speech model's name without `-q5_0`, which is
+/// where whisper.cpp looks.
+pub const COREML_DIR: &str = "ggml-large-v3-turbo-encoder.mlmodelc";
+
+/// Whether this platform uses the Core ML encoder.
+pub const USES_COREML: bool = cfg!(target_os = "macos");
+
+/// The unpacked Core ML encoder is in place.
+pub fn coreml_installed(paths: &Paths) -> bool {
+    let dir = paths.models.join(COREML_DIR);
+    file_is_at_least(&dir.join("coremldata.bin"), 1) && file_is_at_least(&dir.join("weights").join("weight.bin"), 1)
+}
+
 /// Models earlier versions let the user pick. Nothing uses them any more.
 pub const LEGACY_FILES: [&str; 3] = ["ggml-small.bin", "ggml-medium.bin", "ggml-large-v3.bin"];
 

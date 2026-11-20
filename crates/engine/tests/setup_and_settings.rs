@@ -303,3 +303,14 @@ fn the_vocabulary_is_edited_in_settings_and_shared_through_its_file() {
     assert_eq!(view.terms, ["Anna Peeters"]);
     assert_eq!(view.error, None);
 }
+
+#[test]
+fn the_model_is_prepared_at_start_and_when_a_download_moves_on() {
+    use std::sync::atomic::Ordering;
+    let h = Harness::ready();
+    assert!(h.speech.prepared.load(Ordering::SeqCst) >= 1, "at start, so a first transcription does not wait");
+    let h = Harness::build(PlatformWords::MAC, true, FakeSpeech::missing(1000));
+    let before = h.speech.prepared.load(Ordering::SeqCst);
+    h.speech.finish();
+    assert!(h.speech.prepared.load(Ordering::SeqCst) > before, "again once the files are in");
+}

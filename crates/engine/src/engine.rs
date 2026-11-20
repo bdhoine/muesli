@@ -322,6 +322,7 @@ impl Engine {
         if onboarding_done {
             self.announce_extension_update();
             self.download_model(); // whenever a file went missing
+            self.speech.prepare(); // a first transcription should not wait for one-time work
         } else {
             self.host.show(Window::Setup);
         }
@@ -333,6 +334,7 @@ impl Engine {
         let me = self.me.clone();
         self.speech.download(Box::new(move || {
             if let Some(engine) = me.upgrade() {
+                engine.speech.prepare(); // the model, or the Core ML encoder, may have just arrived
                 engine.changed();
             }
         }));
@@ -1586,6 +1588,7 @@ impl Engine {
             text,
             error,
             url,
+            acceleration: self.speech.acceleration(),
         }
     }
 

@@ -216,6 +216,8 @@ pub struct ModelView {
     pub error: Option<String>,
     pub url: Option<String>,
     pub can_retry: bool,
+    /// What speeds it up here: "Neural Engine (Core ML): ready" (macOS).
+    pub acceleration: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

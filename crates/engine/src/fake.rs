@@ -38,6 +38,10 @@ pub struct FakeSpeech {
     pub fail_best: Arc<AtomicBool>,
     /// Every chunk's prompt, in order, with whether it was the end-of-meeting pass.
     pub prompts: Arc<Mutex<Vec<(bool, String)>>>,
+    /// How often the engine asked to prepare the model.
+    pub prepared: Arc<AtomicUsize>,
+    /// What `acceleration` says.
+    pub acceleration: Mutex<Option<String>>,
 }
 
 impl FakeSpeech {
@@ -56,6 +60,8 @@ impl FakeSpeech {
             hold_best: Arc::new(AtomicBool::new(false)),
             fail_best: Arc::new(AtomicBool::new(false)),
             prompts: Arc::new(Mutex::new(Vec::new())),
+            prepared: Arc::new(AtomicUsize::new(0)),
+            acceleration: Mutex::new(None),
         }
     }
 
@@ -124,6 +130,14 @@ impl SpeechModel for FakeSpeech {
 
     fn speech_detector(&self) -> Box<dyn SpeechDetector> {
         Box::new(EnergyDetector::default())
+    }
+
+    fn prepare(&self) {
+        self.prepared.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn acceleration(&self) -> Option<String> {
+        self.acceleration.lock().unwrap().clone()
     }
 
     fn echo_canceller(&self) -> Option<Box<dyn EchoCanceller>> {

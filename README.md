@@ -26,7 +26,7 @@ Muesli sits in your menu bar (macOS) or system tray (Windows), notices when a ca
 ## Private by design
 
 - Audio is never stored. Only the transcript is written.
-- Transcription happens on your computer. Muesli goes online only to download the speech model and to check for updates.
+- Transcription happens on your computer. Muesli goes online only to download the speech model (on a Mac also its Neural Engine version) and to check for updates.
 - No account, no sign-up, no telemetry.
 - Transcripts are ordinary files in a folder you choose.
 
@@ -127,7 +127,7 @@ cargo tauri build
 
 ### First start
 
-A short setup in four screens: a welcome, your languages, the permissions (all on one screen) and done. Muesli uses one speech model, Whisper Large v3 Turbo (574 MB), and a small voice activity model (under 1 MB) that keeps Whisper from inventing text for silence and noise. Both start downloading on the welcome screen, and until they are ready transcribing is switched off and the menu says **Getting Ready**. If the download fails, Settings shows why and the address it tried, with **Download again**.
+A short setup in four screens: a welcome, your languages, the permissions (all on one screen) and done. Muesli uses one speech model, Whisper Large v3 Turbo (574 MB), and a small voice activity model (under 1 MB) that keeps Whisper from inventing text for silence and noise. Both start downloading on the welcome screen, and until they are ready transcribing is switched off and the menu says **Getting Ready**. If the download fails, Settings shows why and the address it tried, with **Download again**. On a Mac, Muesli then also downloads a version of the speech model for Apple's Neural Engine (1.2 GB), which makes transcribing about three times faster; you can already transcribe while it downloads. The first time it is used, macOS prepares it for your Mac, which takes about a minute and a half; Muesli does that in the background right after the download and at each start, and Settings → Advanced shows how far it is.
 
 On macOS these permissions are asked for, each only when you press **Allow…**:
 

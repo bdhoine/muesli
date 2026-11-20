@@ -125,6 +125,7 @@ One code path (`muesli-import`). Files come from **Transcribe Audio File…** (m
 |---|---|---|
 | `~/Documents/MeetingTranscripts/` (configurable) | app | The `.md` and `.json` pair per finished meeting |
 | `<support>/ggml-*.bin` (`<models>` on Windows) | app (model download) | Whisper speech model and the Silero voice activity model. Model files of earlier versions are deleted on start. |
+| `<support>/ggml-large-v3-turbo-encoder.mlmodelc/` (macOS) | app (model download, unpacked from a zip) | The Core ML encoder: whisper.cpp runs the encoder on the Neural Engine when this folder sits next to the speech model, Metal otherwise |
 | `<support>/meetings/<id>.json` | app | Canonical copy of every meeting, rewritten while transcribing |
 | `<support>/state.json` | app | Current state and heartbeat, rewritten on change and every 10 s |
 | `<support>/config.json` | app | Preferences shared with `muesli-mcp`: `mcpEnabled`, `claudeDesktopConfigEntry`, `languages`, `onboardingDone`, `transcriptsFolder`, `extensionUpdateNotified`, `extensionUpdateDismissed`, and for updates `autoUpdateCheck` (default true), `updateLastChecked`, `updateNotified`, `lastRunVersion`. Keys of earlier versions are dropped on start (`Preferences::migrate`). |
