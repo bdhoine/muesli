@@ -15,9 +15,9 @@ pub fn show(handle: &AppHandle, window: Window) {
         return;
     }
     let (title, width, height) = match window {
-        Window::Main => ("Muesli", 980.0, 640.0),
-        Window::Settings => ("Muesli Settings", 620.0, 720.0),
-        Window::Setup => ("Welcome to Muesli", 560.0, 600.0),
+        Window::Main => ("Muesli", 1080.0, 720.0),
+        Window::Settings => ("Settings", 760.0, 820.0),
+        Window::Setup => ("Welcome to Muesli", 720.0, 640.0),
         Window::Prompt => ("Muesli", 380.0, 150.0),
     };
     let mut builder = WebviewWindowBuilder::new(handle, label, WebviewUrl::App("index.html".into())).title(title).inner_size(width, height);
@@ -32,6 +32,12 @@ pub fn show(handle: &AppHandle, window: Window) {
         Window::Setup => builder = builder.resizable(false).center(),
         Window::Settings => builder = builder.min_inner_size(520.0, 480.0).center(),
         Window::Main => builder = builder.min_inner_size(720.0, 440.0).center(),
+    }
+    // macOS: the title bar takes the window's colour (the page draws a 28 px strip under it), as
+    // in the design. The prompt has no title bar.
+    #[cfg(target_os = "macos")]
+    if window != Window::Prompt {
+        builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay);
     }
     if let Ok(w) = builder.build() {
         let _ = w.set_focus();

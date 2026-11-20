@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Muesli's own windows may use the app commands (view, intent) and nothing else.",
   "windows": ["main", "settings", "setup", "prompt"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

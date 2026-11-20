@@ -16,6 +16,7 @@ use muesli_platform_common::{SystemClock, SystemPaths};
 
 pub mod calendar;
 pub mod detector;
+pub mod menu_icons;
 pub mod notifier;
 pub mod system;
 pub mod tcc;

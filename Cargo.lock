@@ -2455,7 +2455,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-app"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
  "muesli-core",
@@ -2476,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-audio"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "audioadapter-buffers",
  "muesli-core",
@@ -2487,7 +2487,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-core"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -2501,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-engine"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2514,7 +2514,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-import"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "muesli-audio",
@@ -2525,7 +2525,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-mcp"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2538,7 +2538,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-platform-common"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "cpal",
@@ -2551,7 +2551,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-platform-fake"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "muesli-audio",
@@ -2560,7 +2560,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-platform-macos"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "block2",
  "chrono",
@@ -2568,6 +2568,7 @@ dependencies = [
  "muesli-core",
  "muesli-platform-common",
  "objc2",
+ "objc2-app-kit",
  "objc2-av-foundation",
  "objc2-core-audio",
  "objc2-core-foundation",
@@ -2579,7 +2580,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-platform-windows"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "muesli-core",
  "muesli-platform-common",
@@ -2590,7 +2591,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-port-contracts"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2603,7 +2604,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-sim"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2616,7 +2617,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-whisper"
-version = "0.0.2"
+version = "0.1.0"
 dependencies = [
  "muesli-core",
  "tempfile",
@@ -2763,8 +2764,15 @@ checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
  "bitflags 2.13.2",
  "block2",
+ "libc",
  "objc2",
+ "objc2-cloud-kit",
+ "objc2-core-data",
  "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-core-image",
+ "objc2-core-text",
+ "objc2-core-video",
  "objc2-foundation",
  "objc2-quartz-core",
 ]
@@ -2859,6 +2867,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b402a653efbb5e82ce4df10683b6b28027616a2715e90009947d50b8dd298fa"
 dependencies = [
+ "bitflags 2.13.2",
  "objc2",
  "objc2-foundation",
 ]

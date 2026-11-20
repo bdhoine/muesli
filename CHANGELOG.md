@@ -4,12 +4,15 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-20
+
 ### Added
 - Muesli's window: your transcripts on the left, newest first, and the text on the right. The meeting being transcribed sits at the top and its text grows every 30 seconds while you watch. Rename a finished transcript (its files are renamed too) or delete it: it goes to the Trash (Recycle Bin on Windows), and Undo brings it back for a few seconds. "Show in Finder" (Explorer on Windows) shows the file.
 - Audio files you transcribe show their progress in that list, with Cancel.
 - A new first-start setup in four short screens: welcome, languages, permissions (all on one screen) and done. The speech model downloads while you go through it.
 - Settings is one page: transcripts folder and start at login, languages, AI assistants and, folded away, the speech model and permissions.
 - Dark mode follows your system.
+- macOS: the windows follow the Muesli design: the window colour runs into the title bar, the list has its own buttons for audio files and Finder, and the menu bar menu has an icon beside each item, a Recent Transcripts header and the ⌘, and ⌘Q shortcuts.
 - Drop audio files on Muesli's window to transcribe them.
 - Windows: a left click on the tray icon opens Muesli's window; a right click shows the menu.
 - The menu bar or tray icon shows a red dot while Muesli transcribes.
@@ -64,5 +67,6 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 - Speech model choice: Small by default, Medium, Large or your own model file.
 
 [Unreleased]: https://github.com/bdhoine/muesli/compare/0b6ded6...HEAD
+[0.1.0]: https://github.com/bdhoine/muesli/compare/0b6ded6...HEAD
 [0.0.2]: https://github.com/bdhoine/muesli/compare/7685530...0b6ded6
 [0.0.1]: https://github.com/bdhoine/muesli/commit/7685530

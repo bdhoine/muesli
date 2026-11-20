@@ -2,7 +2,7 @@
 // gives it and sends intents back (see bridge.js). Nothing here decides what Muesli does; the
 // only local state is what the user is typing (a new title) and which <details> are open.
 (function () {
-  const { label, view, send, onChange } = window.muesli;
+  const { label, view, send, onChange, inApp } = window.muesli;
   const root = document.getElementById("app");
   const local = { renaming: null, draft: "" };
   let current = null;
@@ -13,15 +13,54 @@
   const esc = (s) =>
     String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+  const svg = (body, extra = "") =>
+    `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${body}</svg>`;
+  const icons = {
+    audio: svg('<path d="M3 12h2M7 8v8M11 5v14M15 9v6"/><path d="M19 15v6M16 18h6"/>'),
+    folder: svg('<path d="M3 6h7l2 2h9v11H3z"/>'),
+    computer: svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
+    file: svg('<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/>'),
+    noBot: svg('<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 6l4 4M21 6l-4 4"/>'),
+    stop: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor"/></svg>',
+    x: '<svg aria-hidden="true" viewBox="0 0 8 8" stroke="currentColor" stroke-width="1.5"><path d="M1 1l6 6M7 1L1 7"/></svg>',
+  };
+
   /** A button that sends `intent` when clicked. */
   function button(text, intent, { kind = "", disabled = false, testid = "" } = {}) {
     return `<button class="btn ${kind}" ${disabled ? "disabled" : ""} ${testid ? `data-testid="${testid}"` : ""}
       data-intent='${esc(JSON.stringify(intent))}'>${esc(text)}</button>`;
   }
 
+  /** A square button with an icon; the text is its accessible name and tooltip. */
+  function iconButton(icon, text, intent, { disabled = false, testid = "" } = {}) {
+    return `<button class="btn icon" aria-label="${esc(text)}" title="${esc(text)}" ${disabled ? "disabled" : ""}
+      ${testid ? `data-testid="${testid}"` : ""} data-intent='${esc(JSON.stringify(intent))}'>${icon}</button>`;
+  }
+
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const time = (d) => d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
+  /** "Today", "Yesterday", a weekday within the week, else "17 Nov". */
+  function day(iso, { long = false } = {}) {
+    const d = new Date(iso);
+    const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
+    if (days === 0) return "Today";
+    if (days === 1) return "Yesterday";
+    if (days > 1 && days < 7) return d.toLocaleDateString(undefined, { weekday: long ? "long" : "short" });
+    return d.toLocaleDateString(undefined, { day: "numeric", month: long ? "long" : "short" });
+  }
+
+  /** In the list: the time for today, else the day. */
+  function when(iso) {
+    if (!iso) return "";
+    const label = day(iso);
+    return label === "Today" ? time(new Date(iso)) : label;
+  }
+
+  /** Above a transcript: "Today, 14:30". */
   function date(iso) {
     if (!iso) return "";
-    return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    return `${day(iso, { long: true })}, ${time(new Date(iso))}`;
   }
 
   function duration(minutes) {
@@ -30,6 +69,8 @@
     return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
   }
 
+  const minutesSince = (iso) => Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+
   const meta = (...parts) => parts.filter(Boolean).map(esc).join(" · ");
 
   function progress(fraction) {
@@ -37,9 +78,16 @@
     return `<div class="progress"><span style="width:${Math.round(fraction * 100)}%"></span></div>`;
   }
 
+  const pct = (fraction) => `${Math.round((fraction ?? 0) * 100)}%`;
+
   function setSkin(words) {
     if (words && document.documentElement.dataset.skin !== words.skin) document.documentElement.dataset.skin = words.skin;
   }
+
+  const isMac = () => document.documentElement.dataset.skin === "mac";
+
+  /** macOS in the app: the window draws its title over this strip (title bar style Overlay). */
+  const titlebar = () => (inApp && isMac() && label !== "prompt" ? `<div class="titlebar" data-tauri-drag-region></div>` : "");
 
   /** Keeps scroll positions across a re-render. */
   function keepScroll(render) {
@@ -60,69 +108,87 @@
   // Main window
 
   function main(v) {
+    const mac = isMac();
     const reader = v.reader;
     const rows = [];
+    for (const i of v.imports) {
+      rows.push(`<li class="row import ${i.failed ? "failed" : ""}" data-testid="import-row">
+        <div class="row-top"><span class="title">${esc(i.name)}</span>
+          ${i.failed ? button("Dismiss", { type: "dismissImport", id: i.id }, { kind: "small" }) : button("Cancel", { type: "cancelImport", id: i.id }, { kind: "small" })}</div>
+        ${i.running ? `<div class="bar">${progress(i.progress)}${i.progress != null ? `<span class="pct">${pct(i.progress)}</span>` : ""}</div>` : `<div class="sub">${esc(i.status)}</div>`}
+      </li>`);
+    }
     if (v.live) {
       rows.push(`<li class="row live ${v.live.selected ? "selected" : ""}" data-testid="live-row"
           data-intent='${esc(JSON.stringify({ type: "select", id: v.live.id }))}'>
-        <span class="dot red" aria-hidden="true"></span>
-        <div><div class="title">${esc(v.live.title)}</div><div class="sub">${esc(v.live.status)}</div></div></li>`);
-    }
-    for (const i of v.imports) {
-      rows.push(`<li class="row import ${i.failed ? "failed" : ""}" data-testid="import-row">
-        <div class="grow"><div class="title">${esc(i.name)}</div><div class="sub">${esc(i.status)}</div>
-        ${i.running ? progress(i.progress) : ""}</div>
-        ${i.failed ? button("Dismiss", { type: "dismissImport", id: i.id }, { kind: "small" }) : button("Cancel", { type: "cancelImport", id: i.id }, { kind: "small" })}
-      </li>`);
+        <div class="row-top"><span class="title">${esc(v.live.title)}</span><span class="when">Now</span></div>
+        <div class="sub"><span class="dot red" aria-hidden="true"></span>${meta(v.live.status, duration(minutesSince(v.live.startedAt)))}</div></li>`);
     }
     for (const m of v.meetings) {
       rows.push(`<li class="row ${m.selected ? "selected" : ""}" data-testid="meeting-row"
           data-intent='${esc(JSON.stringify({ type: "select", id: m.id }))}'>
-        <div><div class="title">${esc(m.title)}${m.partial ? ' <span class="badge">Partial</span>' : ""}${m.failed ? ' <span class="badge">Failed</span>' : ""}</div>
-        <div class="sub">${meta(date(m.startedAt), duration(m.durationMinutes), m.source)}</div></div></li>`);
+        <div class="row-top"><span class="title">${esc(m.title)}</span><span class="when">${esc(when(m.startedAt))}</span></div>
+        <div class="sub">${meta(duration(m.durationMinutes), m.source)}${m.partial ? ' <span class="badge">Partial</span>' : ""}${m.failed ? ' <span class="badge">Failed</span>' : ""}</div></li>`);
     }
 
-    let right = `<div class="empty">${esc(v.emptyText || "Choose a transcript on the left.")}</div>`;
+    let right = `<div class="empty">${esc(v.emptyText || "Select a transcript")}</div>`;
     if (reader) {
       const renaming = local.renaming === reader.id;
       const heading = renaming
         ? `<form class="rename" data-testid="rename-form"><input name="title" value="${esc(local.draft)}" aria-label="Title" autofocus>
-             <button class="btn primary" type="submit">Rename</button><button class="btn" type="button" data-local="cancel-rename">Cancel</button></form>`
+             <button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-local="cancel-rename">Cancel</button></form>`
         : `<h1 data-testid="reader-title">${esc(reader.title)}</h1>`;
       const actions = reader.live
-        ? button("Stop and Save", { type: "stopAndSave" }, { kind: "primary", testid: "stop" })
+        ? `<button class="btn primary" data-testid="stop" data-intent='${esc(JSON.stringify({ type: "stopAndSave" }))}'>${icons.stop}Stop and Save</button>`
         : reader.editable && !renaming
-          ? `<button class="btn" data-local="rename" data-testid="rename">Rename</button>` + button("Delete", { type: "delete", id: reader.id }, { testid: "delete" })
+          ? `<button class="btn" data-local="rename" data-testid="rename">Rename</button>` + button("Delete", { type: "delete", id: reader.id }, { kind: "danger", testid: "delete" })
           : "";
       const lines = reader.lines.length
         ? reader.lines
-            .map((l) => `<p class="line"><span class="time">[${esc(l.time)}]</span> <strong>${esc(l.speaker)}</strong>: ${esc(l.text)}</p>`)
+            .map((l) => `<p class="line"><span class="time">${esc(l.time)}</span><span><strong>${esc(l.speaker)}</strong>: ${esc(l.text)}</span></p>`)
             .join("")
         : `<p class="empty-text">${esc(reader.emptyText || "")}</p>`;
       right = `<header class="reader-head">
-          <div class="grow">${heading}
-            ${reader.badge ? `<span class="badge live-badge" data-testid="live-badge"><span class="dot red"></span>${esc(reader.badge)}</span>` : ""}
-            <div class="sub">${meta(date(reader.startedAt), duration(reader.durationMinutes), reader.source)}</div>
-            ${reader.attendees.length ? `<div class="sub">With ${esc(reader.attendees.join(", "))}</div>` : ""}
+          <div class="top">${heading}${actions ? `<div class="actions">${actions}</div>` : ""}</div>
+          <div class="meta">
+            ${reader.badge ? `<span class="pill live" data-testid="live-badge"><span class="dot"></span>${esc(reader.badge)}</span>` : ""}
+            ${[date(reader.startedAt), duration(reader.durationMinutes), reader.source, reader.attendees.length ? `With ${reader.attendees.join(", ")}` : ""]
+              .filter(Boolean)
+              .map((x) => `<span>${esc(x)}</span>`)
+              .join("")}
           </div>
-          <div class="actions">${actions}</div>
         </header>
-        <article class="transcript" data-scroll="${reader.live ? "live" : "reader"}" data-testid="transcript">${lines}</article>`;
+        <article class="transcript" data-scroll="${reader.live ? "live" : "reader"}" data-testid="transcript">${lines}
+          ${reader.live ? `<p class="live-note">New text appears every 30 seconds.</p>` : ""}</article>`;
     }
 
-    keepScroll(() => {
-      root.innerHTML = `<div class="main-window">
-        <div class="toolbar">
+    // macOS: the list carries its own two buttons, as in the design; Start and Settings live in
+    // the menu bar menu. Windows: a command bar.
+    const revealIntent = { type: "showInFileManager", id: reader && !reader.live ? reader.id : null };
+    const toolbar = mac
+      ? ""
+      : `<div class="toolbar">
           ${v.transcribing ? "" : button("Start Transcribing", { type: "startTranscribing" }, { kind: "primary", disabled: !v.canStart, testid: "start" })}
           ${button("Transcribe Audio File…", { type: "chooseAudioFiles" }, { disabled: !v.canTranscribeFile, testid: "transcribe-file" })}
-          ${button(v.showInFileManager, { type: "showInFileManager", id: reader && !reader.live ? reader.id : null }, { testid: "reveal" })}
+          ${button(v.showInFileManager, revealIntent, { testid: "reveal" })}
           <span class="grow"></span>
           ${button("Settings…", { type: "openSettings" }, { kind: "quiet" })}
-        </div>
+        </div>`;
+    const listHead = mac
+      ? `<div class="list-head"><h1>Transcripts</h1><div class="icons">
+          ${iconButton(icons.audio, "Transcribe Audio File…", { type: "chooseAudioFiles" }, { disabled: !v.canTranscribeFile, testid: "transcribe-file" })}
+          ${iconButton(icons.folder, v.showInFileManager, revealIntent, { testid: "reveal" })}
+        </div></div>`
+      : "";
+
+    keepScroll(() => {
+      root.innerHTML = `${titlebar()}<div class="main-window">
+        ${toolbar}
         ${v.error ? `<div class="banner" role="alert">${esc(v.error)} ${button("Dismiss", { type: "dismissError" }, { kind: "small" })}</div>` : ""}
         <div class="split">
-          <ul class="list" data-scroll="list" data-testid="list">${rows.join("")}</ul>
-          <section class="reader">${right}</section>
+          <section class="sidebar" aria-label="Transcripts">${listHead}
+            <ul class="list" data-scroll="list" data-testid="list">${rows.join("")}</ul></section>
+          <main class="reader">${right}</main>
         </div>
         ${v.toast ? `<div class="toast" role="status" data-testid="toast">${esc(v.toast.text)}
             ${v.toast.undo ? button("Undo", { type: "undo" }, { kind: "small", testid: "undo" }) : ""}
@@ -139,42 +205,54 @@
   // ------------------------------------------------------------------------------------------
   // Settings
 
-  function permissionRows(rows) {
+  function pillClass(p) {
+    if (p.granted) return "ok";
+    if (p.access === "denied") return "warn";
+    return "";
+  }
+
+  function permissionRows(rows, { tags }) {
     return rows
       .map(
-        (p) => `<div class="perm" data-testid="permission-${p.permission}">
-          <div class="grow"><div class="title">${esc(p.title)} ${p.required ? '<span class="badge">Required</span>' : '<span class="badge quiet">Optional</span>'}</div>
-          <div class="sub">${esc(p.detail)}</div></div>
-          <span class="status ${p.granted ? "ok" : ""}"><span class="dot ${p.granted ? "green" : ""}"></span>${esc(p.badge)}</span>
-          ${
-            p.button
-              ? button(p.button, p.access === "notAsked" ? { type: "requestPermission", permission: p.permission } : { type: "openPermissionSettings", permission: p.permission }, { kind: "small" })
-              : ""
-          }
+        (p) => `<div class="setting" data-testid="permission-${p.permission}">
+          <div class="text"><span class="title">${esc(p.title)}${tags ? (p.required ? ' <span class="badge">Required</span>' : ' <span class="badge quiet">Optional</span>') : ""}</span>
+          <span class="sub">${tags || p.required ? "" : "Optional · "}${esc(p.detail)}</span></div>
+          <div class="controls">
+            ${p.access !== "notAsked" || !p.button ? `<span class="pill ${pillClass(p)}"><span class="dot"></span>${esc(p.badge)}</span>` : ""}
+            ${
+              p.button
+                ? button(p.button, p.access === "notAsked" ? { type: "requestPermission", permission: p.permission } : { type: "openPermissionSettings", permission: p.permission })
+                : ""
+            }
+          </div>
         </div>`,
       )
       .join("");
   }
 
-  function languages(l) {
+  function languages(l, { reset = false } = {}) {
     const chips = l.chosen
       .map(
         (c) => `<span class="chip" data-testid="chip-${c.code}">${esc(c.name)}
-          ${l.canRemove ? `<button class="chip-x" aria-label="Remove ${esc(c.name)}" data-intent='${esc(JSON.stringify({ type: "removeLanguage", code: c.code }))}'>×</button>` : ""}</span>`,
+          ${l.canRemove ? `<button class="chip-x" aria-label="Remove ${esc(c.name)}" data-intent='${esc(JSON.stringify({ type: "removeLanguage", code: c.code }))}'>${icons.x}</button>` : ""}</span>`,
       )
       .join("");
     const options = l.available.map((c) => `<option value="${esc(c.code)}">${esc(c.name)}</option>`).join("");
     return `<div class="chips">${chips}
-      <select class="add-language" data-testid="add-language" aria-label="Add language"><option value="">+ Add language</option>${options}</select></div>`;
+      <select class="add-language" data-testid="add-language" aria-label="Add language"><option value="">+ Add language</option>${options}</select>
+      ${reset ? `<span class="reset">${button("Reset", { type: "resetLanguages" }, { kind: "link", disabled: !l.canReset })}</span>` : ""}</div>`;
   }
 
   function model(m) {
-    return `<div class="model" data-testid="model">
-      <div class="grow"><div class="title">${esc(m.title)}</div>
-      <div class="sub">${esc(m.text)}</div>
-      ${m.progress != null ? progress(m.progress) : ""}
+    const state = m.error ? "warn" : m.text === "Ready" ? "ok" : "";
+    return `<div class="setting" data-testid="model">
+      <div class="text"><span class="title">${esc(m.title)}</span>
+      ${m.progress != null ? `<span class="sub">${esc(m.text)}</span>${progress(m.progress)}` : ""}
       ${m.error ? `<div class="error-text">${esc(m.error)}${m.url ? `<br><code>${esc(m.url)}</code>` : ""}</div>` : ""}</div>
-      ${m.canRetry ? button("Download again", { type: "downloadModelAgain" }, { kind: "small" }) : ""}
+      <div class="controls">
+        ${m.progress == null ? `<span class="pill ${state}"><span class="dot"></span>${esc(m.text)}</span>` : ""}
+        ${m.canRetry ? button("Download again", { type: "downloadModelAgain" }) : ""}
+      </div>
     </div>`;
   }
 
@@ -184,44 +262,55 @@
     const assistants = a.enabled
       ? `${
           a.claudeDesktop
-            ? `<div class="row-flat"><div class="grow"><div class="title">Claude Desktop</div><div class="sub">${esc(a.claudeDesktop.status)}</div></div>
-               ${a.claudeDesktop.button ? button(a.claudeDesktop.button, { type: "connectClaudeDesktop" }, { kind: "primary small" }) : ""}</div>`
+            ? `<div class="setting"><div class="text"><span class="title">Claude Desktop</span><span class="sub">${esc(a.claudeDesktop.status)}</span></div>
+               ${a.claudeDesktop.button ? button(a.claudeDesktop.button, { type: "connectClaudeDesktop" }, { kind: "primary" }) : ""}</div>`
             : ""
         }
-        <details data-key="other" ${open.includes("other") ? "open" : ""}><summary>Other apps…</summary>
-          <div class="segmented" role="tablist">${a.assistants
+        <div class="setting stack">
+        <details class="other-apps" data-key="other" ${open.includes("other") ? "open" : ""}><summary><span class="disclosure">Other apps…</span></summary><div class="stack">
+          <div class="segmented" role="tablist" aria-label="Assistant">${a.assistants
             .map((c) => `<button role="tab" aria-selected="${c.selected}" class="seg ${c.selected ? "on" : ""}" data-intent='${esc(JSON.stringify({ type: "pickAssistant", name: c.name }))}'>${esc(c.name)}</button>`)
             .join("")}</div>
-          <p class="sub">${esc(a.instructions)}</p>
-          ${a.command ? `<pre class="command" data-testid="command">${esc(a.command)}</pre><button class="btn small" data-local="copy">Copy</button>` : `<p class="sub">muesli-mcp is not next to the app in this build.</p>`}
-          ${a.canAddToClaudeConfig ? button("Add to Claude's config file", { type: "addToClaudeConfig" }, { kind: "small" }) : ""}
-          ${a.claudeConfigStatus ? `<p class="sub">${esc(a.claudeConfigStatus)}</p>` : ""}
-        </details>`
+          <span class="sub">${esc(a.instructions)}</span>
+          ${
+            a.command
+              ? `<div class="command"><pre data-testid="command">${esc(a.command)}</pre><button class="btn" data-local="copy">Copy</button></div>`
+              : `<span class="sub">muesli-mcp is not next to the app in this build.</span>`
+          }
+          ${a.canAddToClaudeConfig ? `<div class="row-between"><span class="sub">Claude Desktop blocked by your organisation?</span>${button("Add to Claude's config file", { type: "addToClaudeConfig" })}</div>` : ""}
+          ${a.claudeConfigStatus ? `<span class="sub">${esc(a.claudeConfigStatus)}</span>` : ""}
+        </div></details></div>`
       : "";
-    root.innerHTML = `<div class="settings" data-scroll="settings">
-      <section><h2>General</h2>
-        <div class="row-flat"><div class="grow"><div class="title">Transcripts folder</div><div class="sub path" data-testid="folder">${esc(v.transcriptsFolder)}</div></div>
-          ${button(`Show in ${v.words.fileManager}`, { type: "showInFileManager", id: null }, { kind: "small" })}
-          ${button("Change…", { type: "chooseTranscriptsFolder" }, { kind: "small", disabled: v.transcriptsFolderLocked })}</div>
-        <label class="row-flat switch"><div class="grow title">${esc(v.words.startAtLogin)}</div>
+    root.innerHTML = `${titlebar()}<div class="settings" data-scroll="settings">
+      <h2>General</h2>
+      <section class="card">
+        <div class="setting"><div class="text"><span class="title">Transcripts folder</span><span class="sub path" data-testid="folder">${esc(v.transcriptsFolder)}</span></div>
+          <div class="controls">
+            ${button(`Show in ${v.words.fileManager}`, { type: "showInFileManager", id: null })}
+            ${button("Change…", { type: "chooseTranscriptsFolder" }, { disabled: v.transcriptsFolderLocked })}
+          </div></div>
+        <label class="setting"><div class="text"><span class="title">${esc(v.words.startAtLogin)}</span><span class="sub">So Muesli is there when a meeting starts</span></div>
           <input type="checkbox" role="switch" data-testid="login" ${v.startAtLogin ? "checked" : ""}
             data-toggle='${esc(JSON.stringify({ type: "setStartAtLogin" }))}'></label>
       </section>
-      <section><h2>Languages</h2>
-        <p class="sub">Muesli picks the most likely of these every 30 seconds.</p>
-        ${languages(v.languages)}
-        ${button("Reset", { type: "resetLanguages" }, { kind: "small quiet", disabled: !v.languages.canReset })}
-      </section>
-      <section><h2>AI assistants</h2>
-        <label class="row-flat switch"><div class="grow"><div class="title">Let AI assistants use Muesli</div><div class="sub">${esc(a.privacy)}</div></div>
+      <h2>Languages</h2>
+      <section class="card"><div class="setting stack">
+        <span class="sub">Spoken in your meetings. Every 30 seconds Muesli picks the most likely one; fewer languages, fewer mistakes.</span>
+        ${languages(v.languages, { reset: true })}
+      </div></section>
+      <h2>AI assistants</h2>
+      <section class="card">
+        <label class="setting"><div class="text"><span class="title">Let AI assistants use Muesli</span><span class="sub">${esc(a.privacy)}</span></div>
           <input type="checkbox" role="switch" data-testid="assistants" ${a.enabled ? "checked" : ""}
             data-toggle='${esc(JSON.stringify({ type: "setAssistantsEnabled" }))}'></label>
         ${assistants}
       </section>
-      <details class="advanced" data-key="advanced" ${open.includes("advanced") ? "open" : ""}><summary><h2>Advanced</h2></summary>
-        ${model(v.model)}
-        <div class="perms">${permissionRows(v.permissions)}</div>
-        <p class="sub">Muesli ${esc(v.version)}</p>
+      <details class="advanced" data-key="advanced" ${open.includes("advanced") ? "open" : ""}><summary><h2 class="disclosure">Advanced</h2></summary>
+        <div class="stack">
+          <section class="card">${model(v.model)}</section>
+          <section class="card">${permissionRows(v.permissions, { tags: false })}</section>
+          <p class="version">Muesli ${esc(v.version)}</p>
+        </div>
       </details>
     </div>`;
   }
@@ -229,32 +318,51 @@
   // ------------------------------------------------------------------------------------------
   // Setup
 
+  const promiseIcons = [icons.computer, icons.file, icons.noBot];
+
   function setup(v) {
-    const dots = Array.from({ length: v.steps }, (_, i) => `<span class="dot ${i === v.step ? "on" : ""}" aria-hidden="true"></span>`).join("");
+    const dots = Array.from(
+      { length: v.steps },
+      (_, i) => `<span class="dot ${i === v.step ? "on" : i < v.step ? "done" : ""}" aria-hidden="true"></span>`,
+    ).join("");
+    const counter = v.step === 0 ? "Welcome" : v.step === v.steps - 1 ? "All set" : `Step ${v.step} of ${v.steps - 2}`;
     let body = "";
     if (v.step === 0) {
-      body = `<img class="mark" alt="" src="brand/mark.svg"><ul class="promises">${v.promises.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>`;
+      body = `<ul class="promises">${v.promises
+        .map(
+          (p, i) => `<li><span class="icon">${promiseIcons[i] || icons.computer}</span>
+            <span class="text"><span class="title">${esc(p)}</span>${v.promiseDetails?.[i] ? `<span class="sub">${esc(v.promiseDetails[i])}</span>` : ""}</span></li>`,
+        )
+        .join("")}</ul>`;
     } else if (v.step === 1) {
       body = languages(v.languages);
     } else if (v.step === 2) {
-      body = `<div class="perms">${permissionRows(v.permissions)}</div>${v.permissionsNote ? `<p class="sub note">${esc(v.permissionsNote)} ${button("Open privacy settings", { type: "openPermissionSettings", permission: "microphone" }, { kind: "link" })}</p>` : ""}`;
+      body = `<section class="card">${permissionRows(v.permissions, { tags: true })}</section>${
+        v.permissionsNote
+          ? `<p class="hint">${esc(v.permissionsNote)} ${button("Open privacy settings", { type: "openPermissionSettings", permission: "microphone" }, { kind: "link" })}</p>`
+          : ""
+      }`;
     } else {
       body = v.notice ? `<p class="notice">${esc(v.notice)}</p>` : "";
     }
-    const footerModel = v.model ? `<div class="footer-model" data-testid="setup-model"><span>${esc(v.model.title)}: ${esc(v.model.text)}</span>${v.model.progress != null ? progress(v.model.progress) : ""}</div>` : "";
+    const footerModel = v.model
+      ? `<div class="footer-model" data-testid="setup-model">${v.model.progress != null ? progress(v.model.progress) : ""}<span>${esc(v.model.title)} · ${esc(v.model.text)}</span></div>`
+      : "";
     const primary = v.step === 3 ? { type: "finishSetup" } : { type: "setupNext" };
-    root.innerHTML = `<div class="setup step-${v.step}">
+    root.innerHTML = `${titlebar()}<div class="setup step-${v.step}">
       <div class="setup-body">
-        <h1 data-testid="setup-title">${esc(v.title)}</h1>
-        ${v.subtitle ? `<p class="subtitle">${esc(v.subtitle)}</p>` : ""}
+        <div class="setup-top"><span class="mark-tile"><img alt="" src="brand/mark.svg"></span><span class="counter">${esc(counter)}</span></div>
+        <div class="setup-head">
+          <h1 data-testid="setup-title">${esc(v.title)}</h1>
+          ${v.subtitle ? `<p class="subtitle">${esc(v.subtitle)}</p>` : ""}
+        </div>
         ${body}
       </div>
       <footer>
-        <div class="dots" data-testid="dots">${dots}</div>
-        ${footerModel}
+        <div class="left"><div class="dots" data-testid="dots">${dots}</div>${footerModel}</div>
         <div class="buttons">
-          ${v.canGoBack ? button("Back", { type: "setupBack" }, { kind: "quiet" }) : ""}
-          ${button(v.primary, primary, { kind: "primary", disabled: !v.primaryEnabled, testid: "setup-primary" })}
+          ${v.canGoBack ? button("Back", { type: "setupBack" }, { kind: "big" }) : ""}
+          ${button(v.primary, primary, { kind: "primary big", disabled: !v.primaryEnabled, testid: "setup-primary" })}
         </div>
       </footer>
     </div>`;
@@ -269,9 +377,9 @@
       return;
     }
     root.innerHTML = `<div class="prompt" data-testid="prompt">
-      <img class="mark small" alt="" src="brand/mark.svg">
-      <div class="grow"><div class="title">${esc(v.title)}</div><div class="sub">${esc(v.body)}</div>
-      <div class="buttons">${button(v.decline, { type: "answerPrompt", accept: false })}${button(v.accept, { type: "answerPrompt", accept: true }, { kind: "primary" })}</div></div>
+      <div class="body"><span class="mark-tile"><img alt="" src="brand/mark.svg"></span>
+      <div class="grow"><div class="title">${esc(v.title)}</div><div class="sub">${esc(v.body)}</div></div></div>
+      <div class="buttons">${button(v.decline, { type: "answerPrompt", accept: false })}${button(v.accept, { type: "answerPrompt", accept: true }, { kind: "primary" })}</div>
     </div>`;
   }
 

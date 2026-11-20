@@ -182,6 +182,8 @@ pub struct SetupView {
     pub subtitle: Option<String>,
     /// Welcome: the three promises.
     pub promises: Vec<String>,
+    /// One line under each promise.
+    pub promise_details: Vec<String>,
     pub languages: LanguagesView,
     pub permissions: Vec<PermissionRow>,
     /// Windows: call audio needs no permission.

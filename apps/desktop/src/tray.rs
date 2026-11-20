@@ -96,13 +96,46 @@ impl Tray for TauriTray {
     }
 }
 
+/// The SF Symbol beside a menu item (macOS), by the engine's item id.
+#[cfg(target_os = "macos")]
+fn symbol(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "start" => "record.circle",
+        "stop" => "stop.circle",
+        "dismiss" => "xmark.circle",
+        "open" => "macwindow",
+        "transcribe_file" => "waveform.badge.plus",
+        "settings" => "gearshape",
+        "quit" => "power",
+        id if id.starts_with("recent:") => "doc.text",
+        _ => return None,
+    })
+}
+
 fn build_menu(handle: &AppHandle, items: &[TrayItem]) -> tauri::Result<Menu<tauri::Wry>> {
+    #[cfg(target_os = "macos")]
+    muesli_platform_macos::menu_icons::set(
+        items
+            .iter()
+            .filter_map(|i| match i {
+                TrayItem::Action { id, label, .. } => symbol(id).map(|s| (label.clone(), s)),
+                _ => None,
+            })
+            .collect(),
+    );
     let menu = Menu::new(handle)?;
     for (n, entry) in items.iter().enumerate() {
         match entry {
             TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(handle)?)?,
             TrayItem::Label { label } => menu.append(&MenuItem::with_id(handle, format!("label:{n}"), label, false, None::<&str>)?)?,
-            TrayItem::Action { id, label, enabled } => menu.append(&MenuItem::with_id(handle, id, label, *enabled, None::<&str>)?)?,
+            TrayItem::Action { id, label, enabled } => {
+                let shortcut = match id.as_str() {
+                    "settings" => Some("CmdOrCtrl+,"),
+                    "quit" => Some("CmdOrCtrl+Q"),
+                    _ => None,
+                };
+                menu.append(&MenuItem::with_id(handle, id, label, *enabled, shortcut)?)?
+            }
         }
     }
     Ok(menu)

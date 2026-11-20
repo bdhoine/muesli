@@ -1136,6 +1136,7 @@ impl Engine {
         items.push(action("transcribe_file", "Transcribe Audio File…", ready));
         if !recent.is_empty() {
             items.push(TrayItem::Separator);
+            items.push(label("Recent Transcripts".into()));
             for m in &recent {
                 items.push(action(&format!("recent:{}", m.id), &shorten_title(&m.title, 44), true));
             }
@@ -1398,6 +1399,15 @@ impl Engine {
                     format!("Runs entirely on this {}.", words.computer),
                     "Keeps the text, never the audio.".to_string(),
                     "No bot in your calls.".to_string(),
+                ]
+            } else {
+                Vec::new()
+            },
+            promise_details: if step == 0 {
+                vec![
+                    "Speech becomes text locally with Whisper. No account, no sign-up.".to_string(),
+                    "Each meeting becomes a Markdown and a JSON file in a folder you choose.".to_string(),
+                    "Nobody sees a transcriber join. Muesli asks before it starts.".to_string(),
                 ]
             } else {
                 Vec::new()

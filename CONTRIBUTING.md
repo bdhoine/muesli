@@ -51,7 +51,7 @@ apps/desktop (Tauri)  ── Host, Tray ──►  crates/engine (muesli-engine)
 | `crates/whisper` | Model download and validation (`ModelManager`, deletes old model files), whisper.cpp transcriber with voice activity detection |
 | `crates/platform-common` | Clock, folders (`dirs`), trash (`trash`), Teams process scan (`sysinfo`), microphone and system audio (`cpal`, feature `capture`: WASAPI loopback on Windows, Core Audio tap on macOS) |
 | `crates/platform-windows` | WASAPI sessions (mic in use), toasts with buttons, privacy switches, the Run key for start at login. Compiles to nothing elsewhere. |
-| `crates/platform-macos` | Core Audio process list and EventKit (detection), UNUserNotificationCenter with a delegate, permissions (AVFoundation, EventKit, notification settings), NSFileManager trash, SMAppService. Compiles to nothing elsewhere. |
+| `crates/platform-macos` | Core Audio process list and EventKit (detection), UNUserNotificationCenter with a delegate, permissions (AVFoundation, EventKit, notification settings), NSFileManager trash, SMAppService, SF Symbols on the menu bar menu (`menu_icons.rs`, added when the menu opens because Tauri menus cannot show template images). Compiles to nothing elsewhere. |
 | `crates/platform-fake` | A drivable fake for every port: manual clock, scripted detector, fed or file-played audio, answerable notifications, folder trash |
 | `crates/port-contracts` | The contract suites |
 | `apps/desktop` | Tauri: adapters for the tray (`tray.rs`), windows (`windows.rs`, incl. the macOS Dock policy), dialogs and opening files (`host.rs`), whisper (`speech.rs`); wiring in `lib.rs` |
