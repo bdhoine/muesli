@@ -157,6 +157,48 @@ fn files_wait_for_a_recording_and_can_be_cancelled() {
 }
 
 #[test]
+fn cancelling_a_running_file_stops_it_at_once_and_leaves_no_transcript() {
+    let h = Harness::ready();
+    h.speech.hold_files.store(true, std::sync::atomic::Ordering::SeqCst); // a slow model
+    let dir = tempfile::tempdir().unwrap();
+    let wav = dir.path().join("long.wav");
+    std::fs::write(&wav, long_wav(70)).unwrap();
+    h.engine.intent(Intent::TranscribeFiles { paths: vec![wav.clone()] });
+    wait_for("running", || h.engine.main_view().imports.first().is_some_and(|i| i.running));
+    let id = h.engine.main_view().imports[0].id;
+
+    h.engine.intent(Intent::CancelImport { id });
+    let row = h.engine.main_view().imports[0].clone();
+    assert!(row.cancelling, "the row says so right away");
+    assert_eq!(row.status, "Cancelling…");
+    assert!(!row.running);
+
+    wait_for("stopped", || h.engine.main_view().imports.is_empty());
+    assert!(h.engine.main_view().meetings.is_empty(), "no partial meeting is left in the list");
+    assert!(wav.exists(), "the audio file is never touched");
+}
+
+/// A mono 16 kHz WAV of loud noise, so the scripted model has something to hear.
+fn long_wav(seconds: usize) -> Vec<u8> {
+    let data: Vec<u8> = (0..seconds * 16_000).flat_map(|i| (if i % 2 == 0 { 8000i16 } else { -8000 }).to_le_bytes()).collect();
+    let mut out = Vec::new();
+    out.extend(b"RIFF");
+    out.extend((36 + data.len() as u32).to_le_bytes());
+    out.extend(b"WAVEfmt ");
+    out.extend(16u32.to_le_bytes());
+    out.extend(1u16.to_le_bytes());
+    out.extend(1u16.to_le_bytes());
+    out.extend(16_000u32.to_le_bytes());
+    out.extend(32_000u32.to_le_bytes());
+    out.extend(2u16.to_le_bytes());
+    out.extend(16u16.to_le_bytes());
+    out.extend(b"data");
+    out.extend((data.len() as u32).to_le_bytes());
+    out.extend(data);
+    out
+}
+
+#[test]
 fn a_file_that_is_not_audio_fails_with_a_reason() {
     let h = Harness::ready();
     let dir = tempfile::tempdir().unwrap();

@@ -107,7 +107,7 @@ fn register_and_unregister_leave_everything_else_alone() {
 
     assert!(ClaudeDesktopConfig::unregister(&claude(&env)).starts_with("Removed"));
     assert_eq!(config(&env), before);
-    assert_eq!(ClaudeDesktopConfig::unregister(&claude(&env)), "Off");
+    assert_eq!(ClaudeDesktopConfig::unregister(&claude(&env)), "");
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn the_config_entry_follows_the_preferences() {
     prefs.claude_desktop_config_entry = true;
     assert!(ClaudeDesktopConfig::sync(&prefs, Path::new(HELPER), false, &claude(&env)).starts_with("Registered"));
     assert!(ClaudeDesktopConfig::sync(&prefs, Path::new(HELPER), true, &claude(&env)).starts_with("Removed"));
-    assert_eq!(ClaudeDesktopConfig::sync(&prefs, Path::new(HELPER), true, &claude(&env)), "Off");
+    assert_eq!(ClaudeDesktopConfig::sync(&prefs, Path::new(HELPER), true, &claude(&env)), "");
     assert!(ExtensionState::Outdated { installed: "1".into(), bundled: "2".into() }.is_installed());
     assert!(!ExtensionState::NotInstalled.is_installed());
 }

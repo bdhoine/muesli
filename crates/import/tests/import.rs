@@ -222,3 +222,45 @@ fn a_finished_import_of_the_same_file_is_left_alone() {
     assert_ne!(a.id, b.id);
     assert_eq!(MeetingStore::new(&paths).all().len(), 2);
 }
+
+/// Stops at once when asked, as the Whisper transcriber does, by failing the chunk.
+struct Stoppable;
+
+impl SpeechToText for Stoppable {
+    fn transcribe(&self, _chunk: &AudioChunk) -> Result<Vec<TranscriptSegment>, String> {
+        Ok(Vec::new())
+    }
+
+    fn transcribe_until(&self, _chunk: &AudioChunk, cancel: &AtomicBool) -> Result<Vec<TranscriptSegment>, String> {
+        cancel.store(true, std::sync::atomic::Ordering::Relaxed); // pressed while this chunk was running
+        Err("stopped".into())
+    }
+}
+
+#[test]
+fn a_transcriber_that_stops_because_of_the_cancel_is_a_cancel_not_a_failure() {
+    let (dir, paths) = paths();
+    let wav = dir.path().join("long.wav");
+    silence_wav(&wav, 40);
+    let err = import_file(&wav, &Stoppable, &paths, &AtomicBool::new(false), |_| {}).unwrap_err();
+    assert_eq!(err, ImportError::Cancelled);
+    assert!(MeetingStore::new(&paths).all().is_empty(), "nothing was transcribed, so nothing is left");
+}
+
+#[test]
+fn discarding_removes_the_partial_meeting_and_its_exported_files() {
+    let (dir, paths) = paths();
+    let wav = dir.path().join("long.wav");
+    silence_wav(&wav, 70);
+    let cancel = AtomicBool::new(false);
+    let err = import_file(&wav, &stub(), &paths, &cancel, |_| cancel.store(true, std::sync::atomic::Ordering::Relaxed)).unwrap_err();
+    assert_eq!(err, ImportError::Cancelled);
+    assert_eq!(MeetingStore::new(&paths).all().len(), 1);
+    assert!(std::fs::read_dir(paths.transcripts_dir()).unwrap().count() > 0);
+
+    muesli_import::discard_partial(&wav, &paths);
+
+    assert!(MeetingStore::new(&paths).all().is_empty());
+    assert_eq!(std::fs::read_dir(paths.transcripts_dir()).unwrap().count(), 0, "the exported .md and .json are gone");
+    assert!(wav.exists(), "the audio file stays");
+}

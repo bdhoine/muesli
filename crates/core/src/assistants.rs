@@ -153,7 +153,7 @@ impl ClaudeDesktopConfig {
         mcp_enabled && config_entry && !extension_installed
     }
 
-    /// Adds or removes the entry to match the preferences. Returns the status line.
+    /// Adds or removes the entry to match the preferences. Returns the status line (empty: nothing to say).
     pub fn sync(prefs: &crate::Preferences, helper: &Path, extension_installed: bool, directory: &Path) -> String {
         if Self::wanted(prefs.mcp_enabled, prefs.claude_desktop_config_entry, extension_installed) {
             Self::register(helper, directory)
@@ -162,16 +162,17 @@ impl ClaudeDesktopConfig {
         }
     }
 
+    /// Removes the entry. Returns the status line: empty when there was nothing to remove.
     pub fn unregister(directory: &Path) -> String {
         let file = Self::file(directory);
         if !file.exists() {
-            return "Off".into();
+            return String::new();
         }
-        let Some(mut root) = read(&file) else { return "Off".into() };
-        let Some(servers) = root.get_mut("mcpServers").and_then(Value::as_object_mut) else { return "Off".into() };
+        let Some(mut root) = read(&file) else { return String::new() };
+        let Some(servers) = root.get_mut("mcpServers").and_then(Value::as_object_mut) else { return String::new() };
         let names = std::iter::once(Self::KEY).chain(Self::LEGACY_KEYS);
         if !names.clone().any(|n| servers.contains_key(n)) {
-            return "Off".into();
+            return String::new();
         }
         for name in names {
             servers.remove(name);

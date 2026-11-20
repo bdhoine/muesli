@@ -51,11 +51,13 @@ pub struct LiveRow {
 pub struct ImportRow {
     pub id: u64,
     pub name: String,
-    /// "Transcribing", "Waiting", "Waiting for the speech model", or the error.
+    /// "Transcribing", "Cancelling…", "Waiting", "Waiting for the speech model", or the error.
     pub status: String,
     /// 0..1 while transcribing, when the length is known.
     pub progress: Option<f64>,
     pub running: bool,
+    /// Cancel was pressed: shows "Cancelling…" until the worker has stopped.
+    pub cancelling: bool,
     pub failed: bool,
 }
 
@@ -262,6 +264,8 @@ pub struct ClaudeDesktopRow {
     pub button: Option<String>,
     /// "Connected", "Not connected", "An older version is connected".
     pub status: String,
+    /// The colour of the light before the status: "ok", "warn" or "" (not connected).
+    pub tone: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

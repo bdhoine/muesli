@@ -91,7 +91,7 @@ impl Engine {
         let s = self.lock();
         downloading
             || matches!(s.activity, Activity::Starting | Activity::Transcribing | Activity::Saving)
-            || s.imports.iter().any(|i| matches!(i.state, ImportState::Waiting | ImportState::Running { .. }))
+            || s.imports.iter().any(|i| matches!(i.state, ImportState::Waiting | ImportState::Running { .. } | ImportState::Cancelling))
     }
 
     /// The version that is downloaded and ready to install.

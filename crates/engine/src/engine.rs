@@ -97,6 +97,8 @@ struct Session {
 enum ImportState {
     Waiting,
     Running { progress: Option<f64> },
+    /// Cancel was pressed while running: the worker is stopping, and the result is thrown away.
+    Cancelling,
     Failed(String),
 }
 
@@ -777,7 +779,14 @@ impl Engine {
                     self.lock().last_ready = Some(LastReady { id: m.id.clone(), title: m.title.clone(), ended_at: m.ended_at });
                     self.set_import(id, None);
                 }
-                Err(muesli_import::ImportError::Cancelled) => self.set_import(id, None),
+                Err(muesli_import::ImportError::Cancelled) => {
+                    // Cancel means no transcript. Only when Muesli quits does what was done stay,
+                    // so the import carries on at the next start.
+                    if !self.lock().quitting {
+                        muesli_import::discard_partial(&item.path, &self.paths());
+                    }
+                    self.set_import(id, None);
+                }
                 Err(e) => self.set_import(id, Some(ImportState::Failed(e.to_string()))),
             }
         }
@@ -791,7 +800,10 @@ impl Engine {
             match state {
                 Some(state) => {
                     if let Some(item) = s.imports.iter_mut().find(|i| i.id == id) {
-                        item.state = state;
+                        // Progress that arrives after Cancel does not undo "Cancelling…".
+                        if !(item.state == ImportState::Cancelling && matches!(state, ImportState::Running { .. })) {
+                            item.state = state;
+                        }
                     }
                 }
                 None => s.imports.retain(|i| i.id != id),
@@ -950,10 +962,13 @@ impl Engine {
             Intent::CancelImport { id } => {
                 {
                     let mut s = self.lock();
-                    if let Some(item) = s.imports.iter().find(|i| i.id == id) {
+                    if let Some(item) = s.imports.iter_mut().find(|i| i.id == id) {
                         item.cancel.store(true, Ordering::SeqCst);
+                        if matches!(item.state, ImportState::Running { .. }) {
+                            item.state = ImportState::Cancelling; // removed by the worker once it has stopped
+                        }
                     }
-                    s.imports.retain(|i| i.id != id || matches!(i.state, ImportState::Running { .. }));
+                    s.imports.retain(|i| i.id != id || matches!(i.state, ImportState::Running { .. } | ImportState::Cancelling));
                 }
                 self.changed();
             }
@@ -1323,6 +1338,7 @@ impl Engine {
                     ImportState::Waiting if live.is_some() => "Waiting for the meeting to end".into(),
                     ImportState::Waiting => "Waiting".into(),
                     ImportState::Running { .. } => "Transcribing".into(),
+                    ImportState::Cancelling => "Cancelling…".into(),
                     ImportState::Failed(why) => why.clone(),
                 },
                 progress: match i.state {
@@ -1330,6 +1346,7 @@ impl Engine {
                     _ => None,
                 },
                 running: matches!(i.state, ImportState::Running { .. }),
+                cancelling: i.state == ImportState::Cancelling,
                 failed: matches!(i.state, ImportState::Failed(_)),
             })
             .collect();
@@ -1612,6 +1629,11 @@ impl Engine {
                     ExtensionState::Installed { .. } => "Connected".into(),
                     ExtensionState::Outdated { .. } => "An older version is connected".into(),
                     _ => "Not connected".into(),
+                },
+                tone: match &extension {
+                    ExtensionState::Installed { .. } => "ok".into(),
+                    ExtensionState::Outdated { .. } => "warn".into(),
+                    _ => String::new(),
                 },
             }),
             assistants: AssistantClient::ALL

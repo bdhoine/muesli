@@ -21,12 +21,23 @@ pub const SOURCE: &str = "file";
 /// Anything that turns a chunk of 16 kHz mono audio into text (the whisper transcriber, or a stub in tests).
 pub trait SpeechToText {
     fn transcribe(&self, chunk: &AudioChunk) -> Result<Vec<TranscriptSegment>, String>;
+
+    /// Like `transcribe`, but gives up quickly (with an error) once `cancel` is set, instead of
+    /// finishing the chunk. Implementations that cannot stop early just run to the end.
+    fn transcribe_until(&self, chunk: &AudioChunk, cancel: &AtomicBool) -> Result<Vec<TranscriptSegment>, String> {
+        let _ = cancel;
+        self.transcribe(chunk)
+    }
 }
 
 #[cfg(feature = "whisper")]
 impl SpeechToText for muesli_whisper::Transcriber {
     fn transcribe(&self, chunk: &AudioChunk) -> Result<Vec<TranscriptSegment>, String> {
         muesli_whisper::Transcriber::transcribe(self, chunk).map_err(|e| e.to_string())
+    }
+
+    fn transcribe_until(&self, chunk: &AudioChunk, cancel: &AtomicBool) -> Result<Vec<TranscriptSegment>, String> {
+        muesli_whisper::Transcriber::transcribe_until(self, chunk, cancel).map_err(|e| e.to_string())
     }
 }
 
@@ -87,9 +98,13 @@ pub fn import_file(
     let mut failure: Option<ImportError> = None;
 
     let transcribe_chunk = |samples: Vec<f32>, meeting: &mut Meeting, offset: &mut f64| -> Result<(), ImportError> {
+        if cancelled(cancel) {
+            return Err(ImportError::Cancelled);
+        }
         let seconds = samples.len() as f64 / SAMPLE_RATE as f64;
         let chunk = AudioChunk { speaker: SPEAKER.to_string(), offset_seconds: *offset, samples };
-        let segments = stt.transcribe(&chunk).map_err(ImportError::Transcribe)?;
+        // A transcriber that stopped because of the cancel is a cancel, not a failure.
+        let segments = stt.transcribe_until(&chunk, cancel).map_err(|e| if cancelled(cancel) { ImportError::Cancelled } else { ImportError::Transcribe(e) })?;
         store.append(meeting, segments);
         *offset += seconds;
         Ok(())
@@ -169,11 +184,11 @@ fn resume_offset(meeting: &Meeting) -> f64 {
     (((last_end - 0.001).max(0.0) / chunk).floor() + 1.0) * chunk
 }
 
-/// Finds what an interrupted import of this file left: partial meetings (and empty failed ones)
-/// with the same title that start at the file's date (to the second, the precision they are stored with), which only unfinished imports do.
-/// Returns the one that got furthest and removes the others, so the file ends up as one meeting.
-fn take_over_stale(store: &MeetingStore, paths: &Paths, title: &str, modified: DateTime<Utc>) -> Option<Meeting> {
-    let mut stale: Vec<Meeting> = store
+/// What an interrupted import of this file left: partial meetings (and empty failed ones) with
+/// the same title that start at the file's date (to the second, the precision they are stored
+/// with), which only unfinished imports do.
+fn stale_meetings(store: &MeetingStore, title: &str, modified: DateTime<Utc>) -> Vec<Meeting> {
+    store
         .all()
         .into_iter()
         .filter(|m| m.source == SOURCE && m.title == title && m.started_at.timestamp() == modified.timestamp())
@@ -182,23 +197,45 @@ fn take_over_stale(store: &MeetingStore, paths: &Paths, title: &str, modified: D
                 || matches!(m.state, MeetingState::Recording | MeetingState::Finalizing)
                 || (m.state == MeetingState::Failed && m.transcript.is_empty())
         })
-        .collect();
+        .collect()
+}
+
+/// Removes a meeting's record and, unless `keep_stem` is its name, its exported files.
+fn remove_meeting(store: &MeetingStore, paths: &Paths, meeting: &Meeting, keep_stem: Option<&str>) {
+    if let Some(file) = store.url(&meeting.id) {
+        let _ = std::fs::remove_file(file);
+    }
+    let stem = Store::file_stem(meeting);
+    if keep_stem != Some(stem.as_str()) {
+        for ext in ["md", "json"] {
+            let _ = std::fs::remove_file(paths.transcripts_dir().join(format!("{stem}.{ext}")));
+        }
+    }
+}
+
+/// Finds what an interrupted import of this file left. Returns the one that got furthest and
+/// removes the others, so the file ends up as one meeting.
+fn take_over_stale(store: &MeetingStore, paths: &Paths, title: &str, modified: DateTime<Utc>) -> Option<Meeting> {
+    let mut stale = stale_meetings(store, title, modified);
     let progress = |m: &Meeting| m.transcript.iter().map(|s| s.end).fold(0.0, f64::max);
     stale.sort_by(|a, b| progress(a).total_cmp(&progress(b)));
     let best = stale.pop()?;
     let keep_stem = Store::file_stem(&best);
     for other in stale {
-        if let Some(file) = store.url(&other.id) {
-            let _ = std::fs::remove_file(file);
-        }
-        let stem = Store::file_stem(&other);
-        if stem != keep_stem {
-            for ext in ["md", "json"] {
-                let _ = std::fs::remove_file(paths.transcripts_dir().join(format!("{stem}.{ext}")));
-            }
-        }
+        remove_meeting(store, paths, &other, Some(&keep_stem));
     }
     Some(best)
+}
+
+/// Throws away everything a cancelled import of `path` left: the partial meeting and its
+/// exported files, including text from an earlier cut-off run. The audio file is not touched.
+/// (A cancel because the app quits keeps it instead, so the import can carry on at the next start.)
+pub fn discard_partial(path: &Path, paths: &Paths) {
+    let store = MeetingStore::new(paths);
+    let modified: DateTime<Utc> = std::fs::metadata(path).and_then(|m| m.modified()).unwrap_or_else(|_| SystemTime::now()).into();
+    for meeting in stale_meetings(&store, &title_for(path), modified) {
+        remove_meeting(&store, paths, &meeting, None);
+    }
 }
 
 /// Keeps what was transcribed (a partial meeting). With nothing transcribed a cancelled import

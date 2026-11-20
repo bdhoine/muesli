@@ -111,7 +111,7 @@
     for (const i of v.imports) {
       rows.push(`<li class="row import ${i.failed ? "failed" : ""}" data-testid="import-row">
         <div class="row-top"><span class="title">${esc(i.name)}</span>
-          ${i.failed ? button("Dismiss", { type: "dismissImport", id: i.id }, { kind: "small" }) : button("Cancel", { type: "cancelImport", id: i.id }, { kind: "small" })}</div>
+          ${i.failed ? button("Dismiss", { type: "dismissImport", id: i.id }, { kind: "small" }) : button("Cancel", { type: "cancelImport", id: i.id }, { kind: "small", disabled: i.cancelling })}</div>
         ${i.running ? `<div class="bar">${progress(i.progress)}${i.progress != null ? `<span class="pct">${pct(i.progress)}</span>` : ""}</div>` : `<div class="sub">${esc(i.status)}</div>`}
       </li>`);
     }
@@ -268,10 +268,11 @@
       ? `<span class="pill ${esc(u.tone)}" data-testid="update-status"><span class="dot"></span>${esc(u.status)}</span>`
       : "";
     const version = `<div class="setting" data-testid="version">
-        <div class="text"><span class="title">${esc(u.title)} ${button("What's new", { type: "openReleaseNotes", version: u.version }, { kind: "link" })}</span>
+        <div class="text"><span class="title">Muesli</span>
+          ${status}
           ${u.progress != null ? progress(u.progress) : ""}
           ${u.restartHint ? `<span class="sub">${esc(u.restartHint)}</span>` : ""}</div>
-        <div class="controls">${status}${u.restart ? button("Restart", { type: "restartToUpdate" }, { kind: "primary", disabled: !u.canRestart, testid: "update-restart" }) : ""}</div>
+        <div class="controls"><span class="version-number" data-testid="version-number">${esc(u.version)}</span>${button("What's new", { type: "openReleaseNotes", version: u.version }, { kind: "link" })}${u.restart ? button("Restart", { type: "restartToUpdate" }, { kind: "primary", disabled: !u.canRestart, testid: "update-restart" }) : ""}</div>
       </div>`;
     if (!u.available) return version;
     return `${version}
@@ -289,7 +290,7 @@
     const assistants = a.enabled
       ? `${
           a.claudeDesktop
-            ? `<div class="setting"><div class="text"><span class="title">Claude Desktop</span><span class="sub">${esc(a.claudeDesktop.status)}</span></div>
+            ? `<div class="setting"><div class="text"><span class="title">Claude Desktop</span><span class="sub status" data-testid="claude-status"><span class="dot ${esc(a.claudeDesktop.tone)}"></span>${esc(a.claudeDesktop.status)}</span></div>
                ${a.claudeDesktop.button ? button(a.claudeDesktop.button, { type: "connectClaudeDesktop" }, { kind: "primary" }) : ""}</div>`
             : ""
         }
@@ -419,7 +420,10 @@
 
   // ------------------------------------------------------------------------------------------
 
-  const renderers = { main, settings, setup, prompt };
+  // Every re-render keeps the scroll position (the main window does it itself, for its lists).
+  const renderers = Object.fromEntries(
+    Object.entries({ main, settings, setup, prompt }).map(([name, fn]) => [name, name === "main" ? fn : (v) => keepScroll(() => fn(v))]),
+  );
 
   async function refresh() {
     const v = await view();

@@ -3,7 +3,7 @@
 //! Used by the tests and by `muesli-sim`.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use muesli_core::{AudioChunk, TranscriptSegment};
@@ -23,6 +23,8 @@ pub struct FakeSpeech {
     downloads: AtomicUsize,
     /// When set, loading the model fails with this message.
     pub load_error: Mutex<Option<String>>,
+    /// While set, transcribing a file waits (until the file is cancelled): a slow model.
+    pub hold_files: Arc<AtomicBool>,
 }
 
 impl FakeSpeech {
@@ -34,6 +36,7 @@ impl FakeSpeech {
             total,
             downloads: AtomicUsize::new(0),
             load_error: Mutex::new(None),
+            hold_files: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -89,7 +92,7 @@ impl SpeechModel for FakeSpeech {
         if let Some(why) = self.load_error.lock().unwrap().clone() {
             return Err(why);
         }
-        Ok(Box::new(ScriptedTranscriber::default()))
+        Ok(Box::new(ScriptedTranscriber { hold: self.hold_files.clone(), ..Default::default() }))
     }
 }
 
@@ -116,9 +119,21 @@ const OTHERS: [&str; 6] = [
 pub struct ScriptedTranscriber {
     you: AtomicUsize,
     others: AtomicUsize,
+    /// While set, `transcribe_until` waits for the cancel (as a slow model would).
+    hold: Arc<AtomicBool>,
 }
 
 impl SpeechToText for ScriptedTranscriber {
+    fn transcribe_until(&self, chunk: &AudioChunk, cancel: &AtomicBool) -> Result<Vec<TranscriptSegment>, String> {
+        while self.hold.load(Ordering::SeqCst) {
+            if cancel.load(Ordering::SeqCst) {
+                return Err("stopped".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        self.transcribe(chunk)
+    }
+
     fn transcribe(&self, chunk: &AudioChunk) -> Result<Vec<TranscriptSegment>, String> {
         let loud = chunk.samples.iter().any(|s| s.abs() > 0.01);
         if !loud || chunk.samples.is_empty() {

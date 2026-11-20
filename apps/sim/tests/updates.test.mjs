@@ -77,7 +77,7 @@ for (const skin of ["mac", "windows"]) {
       const sim = await startSim({ scenario: "update-up-to-date", skin });
       try {
         const page = await sim.open("settings");
-        await page.getByTestId("version").getByText(`Muesli ${VERSION}`).waitFor();
+        await page.getByTestId("version").getByTestId("version-number").getByText(VERSION).waitFor();
         await page.getByTestId("last-checked").getByText("Not checked yet").waitFor();
         assert.equal(await page.getByTestId("auto-update").isChecked(), true, "on by default");
         await page.getByTestId("check-updates").click();

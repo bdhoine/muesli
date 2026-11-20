@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use muesli_core::{languages, AudioChunk, TranscriptSegment};
@@ -35,6 +37,11 @@ fn vad_params() -> WhisperVadParams {
 }
 
 const SAMPLE_RATE: usize = 16_000;
+
+/// whisper.cpp's abort callback: `data` is the `AtomicBool` passed to `transcribe_until`.
+unsafe extern "C" fn abort_requested(data: *mut c_void) -> bool {
+    (*(data as *const AtomicBool)).load(Ordering::Relaxed)
+}
 
 #[derive(Debug)]
 pub struct TranscribeError(pub String);
@@ -86,7 +93,13 @@ impl Transcriber {
     }
 
     pub fn transcribe(&self, chunk: &AudioChunk) -> Result<Vec<TranscriptSegment>, TranscribeError> {
-        if chunk.samples.is_empty() {
+        self.transcribe_until(chunk, &AtomicBool::new(false))
+    }
+
+    /// Like `transcribe`, but Whisper stops within moments (with an error) once `cancel` is set,
+    /// instead of finishing the chunk.
+    pub fn transcribe_until(&self, chunk: &AudioChunk, cancel: &AtomicBool) -> Result<Vec<TranscriptSegment>, TranscribeError> {
+        if chunk.samples.is_empty() || cancel.load(Ordering::Relaxed) {
             return Ok(Vec::new());
         }
         // No speech: nothing to transcribe, and nothing for Whisper to make up.
@@ -112,6 +125,12 @@ impl Transcriber {
             params.set_vad_model_path(Some(&vad.model));
             params.enable_vad(true);
             params.set_vad_params(vad_params());
+        }
+        // whisper.cpp asks between steps of its computation whether to stop. `cancel` outlives
+        // `state.full` below, which is the only place the callback is called from.
+        unsafe {
+            params.set_abort_callback(Some(abort_requested));
+            params.set_abort_callback_user_data(cancel as *const AtomicBool as *mut c_void);
         }
         params.set_print_progress(false);
         params.set_print_realtime(false);
