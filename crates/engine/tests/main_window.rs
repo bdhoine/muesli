@@ -164,7 +164,7 @@ fn cancelling_a_running_file_stops_it_at_once_and_leaves_no_transcript() {
     let wav = dir.path().join("long.wav");
     std::fs::write(&wav, long_wav(70)).unwrap();
     h.engine.intent(Intent::TranscribeFiles { paths: vec![wav.clone()] });
-    wait_for("running", || h.engine.main_view().imports.first().is_some_and(|i| i.running));
+    wait_for("the slow model is working on it", || h.speech.held_chunks.load(std::sync::atomic::Ordering::SeqCst) > 0);
     let id = h.engine.main_view().imports[0].id;
 
     h.engine.intent(Intent::CancelImport { id });

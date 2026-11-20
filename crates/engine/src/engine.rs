@@ -596,7 +596,7 @@ impl Engine {
         let (mic, system_audio) = (self.platform.mic.clone(), self.platform.system_audio.clone());
         let me = self.me.clone();
         let audio = std::thread::spawn(move || {
-            let chunker = Arc::new(AudioChunker::new(move |chunk| drop(chunk_tx.send(chunk))));
+            let chunker = Arc::new(AudioChunker::live(move |chunk| drop(chunk_tx.send(chunk))));
             // A stream broke for good (device unplugged, permission revoked): keep what we have.
             let on_error: OnError = Arc::new(move |message| {
                 if let Some(engine) = me.upgrade() {
@@ -1396,7 +1396,7 @@ impl Engine {
                 editable: !is_live,
                 empty_text: m.transcript.is_empty().then(|| {
                     if is_live {
-                        "Text appears here every 30 seconds while Muesli transcribes.".to_string()
+                        "Text appears here, a few seconds after someone speaks, while Muesli transcribes.".to_string()
                     } else {
                         "Nothing was said, or nothing could be transcribed.".to_string()
                     }

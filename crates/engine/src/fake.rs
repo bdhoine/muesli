@@ -25,6 +25,8 @@ pub struct FakeSpeech {
     pub load_error: Mutex<Option<String>>,
     /// While set, transcribing a file waits (until the file is cancelled): a slow model.
     pub hold_files: Arc<AtomicBool>,
+    /// How many chunks of files have been held (reached the slow model).
+    pub held_chunks: Arc<AtomicUsize>,
 }
 
 impl FakeSpeech {
@@ -37,6 +39,7 @@ impl FakeSpeech {
             downloads: AtomicUsize::new(0),
             load_error: Mutex::new(None),
             hold_files: Arc::new(AtomicBool::new(false)),
+            held_chunks: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -92,7 +95,7 @@ impl SpeechModel for FakeSpeech {
         if let Some(why) = self.load_error.lock().unwrap().clone() {
             return Err(why);
         }
-        Ok(Box::new(ScriptedTranscriber { hold: self.hold_files.clone(), ..Default::default() }))
+        Ok(Box::new(ScriptedTranscriber { hold: self.hold_files.clone(), held: self.held_chunks.clone(), ..Default::default() }))
     }
 }
 
@@ -121,12 +124,17 @@ pub struct ScriptedTranscriber {
     others: AtomicUsize,
     /// While set, `transcribe_until` waits for the cancel (as a slow model would).
     hold: Arc<AtomicBool>,
+    held: Arc<AtomicUsize>,
 }
 
 impl SpeechToText for ScriptedTranscriber {
     fn transcribe_until(&self, chunk: &AudioChunk, cancel: &AtomicBool) -> Result<Vec<TranscriptSegment>, String> {
+        if self.hold.load(Ordering::SeqCst) {
+            self.held.fetch_add(1, Ordering::SeqCst);
+        }
         while self.hold.load(Ordering::SeqCst) {
             if cancel.load(Ordering::SeqCst) {
+                std::thread::sleep(std::time::Duration::from_millis(150)); // stopping takes a moment
                 return Err("stopped".into());
             }
             std::thread::sleep(std::time::Duration::from_millis(5));

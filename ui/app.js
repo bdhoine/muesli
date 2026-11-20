@@ -161,7 +161,7 @@
           </div>
         </header>
         <article class="transcript" data-scroll="${reader.live ? "live" : "reader"}" data-testid="transcript">${lines}
-          ${reader.live ? `<div class="listening" role="status"><span class="bounce" aria-hidden="true"><span></span><span></span><span></span></span>Listening · more text in about 30 seconds</div>` : ""}</article>`;
+          ${reader.live ? `<div class="listening" role="status"><span class="bounce" aria-hidden="true"><span></span><span></span><span></span></span>Listening · text appears after each pause</div>` : ""}</article>`;
     }
 
     // macOS: the list carries its own two buttons, as in the design; Start and Settings live in
@@ -324,7 +324,7 @@
       </section>
       <h2>Languages</h2>
       <section class="card"><div class="setting stack">
-        <span class="sub">Spoken in your meetings. Every 30 seconds Muesli picks the most likely one; fewer languages, fewer mistakes.</span>
+        <span class="sub">Spoken in your meetings. Muesli picks the most likely one for each stretch of speech; fewer languages, fewer mistakes.</span>
         ${languages(v.languages, { reset: true })}
       </div></section>
       <h2>AI assistants</h2>

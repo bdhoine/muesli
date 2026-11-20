@@ -127,7 +127,7 @@ describe("macOS skin matches the design", () => {
       assert.equal(await opacity(last), "0.6");
       if (last > 0) assert.equal(await opacity(0), "1");
       // "Listening" with three dots, 58 px in so it lines up with the text after the time column.
-      await page.getByRole("status").getByText("Listening · more text in about 30 seconds").waitFor();
+      await page.getByRole("status").getByText("Listening · text appears after each pause").waitFor();
       assert.equal(await page.locator(".listening .bounce span").count(), 3);
       const listening = await look(page, ".listening", ["padding-left", "font-size"]);
       assert.deepEqual([listening["padding-left"], listening["font-size"]], ["58px", "13.5px"]);

@@ -2,7 +2,7 @@ use serde::Serialize;
 
 pub use muesli_import::SpeechToText;
 
-/// A loaded speech model: turns 30 s chunks into text. Moved to the thread that uses it.
+/// A loaded speech model: turns chunks of speech (up to 30 s) into text. Moved to the thread that uses it.
 pub type Transcriber = Box<dyn SpeechToText + Send>;
 
 /// Where the speech model (and the voice activity model) stands.

@@ -21,7 +21,7 @@ pub mod store;
 pub mod update;
 pub mod whisper_model;
 
-pub use chunker::AudioChunker;
+pub use chunker::{AudioChunker, Pauses};
 pub use detection::{DetectionEvent, DetectionLogic};
 pub use models::{AudioChunk, DetectedMeeting, Meeting, MeetingState, TranscriptSegment};
 pub use paths::Paths;

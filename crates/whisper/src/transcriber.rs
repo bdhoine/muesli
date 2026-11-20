@@ -16,6 +16,8 @@ pub struct Transcriber {
     languages: Vec<String>,
     state: Mutex<whisper_rs::WhisperState>,
     vad: Option<Vad>,
+    /// The language of the last chunk long enough to judge it by (see `JUDGE_SECONDS`).
+    last_language: Mutex<Option<String>>,
 }
 
 /// Voice activity detection. Whisper invents text ("Thank you.", subtitle credits) for silence and
@@ -37,6 +39,10 @@ fn vad_params() -> WhisperVadParams {
 }
 
 const SAMPLE_RATE: usize = 16_000;
+
+/// Live chunks end at pauses and can be a second or two long, too little to tell Dutch from
+/// English by: speech shorter than this keeps the language of the last chunk that was long enough.
+const JUDGE_SECONDS: usize = 3;
 
 /// whisper.cpp's abort callback: `data` is the `AtomicBool` passed to `transcribe_until`.
 unsafe extern "C" fn abort_requested(data: *mut c_void) -> bool {
@@ -71,7 +77,7 @@ impl Transcriber {
         };
         let context = WhisperContext::new_with_params(model.to_str()?, WhisperContextParameters::default()).ok()?;
         let state = context.create_state().ok()?;
-        Some(Self { context, languages, state: Mutex::new(state), vad })
+        Some(Self { context, languages, state: Mutex::new(state), vad, last_language: Mutex::new(None) })
     }
 
     /// The parts of `samples` that contain speech, or `None` when voice detection is off or fails
@@ -110,7 +116,18 @@ impl Transcriber {
         let mut state = self.state.lock().unwrap();
         let threads = std::thread::available_parallelism().map_or(4, |n| n.get().min(8)) as i32;
         // The language is judged on the speech alone, not on the noise around it.
-        let language = self.detect_language(&mut state, speech.as_deref().unwrap_or(&chunk.samples), threads);
+        let heard = speech.as_deref().unwrap_or(&chunk.samples);
+        let last = self.last_language.lock().unwrap().clone(); // not held across the match below
+        let language = match last {
+            Some(last) if heard.len() < JUDGE_SECONDS * SAMPLE_RATE && self.languages.contains(&last) => last,
+            _ => {
+                let found = self.detect_language(&mut state, heard, threads);
+                if heard.len() >= JUDGE_SECONDS * SAMPLE_RATE || self.languages.len() <= 1 {
+                    *self.last_language.lock().unwrap() = Some(found.clone());
+                }
+                found
+            }
+        };
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_n_threads(threads);
