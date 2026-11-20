@@ -5,11 +5,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[dependencies]
-muesli-core = { path = "../core" }
-muesli-platform-common = { path = "../platform-common", features = ["capture"] }
 
 [target.'cfg(windows)'.dependencies]
+muesli-core = { path = "../core" }
+muesli-platform-common = { path = "../platform-common", features = ["capture"] }
+chrono = "0.4"
 tauri-winrt-notification = "0.8"
 windows-registry = "0.6"
 windows = { version = "0.62", features = [

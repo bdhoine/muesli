@@ -15,7 +15,7 @@ use block2::RcBlock;
 use muesli_core::ports::{Access, Notice, Notifier, OnAction, OnAnswer, Question};
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, NSObject, NSObjectProtocol, ProtocolObject};
-use objc2::{define_class, msg_send, AnyThread, DefinedClass};
+use objc2::{define_class, msg_send, AnyThread};
 use objc2_foundation::{NSArray, NSError, NSSet, NSString};
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent, UNNotification, UNNotificationAction,
