@@ -32,6 +32,12 @@ pub struct FakeSpeech {
     pub transcribed: Arc<AtomicUsize>,
     /// While set, live meetings get the stand-in echo canceller (`StandInCanceller`).
     pub echo: Arc<AtomicBool>,
+    /// While set, the end-of-meeting pass waits (until it is cancelled): a slow computer.
+    pub hold_best: Arc<AtomicBool>,
+    /// While set, the end-of-meeting pass fails.
+    pub fail_best: Arc<AtomicBool>,
+    /// Every chunk's prompt, in order, with whether it was the end-of-meeting pass.
+    pub prompts: Arc<Mutex<Vec<(bool, String)>>>,
 }
 
 impl FakeSpeech {
@@ -47,6 +53,9 @@ impl FakeSpeech {
             held_chunks: Arc::new(AtomicUsize::new(0)),
             transcribed: Arc::new(AtomicUsize::new(0)),
             echo: Arc::new(AtomicBool::new(false)),
+            hold_best: Arc::new(AtomicBool::new(false)),
+            fail_best: Arc::new(AtomicBool::new(false)),
+            prompts: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -106,6 +115,9 @@ impl SpeechModel for FakeSpeech {
             hold: self.hold_files.clone(),
             held: self.held_chunks.clone(),
             calls: self.transcribed.clone(),
+            hold_best: self.hold_best.clone(),
+            fail_best: self.fail_best.clone(),
+            prompts: self.prompts.clone(),
             ..Default::default()
         }))
     }
@@ -147,14 +159,24 @@ pub struct ScriptedTranscriber {
     held: Arc<AtomicUsize>,
     /// Blocks it was given.
     pub calls: Arc<AtomicUsize>,
+    hold_best: Arc<AtomicBool>,
+    fail_best: Arc<AtomicBool>,
+    prompts: Arc<Mutex<Vec<(bool, String)>>>,
+    best: AtomicUsize,
 }
+
+/// What the end-of-meeting pass "hears": better sentences, so tests can tell them apart.
+pub const IMPROVED: [&str; 3] =
+    ["Improved: the release moves to Thursday.", "Improved: LocalVQE removed the echo.", "Improved: thanks, everyone."];
 
 impl SpeechToText for ScriptedTranscriber {
     fn transcribe_until(&self, chunk: &AudioChunk, cancel: &AtomicBool) -> Result<Vec<TranscriptSegment>, String> {
-        if self.hold.load(Ordering::SeqCst) {
+        // Files wait while `hold_files` is set, the end-of-meeting pass while `hold_best` is.
+        let hold = if chunk.best { &self.hold_best } else { &self.hold };
+        if hold.load(Ordering::SeqCst) {
             self.held.fetch_add(1, Ordering::SeqCst);
         }
-        while self.hold.load(Ordering::SeqCst) {
+        while hold.load(Ordering::SeqCst) {
             if cancel.load(Ordering::SeqCst) {
                 std::thread::sleep(std::time::Duration::from_millis(150)); // stopping takes a moment
                 return Err("stopped".into());
@@ -166,12 +188,17 @@ impl SpeechToText for ScriptedTranscriber {
 
     fn transcribe(&self, chunk: &AudioChunk) -> Result<Vec<TranscriptSegment>, String> {
         self.calls.fetch_add(1, Ordering::SeqCst);
+        self.prompts.lock().unwrap().push((chunk.best, chunk.prompt.clone()));
+        if chunk.best && self.fail_best.load(Ordering::SeqCst) {
+            return Err("the speech model failed".into());
+        }
         let loud = chunk.samples.iter().any(|s| s.abs() > 0.01);
         if !loud || chunk.samples.is_empty() {
             return Ok(Vec::new());
         }
         let seconds = chunk.samples.len() as f64 / 16_000.0;
         let text = match chunk.speaker.as_str() {
+            _ if chunk.best => IMPROVED[self.best.fetch_add(1, Ordering::SeqCst) % IMPROVED.len()],
             "You" => YOU[self.you.fetch_add(1, Ordering::SeqCst) % YOU.len()],
             _ => OTHERS[self.others.fetch_add(1, Ordering::SeqCst) % OTHERS.len()],
         };

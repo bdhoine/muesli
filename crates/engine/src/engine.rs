@@ -20,10 +20,11 @@ mod updates;
 
 pub use updates::{CHECK_EVERY, FIRST_CHECK_AFTER};
 
+use crate::final_pass::{self, Kept};
 use crate::host::{Host, Window};
 use crate::intent::Intent;
 use crate::live::Live;
-use crate::speech::{ModelStatus, SpeechModel};
+use crate::speech::{ModelStatus, SpeechModel, Transcriber};
 use crate::views::*;
 
 /// How long the microphone must be free before a call counts as ended. Fixed; no setting.
@@ -66,7 +67,18 @@ enum Activity {
     Starting,
     Transcribing,
     Saving,
+    /// The end-of-meeting pass (`final_pass.rs`); details in `Inner::improving`.
+    Improving,
     Error(String),
+}
+
+/// The end-of-meeting pass running on a stopped meeting.
+struct Improving {
+    meeting: Arc<Mutex<Meeting>>,
+    done: usize,
+    total: usize,
+    /// Set by Start or Quit: the pass stops and the live text stays.
+    cancel: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,7 +102,10 @@ struct Session {
     /// Tells the audio thread to stop; it then stops both streams and closes the chunk channel.
     stop_audio: mpsc::Sender<()>,
     audio: Option<JoinHandle<()>>,
-    consumer: Option<JoinHandle<()>>,
+    /// Hands back the model and the blocks it transcribed, for the end-of-meeting pass.
+    consumer: Option<JoinHandle<(Transcriber, Vec<Kept>)>>,
+    /// Whisper's prompt for this meeting: the vocabulary, its title and attendees.
+    prompt: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -136,6 +151,7 @@ struct Inner {
     prefs: Preferences,
     activity: Activity,
     session: Option<Session>,
+    improving: Option<Improving>,
     detection: DetectionLogic,
     last_detection: Option<DateTime<Utc>>,
     last_heartbeat: Option<DateTime<Utc>>,
@@ -166,6 +182,12 @@ pub struct Engine {
     base: Paths,
     me: Weak<Engine>,
     inner: Mutex<Inner>,
+}
+
+/// "40%" for the end-of-meeting pass.
+fn improving_percent(improving: Option<&Improving>) -> String {
+    let (done, total) = improving.map_or((0, 0), |i| (i.done, i.total));
+    format!("{}%", (done * 100).checked_div(total).unwrap_or(0))
 }
 
 fn minutes(start: DateTime<Utc>, end: Option<DateTime<Utc>>) -> Option<i64> {
@@ -217,6 +239,7 @@ impl Engine {
                 prefs,
                 activity: Activity::Idle,
                 session: None,
+                improving: None,
                 detection: {
                     let mut d = DetectionLogic::default();
                     d.end_delay = Duration::seconds(CALL_END_DELAY);
@@ -336,7 +359,7 @@ impl Engine {
             Activity::Idle | Activity::Starting if running.is_some() => StatusActivity::TranscribingFile,
             Activity::Idle | Activity::Starting => StatusActivity::Idle { preparing: downloading },
             Activity::Transcribing => StatusActivity::Recording,
-            Activity::Saving => StatusActivity::Finalizing,
+            Activity::Saving | Activity::Improving => StatusActivity::Finalizing,
             Activity::Error(message) => StatusActivity::Error(message.clone()),
         };
         let mut out = AppStatus::for_activity(&activity);
@@ -354,8 +377,9 @@ impl Engine {
         if let Some((d, since)) = s.detection.in_progress.clone() {
             out.detected = Some(Detected { title: d.title, source: d.source, since });
         }
-        if let Some(session) = &s.session {
-            let m = session.meeting.lock().unwrap();
+        let current = s.session.as_ref().map(|x| &x.meeting).or(s.improving.as_ref().map(|i| &i.meeting));
+        if let Some(meeting) = current {
+            let m = meeting.lock().unwrap();
             out.current = Some(Current {
                 id: m.id.clone(),
                 title: m.title.clone(),
@@ -429,7 +453,7 @@ impl Engine {
         for event in events {
             match event {
                 DetectionEvent::Suggest(meeting) => {
-                    let idle = self.lock().activity == Activity::Idle;
+                    let idle = matches!(self.lock().activity, Activity::Idle | Activity::Improving);
                     if idle && self.model_ready() {
                         self.ask(PromptKind::Start(meeting));
                     }
@@ -535,6 +559,18 @@ impl Engine {
     /// Starts transcribing in the background. Does nothing unless Muesli is idle, setup is done
     /// and the speech model is ready.
     fn start_transcribing(&self, detected: DetectedMeeting) {
+        // The end-of-meeting pass gives way: it stops, the meeting before is saved with its live
+        // text, then this one starts.
+        let improving = self.lock().improving.as_ref().map(|i| i.cancel.clone());
+        if let Some(cancel) = improving {
+            cancel.store(true, Ordering::SeqCst);
+            for _ in 0..600 {
+                if self.lock().activity != Activity::Improving {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
         {
             let mut s = self.lock();
             if s.activity != Activity::Idle || !s.prefs.onboarding_done || !self.model_ready() {
@@ -568,6 +604,7 @@ impl Engine {
         let mut meeting = Meeting::new(&detected.title, &detected.source);
         meeting.started_at = self.now();
         meeting.attendees = detected.attendees.clone();
+        let prompt = muesli_core::vocabulary::whisper_prompt(&muesli_core::Vocabulary::load(&paths), &meeting.title, &meeting.attendees);
         meeting.state = MeetingState::Recording;
         MeetingStore::new(&paths).save(&meeting);
         let id = meeting.id.clone();
@@ -578,9 +615,12 @@ impl Engine {
         let (chunk_tx, chunk_rx) = mpsc::channel::<AudioChunk>();
         let pacer = Arc::new(Mutex::new(Pacer::default()));
         let consumer = {
-            let (me, meeting, pacer) = (self.me(), meeting.clone(), pacer.clone());
+            let (me, meeting, pacer, prompt) = (self.me(), meeting.clone(), pacer.clone(), prompt.clone());
             std::thread::spawn(move || {
-                for chunk in chunk_rx {
+                let mut kept = Vec::new();
+                for mut chunk in chunk_rx {
+                    chunk.prompt = prompt.clone();
+                    kept.push(Kept::of(&chunk)); // for the end-of-meeting pass, in memory only
                     let started = std::time::Instant::now();
                     let result = transcriber.transcribe(&chunk);
                     let audio = chunk.samples.len() as f64 / muesli_core::segmenter::SAMPLE_RATE as f64;
@@ -593,6 +633,7 @@ impl Engine {
                         }
                     }
                 }
+                (transcriber, kept)
             })
         };
 
@@ -641,7 +682,7 @@ impl Engine {
             return Err(format!("Muesli could not start transcribing: {message}"));
         }
         let mut s = self.lock();
-        s.session = Some(Session { meeting, stop_audio: stop_tx, audio: Some(audio), consumer: Some(consumer) });
+        s.session = Some(Session { meeting, stop_audio: stop_tx, audio: Some(audio), consumer: Some(consumer), prompt });
         s.activity = Activity::Transcribing;
         s.selected = Some(id);
         Ok(())
@@ -681,13 +722,15 @@ impl Engine {
             if let Some(audio) = session.audio.take() {
                 let _ = audio.join();
             }
-            if let Some(consumer) = session.consumer.take() {
-                let _ = consumer.join(); // finishes the last chunks
+            let finished = session.consumer.take().and_then(|consumer| consumer.join().ok()); // the last chunks
+            if let Some((transcriber, kept)) = finished {
+                me.improve(&session.meeting, transcriber.as_ref(), &kept, &session.prompt);
             }
             let mut m = session.meeting.lock().unwrap().clone();
             MeetingStore::new(&me.paths()).finish(&mut m, me.now());
             {
                 let mut s = me.lock();
+                s.improving = None;
                 s.last_ready = Some(LastReady { id: m.id.clone(), title: m.title.clone(), ended_at: m.ended_at });
                 s.activity = match s.capture_error.take() {
                     Some(why) => Activity::Error(format!("Transcribing stopped: {why} The transcript so far was saved.")),
@@ -714,6 +757,36 @@ impl Engine {
             me.changed();
             me.kick_imports(); // files waited for the recording
         });
+    }
+
+    /// The end-of-meeting pass (`final_pass.rs`): transcribes the meeting's speech again and,
+    /// unless it is cancelled (Start, Quit) or fails, replaces the live text with the result.
+    fn improve(&self, meeting: &Arc<Mutex<Meeting>>, transcriber: &(dyn muesli_import::SpeechToText + Send), kept: &[Kept], prompt: &str) {
+        let chunks = final_pass::regroup(kept);
+        let cancel = Arc::new(AtomicBool::new(false));
+        {
+            let mut s = self.lock();
+            if chunks.is_empty() || s.quitting {
+                return;
+            }
+            s.activity = Activity::Improving;
+            s.improving = Some(Improving { meeting: meeting.clone(), done: 0, total: chunks.len(), cancel: cancel.clone() });
+        }
+        self.changed();
+        let result = final_pass::run(transcriber, chunks, prompt, &cancel, |done, total| {
+            if let Some(i) = self.lock().improving.as_mut() {
+                (i.done, i.total) = (done, total);
+            }
+            self.changed();
+        });
+        if let Some(mut segments) = result.filter(|s| !s.is_empty()) {
+            segments.sort_by(|a, b| a.start.total_cmp(&b.start));
+            muesli_core::echo::drop_echoes(&mut segments);
+            let paths = self.paths(); // the engine's lock first, then the meeting's
+            let mut m = meeting.lock().unwrap();
+            m.transcript = segments;
+            MeetingStore::new(&paths).save(&m);
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -1191,9 +1264,12 @@ impl Engine {
         if self.lock().activity == Activity::Transcribing {
             self.stop(StopReason::Asked);
         }
+        if let Some(i) = self.lock().improving.as_ref() {
+            i.cancel.store(true, Ordering::SeqCst); // the live text is saved as it is
+        }
         // Wait (briefly) for the transcript to be saved.
         for _ in 0..600 {
-            if !matches!(self.lock().activity, Activity::Saving | Activity::Starting) {
+            if !matches!(self.lock().activity, Activity::Saving | Activity::Starting | Activity::Improving) {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -1247,6 +1323,10 @@ impl Engine {
             }
             Activity::Starting => items.push(label("Starting…".into())),
             Activity::Saving => items.push(label("Saving the transcript…".into())),
+            Activity::Improving => {
+                items.push(label(format!("Improving the transcript… {}", improving_percent(s.improving.as_ref()))));
+                items.push(action("start", "Start Transcribing", ready && setup_done));
+            }
             Activity::Error(message) => {
                 items.push(label(shorten_title(message, 90)));
                 items.push(action("dismiss", "Dismiss", true));
@@ -1322,7 +1402,12 @@ impl Engine {
         let update = self.update_banner();
         let all = MeetingStore::new(&paths).all();
         let s = self.lock();
-        let live_meeting = s.session.as_ref().map(|x| x.meeting.lock().unwrap().clone());
+        let live_meeting = s
+            .session
+            .as_ref()
+            .map(|x| x.meeting.lock().unwrap().clone())
+            .or_else(|| s.improving.as_ref().map(|i| i.meeting.lock().unwrap().clone()));
+        let improving = s.activity == Activity::Improving;
         let hidden = s.pending_delete.as_ref().map(|d| d.id.clone());
         let busy_ids: Vec<String> = live_meeting.iter().map(|m| m.id.clone()).collect();
         let listed: Vec<&Meeting> = all
@@ -1344,7 +1429,11 @@ impl Engine {
             title: m.title.clone(),
             started_at: iso(m.started_at),
             selected: selected.as_ref() == Some(&m.id),
-            status: if s.activity == Activity::Saving { "Saving…".into() } else { "Transcribing".into() },
+            status: match s.activity {
+                Activity::Saving => "Saving…".into(),
+                Activity::Improving => format!("Improving… {}", improving_percent(s.improving.as_ref())),
+                _ => "Transcribing".into(),
+            },
         });
         let imports = s
             .imports
@@ -1385,12 +1474,14 @@ impl Engine {
         let reader = selected.as_ref().and_then(|id| {
             let live = live_meeting.as_ref().filter(|m| &m.id == id);
             let m = live.or_else(|| listed.iter().copied().find(|m| &m.id == id))?;
-            let is_live = live.is_some();
+            // A stopped meeting whose text is being improved is read-only, but no longer live.
+            let busy = live.is_some();
+            let is_live = busy && !improving;
             Some(Reader {
                 id: m.id.clone(),
                 title: m.title.clone(),
                 started_at: iso(m.started_at),
-                duration_minutes: if is_live {
+                duration_minutes: if busy {
                     Some(((self.now() - m.started_at).num_seconds() / 60).max(0))
                 } else {
                     minutes(m.started_at, m.ended_at)
@@ -1399,8 +1490,12 @@ impl Engine {
                 attendees: m.attendees.clone(),
                 lines: lines(m),
                 live: is_live,
-                badge: is_live.then(|| "Transcribing · live, read-only".to_string()),
-                editable: !is_live,
+                badge: if improving && busy {
+                    Some(format!("Improving the transcript · {}", improving_percent(s.improving.as_ref())))
+                } else {
+                    is_live.then(|| "Transcribing · live, read-only".to_string())
+                },
+                editable: !busy,
                 empty_text: m.transcript.is_empty().then(|| {
                     if is_live {
                         "Text appears here a few seconds after each sentence while Muesli transcribes.".to_string()
@@ -1425,7 +1520,7 @@ impl Engine {
                 _ => None,
             },
             can_transcribe_file: ready,
-            can_start: ready && s.prefs.onboarding_done && s.activity == Activity::Idle,
+            can_start: ready && s.prefs.onboarding_done && matches!(s.activity, Activity::Idle | Activity::Improving),
             transcribing: matches!(s.activity, Activity::Transcribing),
             empty_text: empty.then(|| "No transcripts yet. When a meeting starts, Muesli asks whether to transcribe it.".to_string()),
             extension_update,

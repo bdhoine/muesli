@@ -11,6 +11,7 @@
 
 mod engine;
 pub mod fake;
+mod final_pass;
 mod host;
 mod intent;
 mod live;
