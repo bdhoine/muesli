@@ -1,0 +1,4 @@
+[submodule "crates/aec/vendor/LocalVQE"]
+	path = crates/aec/vendor/LocalVQE
+	url = https://github.com/localai-org/LocalVQE
+	ignore = dirty

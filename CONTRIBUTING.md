@@ -9,14 +9,14 @@ Muesli is one app for macOS and Windows: a Tauri shell around a Rust engine, wit
 ```
 Cargo.toml        The Rust workspace
 crates/           core (data, rules, ports), engine (behaviour, view states, intents), mcp, whisper,
-                  audio, import, platform-common, platform-macos, platform-windows, platform-fake,
-                  port-contracts
+                  aec (LocalVQE, a git submodule), audio, import, platform-common, platform-macos,
+                  platform-windows, platform-fake, port-contracts
 apps/desktop/     The Tauri app: picks the adapters, draws the tray and the windows. Thin.
 apps/sim/         muesli-sim: the engine with fakes and the real UI in a browser; the UI tests
 ui/               The web UI (plain JS and CSS, no build step), skins/mac.css and skins/windows.css
 fixtures/         Frozen file formats and MCP replies, audio samples, simulator scenarios
 assets/brand/     The one source for logo, icons and colours
-scripts/          build-mcpb.py (Claude Desktop extension), sync-icons.py, sync-plugin.py
+scripts/          build-mcpb.py (Claude Desktop extension), fetch-aec-model.py, sync-icons.py, sync-plugin.py
 plugin/           The Claude plugin
 docs/             REQUIREMENTS.md, PLATFORMS.md, CLAUDE_SETUP.md
 macos/            The retired SwiftUI app. Kept until the Tauri app is verified on a Mac; not built.
@@ -44,22 +44,23 @@ apps/desktop (Tauri)  ── Host, Tray, Updater ──►  crates/engine (muesl
 | Crate | What it holds |
 |---|---|
 | `crates/core` | Models, preferences (with the migration of old keys), `state.json`, languages, chunker (fixed blocks) and segmenter (live blocks that follow pauses, `SpeechDetector`, `Pacer`), echo stage (`EchoCanceller`, `EchoStage`: lines the system audio up with the microphone, passthrough and fail-safe), detection rules, store (append, finish, recover), editor, assistant setup and Claude Desktop config, the ports |
-| `crates/engine` | The behaviour, the view states (`views.rs`), the intents, the live audio worker (`live.rs`: capture callbacks hand samples to it, it owns the segmenters), fakes for the speech model and the host |
+| `crates/engine` | The behaviour, the view states (`views.rs`), the intents, the live audio worker (`live.rs`: capture callbacks hand samples to it, it owns the echo stage and the segmenters), fakes for the speech model and the host |
 | `crates/mcp` | `muesli-mcp`, the MCP server (stdio) |
 | `crates/audio` | Resampling (`rubato`) and `decode_file` (any audio file to 16 kHz mono, with `symphonia`). No device code. |
 | `crates/import` | `import_file`: decode, 30 s chunks, transcribe, save as a meeting with source `file` |
+| `crates/aec` | `muesli-aec`: LocalVQE (`vendor/LocalVQE`, a git submodule at a pinned commit) as the `EchoCanceller`. Feature `localvqe` builds its shared library with CMake; `LocalVqe::load` opens it at run time, never linked, because its ggml would clash with whisper.cpp's. The app turns the feature on for macOS and Windows. |
 | `crates/whisper` | Model download and validation (`ModelManager`, deletes old model files), whisper.cpp transcriber with voice activity detection, `SileroDetector` for the live segmenter |
 | `crates/platform-common` | Clock, folders (`dirs`), trash (`trash`), Teams process scan (`sysinfo`), microphone and system audio (`cpal`, feature `capture`: WASAPI loopback on Windows, Core Audio tap on macOS) |
 | `crates/platform-windows` | WASAPI sessions (mic in use), toasts with buttons, privacy switches, the Run key for start at login. Compiles to nothing elsewhere. |
 | `crates/platform-macos` | Core Audio process list and EventKit (detection), UNUserNotificationCenter with a delegate, permissions (AVFoundation, EventKit, notification settings), NSFileManager trash, SMAppService, SF Symbols on the menu bar menu (`menu_icons.rs`, added when the menu opens because Tauri menus cannot show template images). Compiles to nothing elsewhere. |
 | `crates/platform-fake` | A drivable fake for every port: manual clock, scripted detector, fed or file-played audio, answerable notifications, folder trash, an updater with a fake GitHub (no release, a newer version, progress, a bad signature, a network error) |
 | `crates/port-contracts` | The contract suites |
-| `apps/desktop` | Tauri: adapters for the tray (`tray.rs`), windows (`windows.rs`, incl. the macOS Dock policy), dialogs and opening files (`host.rs`), whisper (`speech.rs`), updates (`updater.rs`); wiring in `lib.rs` |
+| `apps/desktop` | Tauri: adapters for the tray (`tray.rs`), windows (`windows.rs`, incl. the macOS Dock policy), dialogs and opening files (`host.rs`), whisper and the bundled echo canceller (`speech.rs`), updates (`updater.rs`); wiring in `lib.rs` |
 | `apps/sim` | The simulator and the UI tests |
 
 ## Build and run
 
-You need [Rust](https://rustup.rs) and CMake (whisper.cpp). On Windows also the Visual Studio C++ build tools; on macOS the Xcode command line tools; on Linux WebKitGTK (`libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`).
+You need [Rust](https://rustup.rs) and CMake (whisper.cpp, LocalVQE). Clone with `git clone --recursive`, or run `git submodule update --init --recursive` once: LocalVQE is a submodule (its own build patches its ggml in place; `.gitmodules` ignores that). Run `python3 scripts/fetch-aec-model.py` once for the echo cancellation model (2.9 MB, checked by SHA-256, never committed); without it a debug build warns and transcribes the microphone as it is, and a release build stops. On Windows also the Visual Studio C++ build tools; on macOS the Xcode command line tools; on Linux WebKitGTK (`libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev`).
 
 ```bash
 cargo run -p muesli-app                      # the app (on Linux: real folders, fakes for audio and the OS)
@@ -69,7 +70,7 @@ cargo run -p muesli-sim -- --skin windows --scenario call-in-progress   # the si
 
 On first launch Muesli downloads the speech model (Large v3 Turbo, q5_0, 574 MB) and the voice activity model into `~/Library/Application Support/Muesli/` (macOS) or `%LOCALAPPDATA%\Muesli` (Windows). Set `MUESLI_SUPPORT_DIR` to keep a test copy elsewhere. On macOS notifications need an app bundle: under `cargo run` the questions appear in Muesli's prompt window.
 
-`cargo tauri build` for release uses `--config tauri.release.conf.json`, which bundles `muesli-mcp` (from `apps/desktop/binaries/muesli-mcp-<target>`) and the Claude Desktop extension (`dist/Muesli.mcpb`, from `python3 scripts/build-mcpb.py target/<target>/release/muesli-mcp`) and signs ad hoc on macOS. It also holds the updater's settings (endpoint, public key, Windows install mode) and makes the signed updater bundles, which need `TAURI_SIGNING_PRIVATE_KEY`; for a local build without the key add `--config '{"bundle":{"createUpdaterArtifacts":false}}'`. The **Release** workflow (`.github/workflows/app.yml`) does all of it for both platforms.
+`cargo tauri build` for release uses `--config tauri.release.conf.json`, which bundles LocalVQE's library, its model and licence (`apps/desktop/resources/aec/`, filled by `apps/desktop/build.rs`), `muesli-mcp` (from `apps/desktop/binaries/muesli-mcp-<target>`) and the Claude Desktop extension (`dist/Muesli.mcpb`, from `python3 scripts/build-mcpb.py target/<target>/release/muesli-mcp`) and signs ad hoc on macOS. It also holds the updater's settings (endpoint, public key, Windows install mode) and makes the signed updater bundles, which need `TAURI_SIGNING_PRIVATE_KEY`; for a local build without the key add `--config '{"bundle":{"createUpdaterArtifacts":false}}'`. The **Release** workflow (`.github/workflows/app.yml`) does all of it for both platforms.
 
 ## Test
 
@@ -84,7 +85,7 @@ cargo build -p muesli-sim && cd apps/sim && npm ci && npx playwright install chr
 - The UI tests (`apps/sim/tests`) run Chromium against the simulator for both skins. The simulator serves `ui/` with the app's Content Security Policy (read from `apps/desktop/tauri.conf.json`), and a test fails on any violation, so something the app would block (a `data:` image, an inline script) cannot pass in the browser and break in the app. `design.test.mjs` measures the macOS skin against the design canvas ("Muesli – macOS app", a claude.ai design artifact): sizes, colours and what each window shows for setup, the main window (idle and transcribing) and Settings. When the design changes, update the numbers there along with the UI.
 - On a Mac or PC: `cargo test -p muesli-port-contracts --test native`, and `-- --ignored` for the contracts that need a microphone, something playing, a notification or that change the login item.
 - **Tests** (`.github/workflows/ci.yml`) runs clippy and the Rust tests on macOS, Windows and Linux, the UI tests, and the checks that generated files (icons, plugin) are current. It is started by hand (Actions tab, or `gh workflow run Tests`). **Release** (`app.yml`) builds the Windows installers and the macOS disk image: by hand as unsigned test artifacts, on a `v*` tag into a draft release (see [Releasing](#releasing)). A macOS job can wait a long time for a runner and is cancelled after 15 minutes in the queue; run it again.
-- Check capture on a real machine: `cargo run -p muesli-platform-common --features capture --example probe -- 8`. Check the resampler by ear or with Whisper: `cargo run -p muesli-audio --example resample_wav -- in.wav out.wav`. Real speech: the ignored tests in `crates/whisper/tests/transcribe.rs` and `crates/import/tests` (`MUESLI_TEST_MODEL`, `MUESLI_TEST_VAD`, `MUESLI_TEST_AUDIO`).
+- Check capture on a real machine: `cargo run -p muesli-platform-common --features capture --example probe -- 8`. Check the resampler by ear or with Whisper: `cargo run -p muesli-audio --example resample_wav -- in.wav out.wav`. Real speech: the ignored tests in `crates/whisper/tests/transcribe.rs` and `crates/import/tests` (`MUESLI_TEST_MODEL`, `MUESLI_TEST_VAD`, `MUESLI_TEST_AUDIO`). Echo cancellation with the real model: `MUESLI_AEC_NEAR_WAV=near.wav MUESLI_AEC_FAR_WAV=far.wav cargo test --release -p muesli-aec --features localvqe -- --ignored` (two voices, 16 kHz mono WAV; on a Mac `say -o near.wav --data-format=LEI16@16000 "…"`).
 
 ### The simulator
 
@@ -104,6 +105,10 @@ cargo build -p muesli-sim && cd apps/sim && npm ci && npx playwright install chr
 ### Meeting lifecycle
 
 `recording → finalizing → ready`, or `failed` (the values in the files keep these names). The meeting is saved to the store when transcribing starts and again after every transcribed chunk, so a crash loses at most the audio not yet transcribed. On launch, `MeetingStore::recover_interrupted` turns leftovers into `ready` with `partial: true`, or `failed` when nothing was transcribed. It then runs `MeetingStore::import_transcripts`, which copies any `.json` in the transcripts folder whose id is not in the store yet; it never overwrites a stored meeting.
+
+### Echo cancellation
+
+Without headphones the microphone hears the call. The live worker sends both streams through `EchoStage` (`crates/core/src/aec.rs`) before the microphone's segmenter: the system audio is the reference. The stage estimates the echo delay (cross-correlation of 10 ms loudness envelopes, −300 to +800 ms, re-checked every second; a changed delay must win three times), shifts the reference by it (LocalVQE only aligns the last few tens of milliseconds itself), fills gaps where the system audio delivered nothing (Windows loopback is silent between sounds), and restarts the canceller after a change. It passes the microphone through untouched while the far end has been quiet for 2 s, and drops the canceller for the rest of the meeting on an error or when it uses more than half of real time. The canceller is LocalVQE (`crates/aec`, one CPU thread, about 12% of an M1 core); measurements are in `docs/AUDIO-SPIKE.md`. The text filter (`echo.rs`) still removes what slips through. Tests use `StandInCanceller`, which subtracts the reference at the lag and gain it learns.
 
 ### Audio files
 

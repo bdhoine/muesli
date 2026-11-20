@@ -383,7 +383,8 @@ impl EchoStage {
             return;
         }
         if !self.estimated {
-            (self.delay, self.estimated) = (lag * ENV as i64, true);
+            self.estimated = true;
+            self.set_delay(lag * ENV as i64);
             return;
         }
         // A new delay has to explain the microphone clearly better than the one in use: while
@@ -401,8 +402,17 @@ impl EchoStage {
         };
         self.candidate = Some((lag, wins));
         if wins >= ESTIMATE_WINS {
-            self.delay = lag * ENV as i64;
+            self.set_delay(lag * ENV as i64);
             self.candidate = None;
+        }
+    }
+
+    /// A new delay moves the reference all at once, which the canceller's own alignment does
+    /// not follow (LocalVQE loses the echo for good): it starts again, primed, at the new one.
+    fn set_delay(&mut self, delay: i64) {
+        if delay != self.delay {
+            self.delay = delay;
+            self.cancelling = false;
         }
     }
 

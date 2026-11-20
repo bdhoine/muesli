@@ -1,0 +1,23 @@
+[package]
+name = "muesli-aec"
+description = "Muesli's echo canceller: LocalVQE, built as a shared library and loaded at run time."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# Dependent build scripts (the app's) get DEP_LOCALVQE_LIB_DIR: where the built library is.
+links = "localvqe"
+
+[features]
+# Builds LocalVQE (CMake, C++17) from the submodule in vendor/LocalVQE. Off, the loader still
+# builds and finds no library: the microphone is then transcribed as it is.
+localvqe = ["dep:cmake"]
+
+[dependencies]
+muesli-core = { path = "../core" }
+libloading = "0.8"
+
+[build-dependencies]
+cmake = { version = "0.1", optional = true }
+
+[dev-dependencies]
+hound = "3"
