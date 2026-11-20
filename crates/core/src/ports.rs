@@ -159,6 +159,8 @@ pub enum TrayItem {
         id: String,
         label: String,
         enabled: bool,
+        /// A second, smaller line (macOS) or a suffix (Windows): "Today 14:30 · 32 min".
+        detail: Option<String>,
     },
     /// A line of text that cannot be clicked (a header, progress).
     Label {
@@ -174,6 +176,8 @@ pub struct TrayMenu {
     /// A red dot on the icon while transcribing.
     pub transcribing: bool,
     pub tooltip: String,
+    /// When the recording started, so the menu can show how long it has run when it opens.
+    pub transcribing_since: Option<DateTime<Utc>>,
 }
 
 pub trait Tray: Send + Sync {

@@ -4,6 +4,9 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
+### Added
+- The menu shows the day, time and length of each recent transcript ("Today 14:30 · 32 min"), and while transcribing, when the recording started and how long it has run (macOS; Windows shows the start time).
+
 ## [0.1.0] - 2026-11-20
 
 ### Added

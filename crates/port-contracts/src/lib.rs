@@ -123,12 +123,13 @@ pub fn tray(tray: &dyn Tray) {
     let menu = TrayMenu {
         items: vec![
             TrayItem::Label { label: "Transcribing · Contract test".into() },
-            TrayItem::Action { id: "stop".into(), label: "Stop and Save".into(), enabled: true },
+            TrayItem::Action { id: "stop".into(), label: "Stop and Save".into(), enabled: true, detail: Some("Started 14:30".into()) },
             TrayItem::Separator,
-            TrayItem::Action { id: "quit".into(), label: "Quit Muesli".into(), enabled: true },
+            TrayItem::Action { id: "quit".into(), label: "Quit Muesli".into(), enabled: true, detail: None },
         ],
         transcribing: true,
         tooltip: "Muesli".into(),
+        transcribing_since: None,
     };
     tray.show(&menu);
     tray.show(&menu);

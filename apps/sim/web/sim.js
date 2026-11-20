@@ -24,7 +24,7 @@ function render() {
     .map((i) =>
       i.kind === "separator" ? `<li class="separator"></li>`
       : i.kind === "label" ? `<li class="label">${esc(i.label)}</li>`
-      : `<li class="action ${i.enabled ? "" : "disabled"}" data-tray="${esc(i.id)}" data-enabled="${i.enabled}">${esc(i.label)}</li>`)
+      : `<li class="action ${i.enabled ? "" : "disabled"}" data-tray="${esc(i.id)}" data-enabled="${i.enabled}">${esc(i.label)}${i.detail ? `<span class="detail">${esc(i.detail)}</span>` : ""}</li>`)
     .join("");
   // Notifications stay on screen until answered, as they do in Notification Center / Action Center.
   const box = $("#notification-box");

@@ -2457,6 +2457,7 @@ dependencies = [
 name = "muesli-app"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "dirs 5.0.1",
  "muesli-core",
  "muesli-engine",

@@ -83,7 +83,7 @@ impl Tray for TauriTray {
         let (handle2, wanted) = (handle.clone(), wanted.clone());
         let _ = handle.run_on_main_thread(move || {
             let Some(tray) = handle2.tray_by_id(TRAY_ID) else { return };
-            if let Ok(menu) = build_menu(&handle2, &wanted.items) {
+            if let Ok(menu) = build_menu(&handle2, &wanted.items, wanted.transcribing_since) {
                 let _ = tray.set_menu(Some(menu));
             }
             let _ = tray.set_tooltip(Some(&wanted.tooltip));
@@ -112,13 +112,26 @@ fn symbol(id: &str) -> Option<&'static str> {
     })
 }
 
-fn build_menu(handle: &AppHandle, items: &[TrayItem]) -> tauri::Result<Menu<tauri::Wry>> {
+/// macOS shows an item's detail as its second line (see `menu_icons`); elsewhere it follows the
+/// label.
+fn build_menu(
+    handle: &AppHandle,
+    items: &[TrayItem],
+    #[allow(unused_variables)] since: Option<chrono::DateTime<chrono::Utc>>,
+) -> tauri::Result<Menu<tauri::Wry>> {
     #[cfg(target_os = "macos")]
     muesli_platform_macos::menu_icons::set(
         items
             .iter()
             .filter_map(|i| match i {
-                TrayItem::Action { id, label, .. } => symbol(id).map(|s| (label.clone(), s)),
+                TrayItem::Action { id, label, detail, .. } => Some((
+                    label.clone(),
+                    muesli_platform_macos::menu_icons::Extras {
+                        symbol: symbol(id),
+                        subtitle: detail.clone(),
+                        since: if id == "stop" { since } else { None },
+                    },
+                )),
                 _ => None,
             })
             .collect(),
@@ -128,13 +141,17 @@ fn build_menu(handle: &AppHandle, items: &[TrayItem]) -> tauri::Result<Menu<taur
         match entry {
             TrayItem::Separator => menu.append(&PredefinedMenuItem::separator(handle)?)?,
             TrayItem::Label { label } => menu.append(&MenuItem::with_id(handle, format!("label:{n}"), label, false, None::<&str>)?)?,
-            TrayItem::Action { id, label, enabled } => {
+            TrayItem::Action { id, label, enabled, detail } => {
+                let label = match detail {
+                    Some(detail) if !cfg!(target_os = "macos") => format!("{label}  ·  {detail}"),
+                    _ => label.clone(),
+                };
                 let shortcut = match id.as_str() {
                     "settings" => Some("CmdOrCtrl+,"),
                     "quit" => Some("CmdOrCtrl+Q"),
                     _ => None,
                 };
-                menu.append(&MenuItem::with_id(handle, id, label, *enabled, shortcut)?)?
+                menu.append(&MenuItem::with_id(handle, id, &label, *enabled, shortcut)?)?
             }
         }
     }

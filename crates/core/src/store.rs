@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use chrono::{DateTime, Local, SecondsFormat, Utc};
+use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveDateTime, SecondsFormat, Utc};
 
 use crate::json::{self, to_pretty_sorted};
 use crate::models::{Meeting, MeetingState, TranscriptSegment};
@@ -134,6 +134,44 @@ pub fn shorten_title(title: &str, limit: usize) -> String {
     format!("{start}…{end}")
 }
 
+/// The second line of a transcript in the menu, in local time: "Today 14:30 · 32 min",
+/// "Yesterday 09:00 · <1 min", "17 Nov 10:00" (no length while unknown).
+pub fn menu_subtitle(started: NaiveDateTime, ended: Option<NaiveDateTime>, today: NaiveDate) -> String {
+    let date = started.date();
+    let day = if date == today {
+        "Today".to_string()
+    } else if today.pred_opt() == Some(date) {
+        "Yesterday".to_string()
+    } else if date.year() == today.year() {
+        started.format("%-d %b").to_string()
+    } else {
+        started.format("%-d %b %Y").to_string()
+    };
+    let mut text = format!("{day} {}", started.format("%H:%M"));
+    if let Some(end) = ended {
+        let minutes = (end - started).num_minutes().max(0);
+        text.push_str(&if minutes < 1 { " · <1 min".to_string() } else { format!(" · {minutes} min") });
+    }
+    text
+}
+
+/// How long a recording has run: "0:42", "12:07", "1:02:07".
+pub fn elapsed(seconds: i64) -> String {
+    let s = seconds.max(0);
+    let (h, m, s) = (s / 3600, s / 60 % 60, s % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+/// [`menu_subtitle`] for times in UTC, shown in the computer's time zone.
+pub fn menu_subtitle_local(started: DateTime<Utc>, ended: Option<DateTime<Utc>>, now: DateTime<Utc>) -> String {
+    let local = |t: DateTime<Utc>| t.with_timezone(&Local).naive_local();
+    menu_subtitle(local(started), ended.map(local), local(now).date())
+}
+
 fn modified(path: &Path) -> SystemTime {
     fs::metadata(path).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH)
 }
@@ -248,5 +286,31 @@ impl<'a> MeetingStore<'a> {
 
     pub fn latest_ready(&self) -> Option<Meeting> {
         self.all().into_iter().filter(|m| m.state == MeetingState::Ready).max_by_key(|m| m.ended_at.unwrap_or(m.started_at))
+    }
+}
+
+#[cfg(test)]
+mod menu_text_tests {
+    use super::*;
+
+    fn at(d: &str) -> NaiveDateTime {
+        NaiveDateTime::parse_from_str(d, "%Y-%m-%d %H:%M").unwrap()
+    }
+
+    #[test]
+    fn subtitles_name_the_day_and_the_length() {
+        let today = NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
+        assert_eq!(menu_subtitle(at("2026-11-20 14:30"), Some(at("2026-11-20 15:02")), today), "Today 14:30 · 32 min");
+        assert_eq!(menu_subtitle(at("2026-11-19 09:00"), Some(at("2026-11-19 09:00")), today), "Yesterday 09:00 · <1 min");
+        assert_eq!(menu_subtitle(at("2026-11-17 10:00"), None, today), "17 Nov 10:00");
+        assert_eq!(menu_subtitle(at("2025-12-31 23:00"), None, today), "31 Dec 2025 23:00");
+    }
+
+    #[test]
+    fn elapsed_is_a_clock() {
+        assert_eq!(elapsed(42), "0:42");
+        assert_eq!(elapsed(727), "12:07");
+        assert_eq!(elapsed(3727), "1:02:07");
+        assert_eq!(elapsed(-5), "0:00");
     }
 }

@@ -9,7 +9,7 @@ use muesli_core::assistants::{AssistantClient, ClaudeDesktopConfig, ClaudeDeskto
 use muesli_core::editor::MeetingEditor;
 use muesli_core::ports::{Access, Notice, OnError, OnSamples, Permission, Platform, Question, TrayItem, TrayMenu};
 use muesli_core::status::{Activity as StatusActivity, AppStatus, Current, Detected, FileJob, LastReady};
-use muesli_core::store::{shorten_title, MeetingStore, Store};
+use muesli_core::store::{menu_subtitle_local, shorten_title, MeetingStore, Store};
 use muesli_core::whisper_model::DEFAULT_MODEL;
 use muesli_core::{
     languages, AudioChunk, AudioChunker, DetectedMeeting, DetectionEvent, DetectionLogic, Meeting, MeetingState, Paths, Preferences,
@@ -1100,7 +1100,9 @@ impl Engine {
                 .collect()
         };
         let s = self.lock();
-        let action = |id: &str, label: &str, enabled: bool| TrayItem::Action { id: id.into(), label: label.into(), enabled };
+        let action = |id: &str, label: &str, enabled: bool| TrayItem::Action { id: id.into(), label: label.into(), enabled, detail: None };
+        let now = self.now();
+        let mut since = None;
         let label = |text: String| TrayItem::Label { label: text };
         let mut items = Vec::new();
         let ready = model.is_ready();
@@ -1119,8 +1121,15 @@ impl Engine {
         match &s.activity {
             Activity::Transcribing => {
                 let title = s.session.as_ref().map(|x| x.meeting.lock().unwrap().title.clone()).unwrap_or_default();
+                let started = s.session.as_ref().map(|x| x.meeting.lock().unwrap().started_at);
+                since = started;
                 items.push(label(format!("Transcribing · {}", shorten_title(&title, 40))));
-                items.push(action("stop", "Stop and Save", true));
+                items.push(TrayItem::Action {
+                    id: "stop".into(),
+                    label: "Stop and Save".into(),
+                    enabled: true,
+                    detail: started.map(|t| format!("Started {}", t.with_timezone(&chrono::Local).format("%H:%M"))),
+                });
             }
             Activity::Starting => items.push(label("Starting…".into())),
             Activity::Saving => items.push(label("Saving the transcript…".into())),
@@ -1138,14 +1147,24 @@ impl Engine {
             items.push(TrayItem::Separator);
             items.push(label("Recent Transcripts".into()));
             for m in &recent {
-                items.push(action(&format!("recent:{}", m.id), &shorten_title(&m.title, 44), true));
+                items.push(TrayItem::Action {
+                    id: format!("recent:{}", m.id),
+                    label: shorten_title(&m.title, 44),
+                    enabled: true,
+                    detail: Some(menu_subtitle_local(m.started_at, m.ended_at, now)),
+                });
             }
         }
         items.push(TrayItem::Separator);
         items.push(action("settings", "Settings…", true));
         items.push(action("quit", "Quit Muesli", true));
         let transcribing = matches!(s.activity, Activity::Transcribing | Activity::Saving);
-        TrayMenu { items, transcribing, tooltip: if transcribing { "Muesli · transcribing".into() } else { "Muesli".into() } }
+        TrayMenu {
+            items,
+            transcribing,
+            tooltip: if transcribing { "Muesli · transcribing".into() } else { "Muesli".into() },
+            transcribing_since: if transcribing { since } else { None },
+        }
     }
 
     /// One window's view state as JSON, for the web UI.

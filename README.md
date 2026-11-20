@@ -73,7 +73,7 @@ Muesli lives in the menu bar (macOS) or the system tray (Windows) and starts whe
 2. While Muesli transcribes, its icon shows a red dot and the menu shows **Transcribing · Weekly sync** with **Stop and Save**. Muesli's window shows the text as it grows, every 30 seconds.
 3. When the call is over, Muesli asks whether to stop and save. The transcript appears in your folder, in Muesli's window and among the three latest transcripts in the menu.
 
-The menu: **Start Transcribing** (or **Stop and Save**), **Open Muesli**, **Transcribe Audio File…**, your three latest transcripts under **Recent Transcripts**, **Settings…** (⌘,) and **Quit Muesli** (⌘Q); on a Mac each item has an icon. On Windows a left click on the tray icon opens Muesli's window and a right click shows the menu. On a Mac, Muesli has a Dock icon only while one of its windows is open.
+The menu: **Start Transcribing** (or **Stop and Save**), **Open Muesli**, **Transcribe Audio File…**, your three latest transcripts under **Recent Transcripts**, each with its day, time and length ("Today 14:30 · 32 min"; while transcribing, **Stop and Save** shows when it started and how long it has run), **Settings…** (⌘,) and **Quit Muesli** (⌘Q); on a Mac each item has an icon. On Windows a left click on the tray icon opens Muesli's window and a right click shows the menu. On a Mac, Muesli has a Dock icon only while one of its windows is open.
 
 **Muesli's window** lists your transcripts, newest first, with the one being transcribed at the top. Choose one to read it. A finished transcript can be renamed (its files are renamed too) or deleted: it goes to the Trash (Recycle Bin on Windows), and **Undo** brings it back for a few seconds. **Show in Finder** (Explorer on Windows) shows the file.
 
