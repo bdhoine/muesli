@@ -147,6 +147,7 @@ Settings → General shows your version with **What's new**, **Check for Updates
 ## Good to know
 
 - Speakers are "You" and "Others". Muesli does not tell the other participants apart.
+- Headphones are not needed. Without them your microphone also hears the call from the speakers; Muesli removes that copy before transcribing, so the others' words appear once, as Others, even when you talk at the same time.
 - Text appears a few seconds after each sentence. During a long stretch without a pause it comes every ten seconds or so, and on a slower computer in larger steps, up to thirty seconds.
 - Meetings in your calendar are recognised when they have other attendees or a Teams, Zoom, Google Meet or Webex link.
 - On Windows, meetings are noticed from other apps using the microphone and from Teams. There is no calendar detection, because Windows has no system calendar that apps can read; an in-person meeting has to be started by hand. [Why the two apps differ](docs/PLATFORMS.md).
@@ -167,3 +168,5 @@ Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) co
 ## License
 
 [MIT](LICENSE).
+
+Muesli bundles [LocalVQE](https://github.com/localai-org/LocalVQE) (Apache-2.0) for echo cancellation; its licence ships with the app.

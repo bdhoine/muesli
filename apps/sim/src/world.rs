@@ -134,6 +134,8 @@ pub struct Scenario {
     /// The version that ran before this start (`lastRunVersion`): an older one means Muesli was
     /// just updated.
     pub last_run_version: Option<String>,
+    /// Live meetings clean the microphone of the call (the stand-in echo canceller).
+    pub echo_cancelling: bool,
     pub steps: Vec<Value>,
 }
 
@@ -144,8 +146,14 @@ pub struct World {
     pub updater: Arc<FakeUpdater>,
     pub host: Arc<SimHost>,
     pub skin: &'static str,
+    /// The end of the speakers' echo, still to reach the microphone (it lags the call).
+    echo_tail: Mutex<Vec<f32>>,
     _dir: tempfile::TempDir,
 }
+
+/// How the microphone hears the call from the speakers: 10 ms later, at 40%.
+const SPEAKER_DELAY: usize = 160;
+const SPEAKER_GAIN: f32 = 0.4;
 
 impl World {
     pub fn new(skin: &str, scenario: &Scenario, version: Arc<AtomicU64>, fixtures: PathBuf) -> Self {
@@ -204,7 +212,8 @@ impl World {
         let engine = Engine::new(fakes.platform(), speech.clone(), host.clone(), options);
         *host.engine.lock().unwrap() = Arc::downgrade(&engine);
         engine.start();
-        let world = Self { engine, fakes, speech, updater, host, skin, _dir: dir };
+        speech.echo.store(scenario.echo_cancelling, std::sync::atomic::Ordering::SeqCst);
+        let world = Self { engine, fakes, speech, updater, host, skin, echo_tail: Mutex::new(Vec::new()), _dir: dir };
         for step in &scenario.steps {
             if let Err(why) = world.act(step) {
                 world.host.say(format!("Scenario step failed: {why}"));
@@ -265,20 +274,32 @@ impl World {
             }
             "talk" => {
                 // Speech from "you", "others" or "both" (the default), then the time it took.
+                // With "speakers": true the others play through the speakers, so the microphone
+                // hears them too (without headphones).
                 let seconds = num("seconds", 31.0);
                 let who = text("who", "both");
-                if who != "others" {
-                    self.fakes.mic.feed_seconds(seconds);
-                }
+                let speakers = step.get("speakers").and_then(Value::as_bool).unwrap_or(false);
+                let call = muesli_platform_fake::tone(seconds);
+                let mut mic = if who != "others" { call.clone() } else { vec![0.0; call.len()] };
                 if who != "you" {
-                    self.fakes.system_audio.feed_seconds(seconds);
+                    self.fakes.system_audio.feed(&call);
+                    if speakers {
+                        let mut tail = self.echo_tail.lock().unwrap();
+                        tail.resize(call.len() + SPEAKER_DELAY, 0.0);
+                        for (i, x) in call.iter().enumerate() {
+                            tail[i + SPEAKER_DELAY] += x * SPEAKER_GAIN;
+                        }
+                    }
+                } else {
+                    self.fakes.system_audio.feed_silence(seconds);
                 }
+                self.feed_mic(&mut mic);
                 self.advance(seconds as i64);
             }
             "silence" => {
                 // Nobody speaks: both streams go on, silent. A pause ends the block before it.
                 let seconds = num("seconds", 2.0);
-                self.fakes.mic.feed_silence(seconds);
+                self.feed_mic(&mut vec![0.0; (seconds * 16_000.0) as usize]);
                 self.fakes.system_audio.feed_silence(seconds);
                 self.advance(seconds as i64);
             }
@@ -341,6 +362,16 @@ impl World {
     }
 
     /// A finished meeting with a few lines, written as the app would have.
+    /// Feeds the microphone, with whatever of the speakers' echo is due in that time.
+    fn feed_mic(&self, samples: &mut [f32]) {
+        let mut tail = self.echo_tail.lock().unwrap();
+        let due = tail.len().min(samples.len());
+        for (s, e) in samples.iter_mut().zip(tail.drain(..due)) {
+            *s += e;
+        }
+        self.fakes.mic.feed(samples);
+    }
+
     fn add_meeting(&self, step: &Value) {
         let paths = self.engine.paths();
         let title = step.get("title").and_then(Value::as_str).unwrap_or("Weekly sync");

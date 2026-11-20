@@ -5,6 +5,7 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Added
+- Without headphones, your microphone's copy of the call is removed before transcribing, so the others' words show up once, as Others, also when you talk at the same time. If that ever fails, Muesli carries on with the microphone as it is.
 - Clicking the "Looks like a meeting" notification now starts transcribing, like its **Start transcribing** button. Clicking "The call seems to have ended" only opens Muesli's window; stopping stays a button press.
 - Settings: a small green light before "Connected" for Claude Desktop (amber when an older version is connected).
 - Muesli keeps itself up to date. Once a day it checks GitHub for a new version and downloads it in the background. When it is ready, the menu offers **Restart to Update**, the menu bar or tray icon gets a small green dot, Muesli's window shows a banner and you get one notification; nothing interrupts a meeting you are transcribing. Quitting Muesli with an update ready installs it too. Settings shows your version with **What's new**, **Check for Updates**, and a switch to turn automatic checks off. After an update Muesli tells you once, and on a Mac it opens the permissions screen if macOS asks for them again.

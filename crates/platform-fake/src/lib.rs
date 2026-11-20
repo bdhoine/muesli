@@ -62,6 +62,11 @@ struct Live {
     on_error: OnError,
 }
 
+/// What `FakeAudio::feed_seconds` feeds: `seconds` of a steady tone at 16 kHz.
+pub fn tone(seconds: f64) -> Vec<f32> {
+    (0..(seconds * 16_000.0) as usize).map(|i| 0.1 * ((i as f32) * 0.05).sin()).collect()
+}
+
 /// A microphone or system-audio source. While a stream is open, `feed` hands it samples
 /// (16 kHz mono), `play_file` plays an audio file through it and `break_stream` makes it fail.
 #[derive(Clone, Default)]
@@ -96,9 +101,7 @@ impl FakeAudio {
 
     /// `seconds` of a steady tone: speech, as far as the stand-in voice detector can tell.
     pub fn feed_seconds(&self, seconds: f64) {
-        let n = (seconds * 16_000.0) as usize;
-        let tone: Vec<f32> = (0..n).map(|i| 0.1 * ((i as f32) * 0.05).sin()).collect();
-        self.feed(&tone);
+        self.feed(&tone(seconds));
     }
 
     /// `seconds` of digital silence.

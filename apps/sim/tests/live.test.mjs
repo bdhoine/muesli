@@ -1,5 +1,6 @@
 // Live text follows pauses: the scenarios for a long monologue, a rapid back-and-forth and a
-// silent stretch, through the real engine with the stand-in voice detector.
+// silent stretch, through the real engine with the stand-in voice detector. And a call through
+// the speakers, with the stand-in echo canceller.
 //   cargo build -p muesli-sim && node --test apps/sim/tests/*.test.mjs
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
@@ -48,6 +49,22 @@ describe("live text follows pauses", () => {
       const [line] = await lines(sim);
       assert.equal(line.speaker, "You");
       assert.equal(line.time, "09:59");
+    } finally {
+      await sim.stop();
+    }
+  });
+
+  test("through the speakers: the others once, as Others, and your replies as You", async () => {
+    const sim = await startSim({ scenario: "through-the-speakers" });
+    try {
+      await eventually(async () => (await lines(sim)).length === 3, "three sentences");
+      // Give an echo the time it would need to show up as well.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const got = await lines(sim);
+      assert.deepEqual(
+        got.map((l) => l.speaker),
+        ["Others", "You", "Others"],
+      );
     } finally {
       await sim.stop();
     }
