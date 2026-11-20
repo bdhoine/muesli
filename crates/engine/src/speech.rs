@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-pub use muesli_core::SpeechDetector;
+pub use muesli_core::{EchoCanceller, SpeechDetector};
 pub use muesli_import::SpeechToText;
 
 /// A loaded speech model: turns blocks of audio into text. Moved to the thread that uses it.
@@ -51,4 +51,9 @@ pub trait SpeechModel: Send + Sync {
     /// A voice activity detector for one live stream (each speaker gets their own). Only called
     /// while `status()` is ready. Never fails: without the model, a loudness detector stands in.
     fn speech_detector(&self) -> Box<dyn SpeechDetector>;
+    /// A canceller for the microphone's echo of the call (live only), or `None` when there is
+    /// none (it could not load): the microphone is then transcribed as it is.
+    fn echo_canceller(&self) -> Option<Box<dyn EchoCanceller>> {
+        None
+    }
 }

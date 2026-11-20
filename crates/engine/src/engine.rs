@@ -602,8 +602,9 @@ impl Engine {
         let (mic, system_audio) = (self.platform.mic.clone(), self.platform.system_audio.clone());
         let me = self.me.clone();
         let detectors = vec![("You", self.speech.speech_detector()), ("Others", self.speech.speech_detector())];
+        let echo = self.speech.echo_canceller();
         let audio = std::thread::spawn(move || {
-            let live = Live::start(detectors, pacer, chunk_tx);
+            let live = Live::start(detectors, echo, pacer, chunk_tx);
             // A stream broke for good (device unplugged, permission revoked): keep what we have.
             let on_error: OnError = Arc::new(move |message| {
                 if let Some(engine) = me.upgrade() {

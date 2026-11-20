@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use muesli_core::{AudioChunk, EnergyDetector, SpeechDetector, TranscriptSegment};
+use muesli_core::aec::HOP;
+use muesli_core::{AudioChunk, EchoCanceller, EnergyDetector, SpeechDetector, StandInCanceller, TranscriptSegment};
 use muesli_import::SpeechToText;
 
 use crate::host::{Host, Window};
@@ -29,6 +30,8 @@ pub struct FakeSpeech {
     pub held_chunks: Arc<AtomicUsize>,
     /// Blocks handed to the transcribers, so tests can see that silence never got that far.
     pub transcribed: Arc<AtomicUsize>,
+    /// While set, live meetings get the stand-in echo canceller (`StandInCanceller`).
+    pub echo: Arc<AtomicBool>,
 }
 
 impl FakeSpeech {
@@ -43,6 +46,7 @@ impl FakeSpeech {
             hold_files: Arc::new(AtomicBool::new(false)),
             held_chunks: Arc::new(AtomicUsize::new(0)),
             transcribed: Arc::new(AtomicUsize::new(0)),
+            echo: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -108,6 +112,10 @@ impl SpeechModel for FakeSpeech {
 
     fn speech_detector(&self) -> Box<dyn SpeechDetector> {
         Box::new(EnergyDetector::default())
+    }
+
+    fn echo_canceller(&self) -> Option<Box<dyn EchoCanceller>> {
+        self.echo.load(Ordering::SeqCst).then(|| Box::new(StandInCanceller::new(HOP)) as Box<dyn EchoCanceller>)
     }
 }
 

@@ -148,6 +148,36 @@ fn silence_is_never_transcribed() {
     assert_eq!(muesli_core::store::MeetingStore::new(&h.engine.paths()).load(&meeting.id).unwrap().transcript.len(), 0);
 }
 
+/// The call from the speakers: what the system audio plays, and the microphone hearing it
+/// 10 ms later, quieter. Saved and returns the speakers of the transcript.
+fn call_through_the_speakers(echo_cancelling: bool) -> Vec<String> {
+    let h = Harness::ready();
+    h.speech.echo.store(echo_cancelling, std::sync::atomic::Ordering::SeqCst);
+    h.engine.intent(Intent::StartTranscribing);
+    wait_for("transcribing", || h.transcribing());
+    // 4 s of the call, then 2 s of silence; the echo ends 10 ms after the call does.
+    let call: Vec<f32> = (0..6 * 16_000).map(|i| if i < 4 * 16_000 { 0.1 * (i as f32 * 0.05).sin() } else { 0.0 }).collect();
+    let heard: Vec<f32> = (0..call.len()).map(|i| if i >= 160 { 0.4 * call[i - 160] } else { 0.0 }).collect();
+    h.fakes.system_audio.feed(&call);
+    h.fakes.mic.feed(&heard);
+    h.engine.intent(Intent::Tray { id: "stop".into() });
+    wait_for("saved", || h.idle());
+    let meeting = &h.engine.main_view().meetings[0];
+    muesli_core::store::MeetingStore::new(&h.engine.paths()).load(&meeting.id).unwrap().transcript.into_iter().map(|s| s.speaker).collect()
+}
+
+#[test]
+fn without_headphones_the_microphone_copy_of_the_call_is_removed_before_transcribing() {
+    assert_eq!(call_through_the_speakers(true), ["Others"]);
+}
+
+#[test]
+fn without_echo_cancelling_the_microphone_copy_of_the_call_would_be_you() {
+    // The same call without a canceller: the microphone's copy comes in as "You" (the text filter
+    // in `echo.rs` is what catches it then, once the words are known).
+    assert!(call_through_the_speakers(false).contains(&"You".to_string()));
+}
+
 #[test]
 fn stopping_sends_the_sentence_still_being_spoken() {
     let h = transcribing_a_call();

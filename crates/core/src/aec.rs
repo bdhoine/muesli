@@ -499,7 +499,8 @@ impl EchoCanceller for StandInCanceller {
         // Only a microphone that hears something can teach the path (silence fits any lag).
         let exact = |left: f32| rms(mic) >= FAR_RMS && left <= 1e-4 * mic_energy;
         self.since_search += 1;
-        if !(self.learnt && exact(fit(self.lag).0)) && self.since_search >= SEARCH_EVERY {
+        // Until it has learnt the path it tries every hop; after that, now and then.
+        if !(self.learnt && exact(fit(self.lag).0)) && (!self.learnt || self.since_search >= SEARCH_EVERY) {
             self.since_search = 0;
             let best = (0..=back).map(fit).min_by(|a, b| a.0.total_cmp(&b.0)).unwrap();
             // Only an exact fit teaches the path; before that, the best guess stands in.
