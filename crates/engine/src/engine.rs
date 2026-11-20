@@ -7,7 +7,7 @@ use std::thread::JoinHandle;
 use chrono::{DateTime, Duration, Utc};
 use muesli_core::assistants::{AssistantClient, ClaudeDesktopConfig, ClaudeDesktopExtension, ExtensionState};
 use muesli_core::editor::MeetingEditor;
-use muesli_core::ports::{Access, Notice, OnError, OnSamples, Permission, Platform, Question, TrayItem, TrayMenu, Updater};
+use muesli_core::ports::{Access, Click, Notice, OnError, OnSamples, Permission, Platform, Question, TrayItem, TrayMenu, Updater};
 use muesli_core::status::{Activity as StatusActivity, AppStatus, Current, Detected, FileJob, LastReady};
 use muesli_core::store::{menu_subtitle_local, shorten_title, MeetingStore, Store};
 use muesli_core::whisper_model::DEFAULT_MODEL;
@@ -96,7 +96,9 @@ struct Session {
 #[derive(Debug, Clone, PartialEq)]
 enum ImportState {
     Waiting,
-    Running { progress: Option<f64> },
+    Running {
+        progress: Option<f64>,
+    },
     /// Cancel was pressed while running: the worker is stopping, and the result is thrown away.
     Cancelling,
     Failed(String),
@@ -455,12 +457,14 @@ impl Engine {
                 body: format!("Detected via {}. Start transcribing?", m.source),
                 accept: "Start transcribing".into(),
                 decline: "Not now".into(),
+                click: Click::Accept,
             },
             PromptKind::Stop => Question {
                 title: "The call seems to have ended".into(),
                 body: "Muesli is still transcribing. Stop and save the transcript?".into(),
                 accept: "Stop and save".into(),
                 decline: "Keep transcribing".into(),
+                click: Click::Open, // stopping stays a deliberate press of the button
             },
         }
     }
@@ -484,6 +488,14 @@ impl Engine {
                     engine.intent(Intent::AnswerPrompt { prompt: Some(id), accept });
                 }
             }),
+            {
+                let me = self.me.clone();
+                Box::new(move || {
+                    if let Some(engine) = me.upgrade() {
+                        engine.host.show(Window::Main);
+                    }
+                })
+            },
         );
         if asked.is_err() {
             if let Some(p) = self.lock().prompt.as_mut().filter(|p| p.id == id) {

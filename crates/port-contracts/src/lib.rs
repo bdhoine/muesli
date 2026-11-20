@@ -11,8 +11,8 @@ use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
 use muesli_core::ports::{
-    Access, AudioStream, Clock, LoginItem, MeetingDetector, Notice, Notifier, OnError, OnSamples, Permission, Permissions, PlatformPaths,
-    Question, Trash, Tray, TrayItem, TrayMenu, UpdateError, Updater,
+    Access, AudioStream, Click, Clock, LoginItem, MeetingDetector, Notice, Notifier, OnError, OnSamples, Permission, Permissions,
+    PlatformPaths, Question, Trash, Tray, TrayItem, TrayMenu, UpdateError, Updater,
 };
 use muesli_core::Paths;
 
@@ -95,8 +95,9 @@ pub fn notifier(notifier: &dyn Notifier) {
         body: "Detected via test. Start transcribing?".into(),
         accept: "Start transcribing".into(),
         decline: "Not now".into(),
+        click: Click::Accept,
     };
-    if let Err(why) = notifier.ask(&question, Box::new(|_| {})) {
+    if let Err(why) = notifier.ask(&question, Box::new(|_| {}), Box::new(|| {})) {
         assert!(!why.is_empty(), "a refusal says why");
     }
     let notice = Notice { title: "Saved: Contract test".into(), body: "Test.".into(), action: Some("Open".into()) };
@@ -110,12 +111,33 @@ pub fn notifier_answers_once(notifier: &dyn Notifier, answer: &dyn Fn(bool) -> b
     for choice in [true, false] {
         let got = Arc::new(Mutex::new(Vec::new()));
         let sink = got.clone();
-        let q = Question { title: "t".into(), body: "b".into(), accept: "Yes".into(), decline: "No".into() };
-        notifier.ask(&q, Box::new(move |a| sink.lock().unwrap().push(a))).unwrap();
+        let q = Question { title: "t".into(), body: "b".into(), accept: "Yes".into(), decline: "No".into(), click: Click::Accept };
+        notifier.ask(&q, Box::new(move |a| sink.lock().unwrap().push(a)), Box::new(|| {})).unwrap();
         assert!(answer(choice));
         assert!(!answer(choice), "a question is answered once");
         assert_eq!(*got.lock().unwrap(), vec![choice]);
     }
+}
+
+/// A click on the notification itself does what the question says: `Click::Accept` answers yes,
+/// `Click::Open` calls `on_open` and leaves the question open. `click` plays the user.
+pub fn notifier_click(notifier: &dyn Notifier, click: &dyn Fn() -> bool) {
+    let answers = Arc::new(Mutex::new(Vec::new()));
+    let opened = Arc::new(Mutex::new(0u32));
+    let (sink, count) = (answers.clone(), opened.clone());
+    let q = Question { title: "t".into(), body: "b".into(), accept: "Yes".into(), decline: "No".into(), click: Click::Accept };
+    notifier.ask(&q, Box::new(move |a| sink.lock().unwrap().push(a)), Box::new(move || *count.lock().unwrap() += 1)).unwrap();
+    assert!(click());
+    assert_eq!(*answers.lock().unwrap(), vec![true], "a click on an accept-on-click question starts it");
+    assert_eq!(*opened.lock().unwrap(), 0);
+
+    let (sink, count) = (answers.clone(), opened.clone());
+    answers.lock().unwrap().clear();
+    let q = Question { click: Click::Open, ..q };
+    notifier.ask(&q, Box::new(move |a| sink.lock().unwrap().push(a)), Box::new(move || *count.lock().unwrap() += 1)).unwrap();
+    assert!(click());
+    assert!(answers.lock().unwrap().is_empty(), "opening answers nothing");
+    assert_eq!(*opened.lock().unwrap(), 1);
 }
 
 /// The tray takes any menu, the same one twice, and an empty one.

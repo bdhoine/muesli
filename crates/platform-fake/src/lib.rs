@@ -11,9 +11,9 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use muesli_core::ports::{
-    Access, AudioStream, Clock, DetectionSample, LoginItem, MeetingDetector, MicCapture, Notice, Notifier, OnAction, OnAnswer, OnError,
-    OnProgress, OnSamples, Permission, Permissions, Platform, PlatformPaths, PlatformWords, Question, Release, SystemAudioCapture, Trash,
-    Tray, TrayMenu, UpdateError, Updater,
+    Access, AudioStream, Click, Clock, DetectionSample, LoginItem, MeetingDetector, MicCapture, Notice, Notifier, OnAction, OnAnswer,
+    OnError, OnProgress, OnSamples, Permission, Permissions, Platform, PlatformPaths, PlatformWords, Question, Release, SystemAudioCapture,
+    Trash, Tray, TrayMenu, UpdateError, Updater,
 };
 use muesli_core::DetectedMeeting;
 
@@ -196,7 +196,7 @@ pub struct FakeNotifier {
     pub enabled: AtomicBool,
     questions: Mutex<Vec<Question>>,
     notices: Mutex<Vec<Notice>>,
-    pending_answer: Mutex<Option<OnAnswer>>,
+    pending_answer: Mutex<Option<(OnAnswer, OnAction)>>,
     pending_action: Mutex<Option<OnAction>>,
 }
 
@@ -250,9 +250,26 @@ impl FakeNotifier {
 
     /// Answers the last question shown. Returns false when none is waiting.
     pub fn answer(&self, accept: bool) -> bool {
-        let Some(on_answer) = self.pending_answer.lock().unwrap().take() else { return false };
+        let Some((on_answer, _)) = self.pending_answer.lock().unwrap().take() else { return false };
         on_answer(accept);
         true
+    }
+
+    /// Clicks the last question's notification itself, not a button. What happens follows the
+    /// question's `click`: it is answered yes, or Muesli is brought forward and the question
+    /// keeps waiting. Returns false when none is waiting.
+    pub fn click_question(&self) -> bool {
+        let Some(click) = self.pending_question().map(|q| q.click) else { return false };
+        match click {
+            Click::Accept => self.answer(true),
+            Click::Open => {
+                let pending = self.pending_answer.lock().unwrap();
+                if let Some((_, on_open)) = pending.as_ref() {
+                    on_open();
+                }
+                true
+            }
+        }
     }
 
     /// Clicks the last notice's button.
@@ -272,10 +289,10 @@ impl FakeNotifier {
 }
 
 impl Notifier for FakeNotifier {
-    fn ask(&self, question: &Question, on_answer: OnAnswer) -> Result<(), String> {
+    fn ask(&self, question: &Question, on_answer: OnAnswer, on_open: OnAction) -> Result<(), String> {
         self.check()?;
         self.questions.lock().unwrap().push(question.clone());
-        *self.pending_answer.lock().unwrap() = Some(on_answer);
+        *self.pending_answer.lock().unwrap() = Some((on_answer, on_open));
         Ok(())
     }
 

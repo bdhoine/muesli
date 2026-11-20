@@ -2,17 +2,19 @@
 //!
 //! "Start transcribing / Not now" and "Stop and save / Keep transcribing" are notification
 //! categories with two actions; "Saved: …" has one ("Open"). The answer arrives through the
-//! center's delegate, which looks up the waiting callback by the request id. When notifications
+//! center's delegate, which looks up the waiting callback by the request id. A click on the
+//! notification itself starts transcribing ("Start transcribing") or only opens Muesli ("Stop and
+//! save"), as the question says. Banners show their buttons only on hover, so the click matters. When notifications
 //! are off (or the app is not a signed bundle, as with `cargo run`), `ask` fails and the engine
 //! asks in Muesli's prompt window instead.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Mutex, OnceLock};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use block2::RcBlock;
-use muesli_core::ports::{Access, Notice, Notifier, OnAction, OnAnswer, Question};
+use muesli_core::ports::{Access, Click, Notice, Notifier, OnAction, OnAnswer, Question};
 use objc2::rc::Retained;
 use objc2::runtime::{Bool, NSObject, NSObjectProtocol, ProtocolObject};
 use objc2::{define_class, msg_send, AnyThread};
@@ -29,7 +31,12 @@ const DECLINE: &str = "decline";
 const OPEN: &str = "open";
 
 enum Waiting {
-    Answer(OnAnswer),
+    /// A question: the answer, what a click on the notification itself does, and how.
+    Answer {
+        on_answer: Arc<OnAnswer>,
+        on_open: Arc<OnAction>,
+        click: Click,
+    },
     Action(OnAction),
 }
 
@@ -72,12 +79,18 @@ define_class!(
             let found = waiting().lock().unwrap().remove(&id); // the lock is released here
             if let Some(found) = found {
                 match found {
-                    Waiting::Answer(on_answer) => match action.as_str() {
+                    Waiting::Answer { on_answer, on_open, click } => match action.as_str() {
                         ACCEPT => on_answer(true),
                         DECLINE => on_answer(false),
+                        // A click on the notification itself: what the question says.
+                        a if a == default && click == Click::Accept => on_answer(true),
+                        a if a == default => {
+                            on_open();
+                            waiting().lock().unwrap().insert(id, Waiting::Answer { on_answer, on_open, click });
+                        }
                         _ => {
-                            // A click on the text answers nothing: keep waiting.
-                            waiting().lock().unwrap().insert(id, Waiting::Answer(on_answer));
+                            // Swiped away: nothing answered, keep waiting.
+                            waiting().lock().unwrap().insert(id, Waiting::Answer { on_answer, on_open, click });
                         }
                     },
                     Waiting::Action(on_action) => {
@@ -193,13 +206,13 @@ impl Default for Notifications {
 }
 
 impl Notifier for Notifications {
-    fn ask(&self, question: &Question, on_answer: OnAnswer) -> Result<(), String> {
+    fn ask(&self, question: &Question, on_answer: OnAnswer, on_open: OnAction) -> Result<(), String> {
         self.show(
             &question.title,
             &question.body,
             &format!("question:{}:{}", question.accept, question.decline),
             &[(ACCEPT, &question.accept), (DECLINE, &question.decline)],
-            Waiting::Answer(on_answer),
+            Waiting::Answer { on_answer: Arc::new(on_answer), on_open: Arc::new(on_open), click: question.click },
         )
     }
 

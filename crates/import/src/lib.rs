@@ -104,7 +104,13 @@ pub fn import_file(
         let seconds = samples.len() as f64 / SAMPLE_RATE as f64;
         let chunk = AudioChunk { speaker: SPEAKER.to_string(), offset_seconds: *offset, samples };
         // A transcriber that stopped because of the cancel is a cancel, not a failure.
-        let segments = stt.transcribe_until(&chunk, cancel).map_err(|e| if cancelled(cancel) { ImportError::Cancelled } else { ImportError::Transcribe(e) })?;
+        let segments = stt.transcribe_until(&chunk, cancel).map_err(|e| {
+            if cancelled(cancel) {
+                ImportError::Cancelled
+            } else {
+                ImportError::Transcribe(e)
+            }
+        })?;
         store.append(meeting, segments);
         *offset += seconds;
         Ok(())

@@ -273,6 +273,9 @@ impl World {
             "answer" => {
                 self.fakes.notifier.answer(step.get("accept").and_then(Value::as_bool).unwrap_or(true));
             }
+            "clickQuestion" => {
+                self.fakes.notifier.click_question();
+            }
             "clickNotice" => {
                 self.fakes.notifier.click_action();
             }

@@ -48,6 +48,7 @@ fn notifier() {
     let notifier = FakeNotifier::default();
     contract::notifier(&notifier);
     contract::notifier_answers_once(&notifier, &|a| notifier.answer(a));
+    contract::notifier_click(&notifier, &|| notifier.click_question());
     notifier.set_enabled(false);
     contract::notifier(&notifier);
 }

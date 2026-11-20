@@ -3,7 +3,7 @@
 mod common;
 
 use common::{wait_for, Harness};
-use muesli_core::ports::{Notice, Question, TrayItem};
+use muesli_core::ports::{Click, Notice, Question, TrayItem};
 use muesli_engine::fake::FakeSpeech;
 use muesli_engine::{Intent, Window, ANSWER_TIMEOUT, CALL_END_DELAY};
 
@@ -13,6 +13,7 @@ fn start_question(title: &str, source: &str) -> Question {
         body: format!("Detected via {source}. Start transcribing?"),
         accept: "Start transcribing".into(),
         decline: "Not now".into(),
+        click: Click::Accept,
     }
 }
 
@@ -22,6 +23,7 @@ fn stop_question() -> Question {
         body: "Muesli is still transcribing. Stop and save the transcript?".into(),
         accept: "Stop and save".into(),
         decline: "Keep transcribing".into(),
+        click: Click::Open,
     }
 }
 
@@ -43,6 +45,29 @@ fn a_call_is_suggested_with_a_question_and_never_started_by_itself() {
     h.advance(600);
     assert!(h.idle(), "no auto-start: only the answer starts");
     assert_eq!(h.fakes.notifier.questions().len(), 1, "suggested once per meeting");
+}
+
+#[test]
+fn clicking_the_meeting_notification_itself_starts_transcribing() {
+    let h = Harness::ready();
+    h.call_for(20, true);
+    assert!(h.fakes.notifier.click_question());
+    wait_for("transcribing", || h.transcribing());
+}
+
+#[test]
+fn clicking_the_end_of_call_notification_only_opens_muesli() {
+    let h = transcribing_a_call();
+    h.mic_free();
+    h.advance(CALL_END_DELAY + 5);
+    assert_eq!(h.fakes.notifier.questions().last(), Some(&stop_question()));
+    assert!(h.fakes.notifier.click_question());
+    assert!(h.host.calls().contains(&muesli_engine::fake::HostCall::Show(Window::Main)), "Muesli comes forward");
+    assert!(h.transcribing(), "nothing was stopped");
+    assert!(h.fakes.notifier.pending_question().is_some(), "the question is still open");
+    // and it can still be answered, or runs out, as before
+    assert!(h.fakes.notifier.answer(true));
+    wait_for("saved", || h.idle());
 }
 
 #[test]

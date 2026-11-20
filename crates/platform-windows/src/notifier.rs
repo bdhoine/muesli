@@ -2,18 +2,19 @@
 //! notice ("Saved: …") a toast with one. A desktop app that is not a Store package gets the button
 //! click through the toast's `Activated` event, which only works while the app is running; Muesli
 //! always is. When Windows will not show Muesli's toasts, `ask` fails and the engine falls back to
-//! its own prompt window.
+//! its own prompt window. A click on the toast itself does what the question says (`Click`).
 
 use std::sync::Arc;
 
-use muesli_core::ports::{Access, Notice, Notifier, OnAction, OnAnswer, Question};
+use muesli_core::ports::{Access, Click, Notice, Notifier, OnAction, OnAnswer, Question};
 use tauri_winrt_notification::{Scenario, Toast};
 
 const ACCEPT: &str = "accept";
 const DECLINE: &str = "decline";
 const OPEN: &str = "open";
 
-/// What a click on the toast means. `None`: the body was clicked, which answers nothing.
+/// What a click on the toast answers. `None`: the body was clicked (or something else), which
+/// the question's `Click` decides.
 pub fn answer_for(action: Option<&str>) -> Option<bool> {
     match action {
         Some(ACCEPT) => Some(true),
@@ -44,10 +45,14 @@ impl Toasts {
 }
 
 impl Notifier for Toasts {
-    fn ask(&self, question: &Question, on_answer: OnAnswer) -> Result<(), String> {
+    fn ask(&self, question: &Question, on_answer: OnAnswer, on_open: OnAction) -> Result<(), String> {
         self.enabled()?;
         let on_answer = Arc::new(on_answer);
         let dismissed = on_answer.clone();
+        let click = question.click;
+        // The toast closes when it is clicked; that closing is not a "no".
+        let opened = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let opened_here = opened.clone();
         Toast::new(self.app_id)
             .title(&question.title)
             .text1(&question.body)
@@ -57,11 +62,22 @@ impl Notifier for Toasts {
             .on_activated(move |action| {
                 if let Some(answer) = answer_for(action.as_deref()) {
                     on_answer(answer);
+                } else if action.is_none() {
+                    // A click on the toast itself.
+                    match click {
+                        Click::Accept => on_answer(true),
+                        Click::Open => {
+                            opened_here.store(true, std::sync::atomic::Ordering::SeqCst);
+                            on_open();
+                        }
+                    }
                 }
                 Ok(())
             })
             .on_dismissed(move |_| {
-                dismissed(false);
+                if !opened.load(std::sync::atomic::Ordering::SeqCst) {
+                    dismissed(false);
+                }
                 Ok(())
             })
             .show()

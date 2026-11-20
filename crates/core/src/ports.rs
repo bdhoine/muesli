@@ -79,6 +79,18 @@ pub struct Question {
     pub accept: String,
     /// The button that means no, e.g. "Not now".
     pub decline: String,
+    /// What a click on the notification itself (not on a button) does.
+    pub click: Click,
+}
+
+/// What a click on a question's notification itself does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Click {
+    /// Answers yes, as the accept button does.
+    Accept,
+    /// Only brings Muesli forward (`on_open`); the question stays open.
+    Open,
 }
 
 /// A notification that only informs, with one optional action button.
@@ -98,7 +110,10 @@ pub type OnAction = Box<dyn Fn() + Send + Sync>;
 pub trait Notifier: Send + Sync {
     /// Shows the question. `Err` means it cannot be shown (notifications off or not supported);
     /// the engine then asks in Muesli's own prompt window.
-    fn ask(&self, question: &Question, on_answer: OnAnswer) -> Result<(), String>;
+    ///
+    /// A click on a button calls `on_answer`; a click on the notification itself does what
+    /// `question.click` says: `on_answer(true)`, or `on_open` with the question still open.
+    fn ask(&self, question: &Question, on_answer: OnAnswer, on_open: OnAction) -> Result<(), String>;
     /// Shows a notice. `Err` as for `ask`.
     fn notify(&self, notice: &Notice, on_action: OnAction) -> Result<(), String>;
 }

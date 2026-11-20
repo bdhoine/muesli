@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::path::Path;
 use std::ffi::c_void;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
