@@ -4,6 +4,7 @@
 //! JSON) are shared with the Swift app and must stay compatible. Nothing here touches audio,
 //! windows or the network; those live behind traits in other crates.
 
+pub mod aec;
 pub mod assistants;
 pub mod chunker;
 pub mod detection;
@@ -22,6 +23,7 @@ pub mod store;
 pub mod update;
 pub mod whisper_model;
 
+pub use aec::{EchoCanceller, EchoStage, StandInCanceller};
 pub use chunker::AudioChunker;
 pub use detection::{DetectionEvent, DetectionLogic};
 pub use models::{AudioChunk, DetectedMeeting, Meeting, MeetingState, TranscriptSegment};

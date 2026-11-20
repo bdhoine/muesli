@@ -43,7 +43,7 @@ apps/desktop (Tauri)  ── Host, Tray, Updater ──►  crates/engine (muesl
 
 | Crate | What it holds |
 |---|---|
-| `crates/core` | Models, preferences (with the migration of old keys), `state.json`, languages, chunker (fixed blocks) and segmenter (live blocks that follow pauses, `SpeechDetector`, `Pacer`), detection rules, store (append, finish, recover), editor, assistant setup and Claude Desktop config, the ports |
+| `crates/core` | Models, preferences (with the migration of old keys), `state.json`, languages, chunker (fixed blocks) and segmenter (live blocks that follow pauses, `SpeechDetector`, `Pacer`), echo stage (`EchoCanceller`, `EchoStage`: lines the system audio up with the microphone, passthrough and fail-safe), detection rules, store (append, finish, recover), editor, assistant setup and Claude Desktop config, the ports |
 | `crates/engine` | The behaviour, the view states (`views.rs`), the intents, the live audio worker (`live.rs`: capture callbacks hand samples to it, it owns the segmenters), fakes for the speech model and the host |
 | `crates/mcp` | `muesli-mcp`, the MCP server (stdio) |
 | `crates/audio` | Resampling (`rubato`) and `decode_file` (any audio file to 16 kHz mono, with `symphonia`). No device code. |
