@@ -18,6 +18,25 @@ const TRAY_ID: &str = "main";
 /// The template image (black, tinted by macOS) and the same with a red dot while transcribing.
 const IDLE: &[u8] = include_bytes!("../icons/tray.png");
 const TRANSCRIBING: &[u8] = include_bytes!("../icons/tray-transcribing.png");
+/// Windows: milk-coloured versions for a dark taskbar (the default on Windows 11).
+#[cfg(windows)]
+const IDLE_LIGHT: &[u8] = include_bytes!("../icons/tray-light.png");
+#[cfg(windows)]
+const TRANSCRIBING_LIGHT: &[u8] = include_bytes!("../icons/tray-light-transcribing.png");
+
+/// The icon for the current state, and whether macOS may tint it (a template image).
+fn icon_for(transcribing: bool) -> (&'static [u8], bool) {
+    #[cfg(windows)]
+    if !muesli_platform_windows::theme::taskbar_is_light() {
+        return (if transcribing { TRANSCRIBING_LIGHT } else { IDLE_LIGHT }, false);
+    }
+    // The red dot cannot be a template image (macOS would tint it black).
+    if transcribing {
+        (TRANSCRIBING, false)
+    } else {
+        (IDLE, true)
+    }
+}
 
 /// The handle only exists once Tauri runs, so drawing waits until `attach`.
 #[derive(Default)]
@@ -29,11 +48,12 @@ pub struct TauriTray {
 impl TauriTray {
     pub fn attach(&self, handle: &AppHandle, host: Arc<TauriHost>) -> tauri::Result<()> {
         let _ = self.handle.set(handle.clone());
-        let icon = Image::from_bytes(IDLE)?;
+        let (bytes, template) = icon_for(false);
+        let icon = Image::from_bytes(bytes)?;
         let clicks = host.clone();
         TrayIconBuilder::with_id(TRAY_ID)
             .icon(icon)
-            .icon_as_template(true)
+            .icon_as_template(template)
             .show_menu_on_left_click(cfg!(target_os = "macos"))
             .tooltip("Muesli")
             .on_menu_event(move |_, event| host.tray_clicked(event.id().as_ref()))
@@ -67,11 +87,10 @@ impl Tray for TauriTray {
                 let _ = tray.set_menu(Some(menu));
             }
             let _ = tray.set_tooltip(Some(&wanted.tooltip));
-            // The red dot cannot be a template image (macOS would tint it black).
-            let image = if wanted.transcribing { TRANSCRIBING } else { IDLE };
+            let (image, template) = icon_for(wanted.transcribing);
             if let Ok(icon) = Image::from_bytes(image) {
                 let _ = tray.set_icon(Some(icon));
-                let _ = tray.set_icon_as_template(!wanted.transcribing);
+                let _ = tray.set_icon_as_template(template);
             }
         });
     }

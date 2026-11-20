@@ -88,7 +88,7 @@ cargo build -p muesli-sim && cd apps/sim && npm ci && npx playwright install chr
 
 ### The simulator
 
-`cargo run -p muesli-sim -- --skin mac --scenario a-day-of-meetings`, then open the address it prints. It runs the real engine with the fake adapters and shows the real `ui/` pages, next to a fake menu bar or tray (with the red dot), its notifications (answerable) and buttons for the outside world: a call starts, people talk, the call ends, time passes, a file is dropped on the icon, the model download progresses or fails, notifications are switched off. Muesli's windows open as frames. Switch the skin or the scenario at the top. Scenarios are JSON files in `fixtures/scenarios/` (`setupDone`, `model`, `permissions` and a list of steps; the steps are the same actions as the buttons, see `apps/sim/src/world.rs`).
+`cargo run -p muesli-sim -- --skin mac --scenario a-day-of-meetings`, then open the address it prints. It runs the real engine with the fake adapters and shows the real `ui/` pages, next to a fake menu bar or tray (with the red dot), its notifications (answerable) and buttons for the outside world: a call starts, people talk, the call ends, time passes, a file is dropped on Muesli's window, the model download progresses or fails, notifications are switched off. Muesli's windows open as frames. Switch the skin or the scenario at the top. Scenarios are JSON files in `fixtures/scenarios/` (`setupDone`, `model`, `permissions` and a list of steps; the steps are the same actions as the buttons, see `apps/sim/src/world.rs`).
 
 ## How it works
 
@@ -162,7 +162,7 @@ The plugin is installed from this repo (`/plugin install muesli --marketplace bd
 
 ## Permissions and code signing
 
-macOS asks for Microphone, System Audio Recording, Calendar and Notifications, each only when the user presses **Allow…** in setup or Settings. System Audio Recording (the "System Audio Recording Only" pane) allows capturing the other side's audio through a Core Audio tap; there is no public API to read its status, so Muesli shows it as allowed once a probe has run in this session.
+macOS asks for Microphone, System Audio Recording, Calendar and Notifications, each only when the user presses **Allow…** in setup or Settings. System Audio Recording (the "System Audio Recording Only" pane) allows capturing the other side's audio through a Core Audio tap; there is no public API to read its status, so `platform-macos/src/tcc.rs` reads it through the private TCC framework (`TCCAccessPreflight`, `TCCAccessRequest`), as the Swift app did, and falls back to opening the tap when that is unavailable. This is the one private API in Muesli: re-check it on every major macOS release.
 
 CI and `cargo tauri build` sign ad hoc, and macOS ties permissions for ad-hoc apps to the exact build, so each rebuild can invalidate them. If a permission looks enabled but still fails, reset it, relaunch and grant again:
 

@@ -210,3 +210,16 @@ fn intents_arrive_from_the_ui_as_json() {
     );
     assert_eq!(parse(r#"{"type":"setupNext"}"#), Intent::SetupNext);
 }
+
+#[test]
+fn assistant_setup_speaks_the_platform_s_words() {
+    let h = Harness::build(PlatformWords::WINDOWS, true, FakeSpeech::ready());
+    *h.host.helper.lock().unwrap() = Some(r"C:\Program Files\Muesli\muesli-mcp.exe".into());
+    h.engine.intent(Intent::SetAssistantsEnabled { on: true });
+    let view = h.engine.settings_view().assistants;
+    assert!(view.instructions.contains("PowerShell"), "{}", view.instructions);
+    assert!(view.command.unwrap().contains(r"'C:\Program Files\Muesli\muesli-mcp.exe'"));
+    let mac = Harness::ready();
+    mac.engine.intent(Intent::SetAssistantsEnabled { on: true });
+    assert!(mac.engine.settings_view().assistants.instructions.contains("Terminal"));
+}

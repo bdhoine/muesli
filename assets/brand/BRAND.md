@@ -27,7 +27,9 @@ muesli-brand/
 └── menubar/
     ├── muesliTemplate.svg
     ├── muesliTemplate.png        ← 18 × 18 px
-    └── muesliTemplate@2x.png     ← 36 × 36 px
+    ├── muesliTemplate@2x.png     ← 36 × 36 px
+    ├── muesliTranscribing(@2x).png        ← with the red dot, while transcribing
+    └── muesliTrayLight(Transcribing)(@2x).png ← milk versions for a dark Windows taskbar
 ```
 
 Suggested place in the repo: `assets/brand/` (copy the whole folder).
@@ -155,7 +157,8 @@ MenuBarExtra { ContentView() } label: {
 
 In an asset catalog, set the image set's **Render As** to *Template Image*.
 
-- While recording, you may show a state change (for example a small dot next to the icon or a filled variant), but keep it monochrome and template-rendered.
+- While transcribing, the icon carries a small red dot (`#B3382C`) at its top right: `menubar/muesliTranscribing.png` + `@2x`. This is the one exception to the template rule: the dot image is not a template image, so macOS does not tint it.
+- Windows: the taskbar is dark by default, so the tray uses milk-coloured versions on a dark taskbar (`menubar/muesliTrayLight.png`, `muesliTrayLightTranscribing.png`, each with `@2x`) and the black ones on a light taskbar.
 
 ---
 

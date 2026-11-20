@@ -2564,11 +2564,13 @@ version = "0.0.2"
 dependencies = [
  "block2",
  "chrono",
+ "libc",
  "muesli-core",
  "muesli-platform-common",
  "objc2",
  "objc2-av-foundation",
  "objc2-core-audio",
+ "objc2-core-foundation",
  "objc2-event-kit",
  "objc2-foundation",
  "objc2-service-management",

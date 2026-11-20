@@ -262,7 +262,7 @@ impl World {
             "wait" => std::thread::sleep(std::time::Duration::from_millis(num("ms", 200.0) as u64)),
             "meeting" => self.add_meeting(step),
             "dropFile" => {
-                // An audio file dragged onto the tray icon.
+                // An audio file dropped on Muesli's window.
                 let name = text("name", "Voice memo.flac");
                 let file = self.host.home.join("Desktop").join(&name);
                 let _ = std::fs::create_dir_all(file.parent().unwrap());

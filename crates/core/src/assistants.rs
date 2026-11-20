@@ -46,7 +46,12 @@ impl AssistantClient {
     }
 
     pub fn instructions(self) -> String {
-        let terminal = if cfg!(windows) { "PowerShell" } else { "Terminal" };
+        self.instructions_for(cfg!(windows))
+    }
+
+    /// What to do with the snippet, in the words of the platform (Terminal or PowerShell).
+    pub fn instructions_for(self, windows: bool) -> String {
+        let terminal = if windows { "PowerShell" } else { "Terminal" };
         match self {
             Self::ClaudeCode => format!("Run this in {terminal}. It adds Muesli for your user, so it works in every project."),
             Self::Codex => format!("Run this in {terminal}. Codex saves it in ~/.codex/config.toml."),

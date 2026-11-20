@@ -35,10 +35,6 @@ fn request_microphone() -> Result<(), String> {
     }
 }
 
-/// System audio ("System Audio Recording Only") has no public status call. Muesli remembers in
-/// this process whether a probe worked; the first probe makes macOS ask.
-static SYSTEM_AUDIO_OK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
 /// The `Permissions` adapter.
 pub struct MacPermissions;
 
@@ -48,13 +44,7 @@ impl Permissions for MacPermissions {
             Permission::Microphone => microphone(),
             Permission::Calendar => crate::calendar::access(),
             Permission::Notifications => crate::notifier::access(),
-            Permission::SystemAudio => {
-                if SYSTEM_AUDIO_OK.load(std::sync::atomic::Ordering::Relaxed) {
-                    Access::Allowed
-                } else {
-                    Access::NotAsked
-                }
-            }
+            Permission::SystemAudio => crate::tcc::system_audio(),
         }
     }
 
@@ -63,13 +53,9 @@ impl Permissions for MacPermissions {
             Permission::Microphone => request_microphone(),
             Permission::Calendar => crate::calendar::request(),
             Permission::Notifications => crate::notifier::request(),
-            Permission::SystemAudio => {
-                // Opening the tap is what makes macOS ask; a refusal surfaces as silence, not an
-                // error, so this can only say that the system was asked.
-                probe_system_audio()?;
-                SYSTEM_AUDIO_OK.store(true, std::sync::atomic::Ordering::Relaxed);
-                Ok(())
-            }
+            // The private TCC call asks and reports the answer; without it, opening the tap makes
+            // macOS ask (a refusal then shows up as silence, not as an error).
+            Permission::SystemAudio => crate::tcc::request_system_audio().unwrap_or_else(probe_system_audio),
         }
     }
 

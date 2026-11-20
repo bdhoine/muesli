@@ -1427,6 +1427,8 @@ impl Engine {
             (s.prefs.clone(), s.assistant.clone(), s.claude_status.clone())
         };
         let client = AssistantClient::ALL.into_iter().find(|c| c.name() == assistant).unwrap_or(AssistantClient::ClaudeCode);
+        // Terminal or PowerShell, and how to quote, follow the platform's words, not the build.
+        let windows = self.platform.words.skin == "windows";
         let assistants = AssistantsView {
             enabled: prefs.mcp_enabled,
             privacy: "Assistants read transcripts on this computer. The text an assistant reads is sent to its provider (Anthropic, for Claude) like anything else you share with it.".into(),
@@ -1447,8 +1449,8 @@ impl Engine {
                 .filter(|c| *c != AssistantClient::Other)
                 .map(|c| AssistantChoice { name: c.name().into(), selected: c == client })
                 .collect(),
-            instructions: client.instructions(),
-            command: helper.as_ref().map(|h| client.snippet(&h.to_string_lossy())),
+            instructions: client.instructions_for(windows),
+            command: helper.as_ref().map(|h| client.snippet_for(&h.to_string_lossy(), windows)),
             command_is_terminal: client.is_terminal_command(),
             can_add_to_claude_config: prefs.mcp_enabled && claude_installed && !prefs.claude_desktop_config_entry,
             claude_config_status: claude_status,

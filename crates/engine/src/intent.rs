@@ -34,7 +34,7 @@ pub enum Intent {
     // Audio files
     /// Opens the file picker.
     ChooseAudioFiles,
-    /// Files picked, or dragged onto the tray icon.
+    /// Files picked, or dropped on a Muesli window.
     TranscribeFiles {
         paths: Vec<PathBuf>,
     },

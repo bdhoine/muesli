@@ -3,7 +3,7 @@
 //! Microphone and system audio go through cpal (`platform-common`; system audio is a Core Audio
 //! process tap, macOS 14.4+). Meeting detection reads the Core Audio process list, Teams and the
 //! calendar (EventKit). Questions are notifications with buttons (UNUserNotificationCenter);
-//! permissions come from AVFoundation, EventKit and the notification settings; deleted files go to
+//! permissions come from AVFoundation, EventKit, the notification settings and (system audio, private) TCC; deleted files go to
 //! the Trash through NSFileManager; start at login is SMAppService.
 
 #![cfg(target_os = "macos")]
@@ -18,6 +18,7 @@ pub mod calendar;
 pub mod detector;
 pub mod notifier;
 pub mod system;
+pub mod tcc;
 
 /// Every macOS adapter, with the shell's tray.
 pub fn platform(tray: Arc<dyn Tray>) -> Platform {

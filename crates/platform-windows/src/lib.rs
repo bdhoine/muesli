@@ -14,6 +14,7 @@ pub mod detector;
 pub mod login_item;
 pub mod notifier;
 pub mod permissions;
+pub mod theme;
 
 /// The id Windows knows the app by; the same as the bundle identifier.
 pub const APP_ID: &str = "com.github.bdhoine.muesli";

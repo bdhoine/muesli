@@ -13,6 +13,7 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 - Drop audio files on Muesli's window to transcribe them.
 - Windows: a left click on the tray icon opens Muesli's window; a right click shows the menu.
 - The menu bar or tray icon shows a red dot while Muesli transcribes.
+- Windows: the tray icon is light on a dark taskbar, so you can see it.
 
 ### Changed
 - On the Mac, Muesli is now the same app as on Windows, with the same window, setup, Settings and menu. It still lives in the menu bar, and shows a Dock icon only while one of its windows is open. Your settings and transcripts carry over.
