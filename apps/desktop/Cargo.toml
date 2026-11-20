@@ -32,11 +32,15 @@ chrono = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 muesli-platform-macos = { path = "../../crates/platform-macos" }
+muesli-aec = { path = "../../crates/aec", features = ["localvqe"] }
 
 [target.'cfg(windows)'.dependencies]
 muesli-platform-windows = { path = "../../crates/platform-windows" }
+muesli-aec = { path = "../../crates/aec", features = ["localvqe"] }
 
 # Linux is for development only: real folders and clock, fakes for everything else.
 [target.'cfg(not(any(target_os = "macos", windows)))'.dependencies]
 muesli-platform-common = { path = "../../crates/platform-common" }
 muesli-platform-fake = { path = "../../crates/platform-fake" }
+# Without LocalVQE: the loader finds nothing and the microphone goes as it is.
+muesli-aec = { path = "../../crates/aec" }

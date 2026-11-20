@@ -19,6 +19,8 @@ jobs:
           - { os: ubuntu-latest, label: "Linux (fakes; development only)" }
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive # LocalVQE, built on macOS and Windows (crates/aec)
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # Linux is not a product; the app builds there with the fake adapters, which needs WebKitGTK.

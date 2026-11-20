@@ -1,7 +1,7 @@
 {
   "bundle": {
     "externalBin": ["binaries/muesli-mcp"],
-    "resources": { "../../dist/Muesli.mcpb": "Muesli.mcpb" },
+    "resources": { "../../dist/Muesli.mcpb": "Muesli.mcpb", "resources/aec/": "aec/" },
     "createUpdaterArtifacts": true,
     "macOS": { "signingIdentity": "-" },
     "windows": { "nsis": { "installMode": "currentUser" } }
