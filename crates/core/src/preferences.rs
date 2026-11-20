@@ -28,6 +28,13 @@ pub struct Preferences {
     /// Where transcripts are written, when the user chose a folder.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transcripts_folder: Option<String>,
+    /// The Muesli version whose Claude Desktop extension update was announced in a system
+    /// notification, so each version is announced once.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_update_notified: Option<String>,
+    /// The Muesli version whose update banner the user put away with "Not now".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extension_update_dismissed: Option<String>,
 }
 
 /// The keys earlier versions wrote that this one no longer has.

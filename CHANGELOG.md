@@ -5,9 +5,13 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Added
+- When Claude Desktop has an older Muesli extension, Muesli tells you: a notification with **Update** (once per Muesli version) and a banner at the top of its window with **Update** and **Not now**. Update opens the new extension and Claude asks to install it, so you no longer have to look in Settings.
 - The menu shows the length and day of each recent transcript ("32 min · Today 14:30"), and while transcribing, how long the recording has run (macOS).
 - macOS: Muesli's window has a round **Start transcribing** button in the corner. While a meeting is transcribed, the newest line shows faded until it settles, and "Listening · more text in about 30 seconds" with three moving dots says more is coming (the dots stand still if your system asks for less motion).
 - The setup and Settings use the wording of the Muesli design: shorter promises, a line under each step, and "Speech model" with its size.
+
+### Fixed
+- Settings: the arrows that show **Other apps…** and **Advanced** can be opened were missing in the app.
 
 ## [0.1.0] - 2026-11-20
 

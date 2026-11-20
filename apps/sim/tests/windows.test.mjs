@@ -121,6 +121,22 @@ for (const skin of ["mac", "windows"]) {
       }
     });
 
+    test("an older Claude extension: a notification and a banner offer the update", async () => {
+      const sim = await startSim({ scenario: "extension-update", skin });
+      try {
+        const { notice } = await sim.state();
+        assert.equal(notice.title, "Claude Desktop extension update");
+        assert.equal(notice.action, "Update");
+        const page = await sim.open("main");
+        const banner = page.getByTestId("extension-update");
+        await banner.getByText("A newer Muesli extension for Claude Desktop is ready.").waitFor();
+        await banner.getByRole("button", { name: "Not now" }).click();
+        await eventually(async () => (await page.getByTestId("extension-update").count()) === 0, "banner put away");
+      } finally {
+        await sim.stop();
+      }
+    });
+
     test("settings: one page, platform words, languages and assistants", async () => {
       const sim = await startSim({ scenario: "download-failed", skin });
       try {

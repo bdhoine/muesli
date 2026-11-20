@@ -271,6 +271,7 @@ impl Engine {
         };
         self.sync_assistants();
         if onboarding_done {
+            self.announce_extension_update();
             self.download_model(); // whenever a file went missing
         } else {
             self.host.show(Window::Setup);
@@ -859,6 +860,39 @@ impl Engine {
         self.lock().claude_status = Some(status).filter(|s| !s.is_empty());
     }
 
+    /// Whether Claude Desktop has an older Muesli extension than the one in this app, so an update
+    /// is ready. The update itself goes through Claude: opening the bundled extension shows
+    /// Claude's update dialog. Claude keeps its own record of what it installed, so Muesli never
+    /// replaces the extension's files itself.
+    fn extension_update_ready(&self) -> bool {
+        self.preferences().mcp_enabled
+            && self.host.extension_path().is_some()
+            && matches!(self.extension_state(), ExtensionState::Outdated { .. })
+    }
+
+    /// At start: a system notification with Update, once per Muesli version. Muesli's window shows
+    /// a banner as well (`extension_update` in the main view) until the update is done or put away.
+    fn announce_extension_update(&self) {
+        if !self.extension_update_ready() || self.preferences().extension_update_notified.as_deref() == Some(VERSION) {
+            return;
+        }
+        self.save_prefs(|p| p.extension_update_notified = Some(VERSION.into()));
+        let opener = self.me.clone();
+        let notice = Notice {
+            title: "Claude Desktop extension update".into(),
+            body: "A newer Muesli extension for Claude Desktop is ready.".into(),
+            action: Some("Update".into()),
+        };
+        let _ = self.platform.notifier.notify(
+            &notice,
+            Box::new(move || {
+                if let Some(engine) = opener.upgrade() {
+                    engine.intent(Intent::ConnectClaudeDesktop);
+                }
+            }),
+        );
+    }
+
     fn extension_state(&self) -> ExtensionState {
         let dir = ClaudeDesktopConfig::default_directory(&*self.platform.paths);
         ClaudeDesktopExtension::state_with(VERSION, &dir, Some(self.host.claude_installed()))
@@ -986,6 +1020,10 @@ impl Engine {
                 if let Some(path) = self.host.extension_path() {
                     self.host.open(&path);
                 }
+            }
+            Intent::DismissExtensionUpdate => {
+                self.save_prefs(|p| p.extension_update_dismissed = Some(VERSION.into()));
+                self.changed();
             }
             Intent::AddToClaudeConfig => {
                 self.save_prefs(|p| p.claude_desktop_config_entry = true);
@@ -1191,6 +1229,8 @@ impl Engine {
     pub fn main_view(&self) -> MainView {
         let paths = self.paths();
         let ready = self.model_ready();
+        let extension_update = (self.extension_update_ready() && self.preferences().extension_update_dismissed.as_deref() != Some(VERSION))
+            .then(|| "A newer Muesli extension for Claude Desktop is ready.".to_string());
         let all = MeetingStore::new(&paths).all();
         let s = self.lock();
         let live_meeting = s.session.as_ref().map(|x| x.meeting.lock().unwrap().clone());
@@ -1297,6 +1337,7 @@ impl Engine {
             can_start: ready && s.prefs.onboarding_done && s.activity == Activity::Idle,
             transcribing: matches!(s.activity, Activity::Transcribing),
             empty_text: empty.then(|| "No transcripts yet. When a meeting starts, Muesli asks whether to transcribe it.".to_string()),
+            extension_update,
         }
     }
 

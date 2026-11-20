@@ -85,6 +85,8 @@ pub enum Intent {
         on: bool,
     },
     ConnectClaudeDesktop,
+    /// "Not now" on the main window's extension update banner.
+    DismissExtensionUpdate,
     AddToClaudeConfig,
     /// Picks the assistant whose setup command "Other apps…" shows.
     PickAssistant {

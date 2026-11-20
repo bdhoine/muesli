@@ -1,0 +1,12 @@
+{
+  "name": "Claude extension update",
+  "description": "Setup done, AI assistants on, and Claude Desktop has an older Muesli extension: a notification and a banner in the main window offer the update.",
+  "setupDone": true,
+  "model": "ready",
+  "assistants": true,
+  "claudeExtension": "0.0.1",
+  "steps": [
+    { "do": "meeting", "title": "Weekly sync", "source": "calendar", "minutes": 32, "hoursAgo": 26 },
+    { "do": "intent", "intent": { "type": "openMuesli" } }
+  ]
+}

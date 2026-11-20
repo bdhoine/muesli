@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 use chrono::Duration;
+use muesli_core::assistants::{ClaudeDesktopConfig, ClaudeDesktopExtension};
 use muesli_core::ports::{Access, Clock, DetectionSample, MeetingDetector, Permission, PlatformWords};
 use muesli_core::store::{MeetingStore, Store};
 use muesli_core::{DetectedMeeting, Meeting, MeetingState, Paths, Preferences, TranscriptSegment};
@@ -118,6 +119,10 @@ pub struct Scenario {
     pub model: Option<String>,
     /// "allowed" (default) or "notAsked": the permissions on a fresh computer.
     pub permissions: Option<String>,
+    /// AI assistants switched on in Settings.
+    pub assistants: bool,
+    /// The version of the Muesli extension Claude Desktop has installed, if any.
+    pub claude_extension: Option<String>,
     pub steps: Vec<Value>,
 }
 
@@ -147,7 +152,13 @@ impl World {
         let paths = Paths::from_platform(&*fakes.paths);
         std::fs::create_dir_all(&paths.support).unwrap();
         if scenario.setup_done {
-            Preferences { onboarding_done: true, ..Default::default() }.save(&paths).unwrap();
+            Preferences { onboarding_done: true, mcp_enabled: scenario.assistants, ..Default::default() }.save(&paths).unwrap();
+        }
+        if let Some(version) = &scenario.claude_extension {
+            let claude = ClaudeDesktopConfig::default_directory(&*fakes.paths);
+            let folder = ClaudeDesktopExtension::extensions_directory(&claude).join("local.mcpb.muesli.muesli");
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(folder.join("manifest.json"), json!({ "name": "muesli", "version": version }).to_string()).unwrap();
         }
         let speech = Arc::new(match scenario.model.as_deref() {
             Some("missing") | Some("downloading") => FakeSpeech::missing(574_000_000),

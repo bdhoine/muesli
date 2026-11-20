@@ -14,7 +14,7 @@ The **Claude Desktop** section appears when the Claude app is installed. Click *
 
 If Claude Desktop greys out **Install** with *"This extension cannot be installed. Contact your organization owner"*, your Claude organisation blocks extensions it has not approved. Click the ⓘ next to **Muesli extension** and choose **Add to Config File**: Muesli adds a `Muesli` entry to `claude_desktop_config.json` (other entries are left alone). Quit and reopen Claude Desktop; it lists Muesli under its local developer servers, without an icon. Installing the extension later removes that entry.
 
-The extension carries its own copy of `muesli-mcp`. When Settings says a newer version is available, click **Update…**. To remove it, use Claude Desktop → Settings → Extensions.
+The extension carries its own copy of `muesli-mcp`. When Muesli starts and finds an older version in Claude Desktop, it shows a notification with **Update** (once per Muesli version) and a banner at the top of its window with **Update** and **Not now**. **Update** opens the new extension and Claude asks you to install it. Settings offers **Update Claude Desktop extension** too. To remove it, use Claude Desktop → Settings → Extensions.
 
 Earlier versions added a lowercase `muesli` entry to `claude_desktop_config.json`; Muesli removes it on launch, so the server is never listed twice.
 

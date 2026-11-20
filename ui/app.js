@@ -21,6 +21,7 @@
     noBot: svg('<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 6l4 4M21 6l-4 4"/>'),
     record: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>'),
     stop: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor"/></svg>',
+    chevron: '<svg class="chevron" aria-hidden="true" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 2l3 3-3 3"/></svg>',
     x: '<svg aria-hidden="true" viewBox="0 0 8 8" stroke="currentColor" stroke-width="1.5"><path d="M1 1l6 6M7 1L1 7"/></svg>',
   };
 
@@ -180,6 +181,8 @@
     keepScroll(() => {
       root.innerHTML = `${titlebar()}<div class="main-window">
         ${toolbar}
+        ${v.extensionUpdate ? `<div class="banner info" role="status" data-testid="extension-update"><span class="grow">${esc(v.extensionUpdate)}</span>
+            ${button("Not now", { type: "dismissExtensionUpdate" }, { kind: "small quiet" })}${button("Update", { type: "connectClaudeDesktop" }, { kind: "small primary" })}</div>` : ""}
         ${v.error ? `<div class="banner" role="alert">${esc(v.error)} ${button("Dismiss", { type: "dismissError" }, { kind: "small" })}</div>` : ""}
         <div class="split">
           <section class="sidebar" aria-label="Transcripts">${listHead}
@@ -268,7 +271,7 @@
             : ""
         }
         <div class="setting stack">
-        <details class="other-apps" data-key="other" ${open.includes("other") ? "open" : ""}><summary><span class="disclosure">Other apps…</span></summary><div class="stack">
+        <details class="other-apps" data-key="other" ${open.includes("other") ? "open" : ""}><summary><span class="disclosure">${icons.chevron}Other apps…</span></summary><div class="stack">
           <div class="segmented" role="tablist" aria-label="Assistant">${a.assistants
             .map((c) => `<button role="tab" aria-selected="${c.selected}" class="seg ${c.selected ? "on" : ""}" data-intent='${esc(JSON.stringify({ type: "pickAssistant", name: c.name }))}'>${esc(c.name)}</button>`)
             .join("")}</div>
@@ -306,7 +309,7 @@
             data-toggle='${esc(JSON.stringify({ type: "setAssistantsEnabled" }))}'></label>
         ${assistants}
       </section>
-      <details class="advanced" data-key="advanced" ${open.includes("advanced") ? "open" : ""}><summary><h2 class="disclosure">Advanced</h2></summary>
+      <details class="advanced" data-key="advanced" ${open.includes("advanced") ? "open" : ""}><summary><h2 class="disclosure">${icons.chevron}Advanced</h2></summary>
         <div class="stack">
           <section class="card">${model(v.model)}</section>
           <section class="card">${permissionRows(v.permissions, { tags: false })}</section>

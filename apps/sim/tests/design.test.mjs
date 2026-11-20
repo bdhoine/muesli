@@ -161,8 +161,17 @@ describe("macOS skin matches the design", () => {
       const button = await look(page, ".setting .btn", ["border-top-color", "border-radius"]);
       assert.deepEqual([button.height, button["border-top-color"], button["border-radius"]], [32, CONTROL_LINE, "7px"]);
 
+      // Advanced and Other apps… fold, with an arrow that turns when open.
+      const turn = (sel) => page.locator(`${sel} > summary .chevron`).evaluate((el) => getComputedStyle(el).transform);
+      for (const sel of [".advanced"]) {
+        const arrow = await look(page, `${sel} > summary .chevron`, []);
+        assert.deepEqual([arrow.width, arrow.height], [10, 10]);
+        assert.equal(await turn(sel), "none");
+      }
       // Advanced: the speech model as "Speech model" with its size, and the permissions.
       await page.locator(".advanced summary").click();
+      await page.waitForTimeout(200);
+      assert.equal(await turn(".advanced"), "matrix(0, 1, -1, 0, 0, 0)");
       await page.getByTestId("model").getByText("Speech model").waitFor();
       await page.getByTestId("model").getByText("574 MB, on this Mac").waitFor();
       await page.getByTestId("permission-microphone").getByText("Your side of the conversation").waitFor();

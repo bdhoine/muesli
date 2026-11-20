@@ -108,6 +108,8 @@ pub struct MainView {
     pub show_in_file_manager: String,
     /// Shown when there are no transcripts at all.
     pub empty_text: Option<String>,
+    /// A newer Claude Desktop extension is ready: a banner with Update and Not now.
+    pub extension_update: Option<String>,
 }
 
 /// The small window that asks when notifications cannot.

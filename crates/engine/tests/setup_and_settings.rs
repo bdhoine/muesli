@@ -223,3 +223,62 @@ fn assistant_setup_speaks_the_platform_s_words() {
     mac.engine.intent(Intent::SetAssistantsEnabled { on: true });
     assert!(mac.engine.settings_view().assistants.instructions.contains("Terminal"));
 }
+
+/// An older Muesli extension in Claude Desktop: a system notification with Update (once per
+/// version) and a banner in Muesli's window until the update is done or put away. Update opens the
+/// bundled extension, so Claude shows its own update dialog; nothing opens by itself.
+#[test]
+fn an_outdated_claude_extension_is_announced() {
+    use common::languages;
+    use muesli_core::assistants::{ClaudeDesktopConfig, ClaudeDesktopExtension};
+    use muesli_engine::fake::RecordingHost;
+    use muesli_engine::{Engine, Options};
+    use std::sync::Arc;
+
+    let dir = tempfile::tempdir().unwrap();
+    let fakes = FakePlatform::with_words(dir.path(), PlatformWords::MAC);
+    let paths = muesli_core::Paths::from_platform(&*fakes.paths);
+    std::fs::create_dir_all(&paths.support).unwrap();
+    Preferences { onboarding_done: true, mcp_enabled: true, ..Default::default() }.save(&paths).unwrap();
+    let claude = ClaudeDesktopConfig::default_directory(&*fakes.paths);
+    let installed = ClaudeDesktopExtension::extensions_directory(&claude).join("local.mcpb.muesli.muesli");
+    std::fs::create_dir_all(&installed).unwrap();
+    let manifest = |version: &str| {
+        std::fs::write(installed.join("manifest.json"), format!(r#"{{"name": "muesli", "version": "{version}"}}"#)).unwrap()
+    };
+    manifest("0.0.1");
+    let bundle = std::path::PathBuf::from("/Applications/Muesli.app/Contents/Resources/Muesli.mcpb");
+    let start = || {
+        let host = Arc::new(RecordingHost::default());
+        *host.claude.lock().unwrap() = true;
+        *host.extension.lock().unwrap() = Some(bundle.clone());
+        let engine = Engine::new(fakes.platform(), Arc::new(FakeSpeech::ready()), host.clone(), Options { system_languages: languages() });
+        engine.start();
+        (engine, host)
+    };
+    let opened = |host: &RecordingHost| host.calls().into_iter().filter(|c| *c == HostCall::Open(bundle.clone())).count();
+
+    let (engine, host) = start();
+    assert_eq!(opened(&host), 0, "nothing opens by itself");
+    let notice = fakes.notifier.pending_notice().expect("a system notification");
+    assert_eq!(notice.title, "Claude Desktop extension update");
+    assert_eq!(notice.action.as_deref(), Some("Update"));
+    assert_eq!(engine.main_view().extension_update.as_deref(), Some("A newer Muesli extension for Claude Desktop is ready."));
+    assert!(fakes.notifier.click_action());
+    assert_eq!(opened(&host), 1, "Update opens the extension in Claude");
+
+    // Next start: no second notification for this version, the banner stays until put away.
+    let notices = fakes.notifier.notices().len();
+    let (engine, _host) = start();
+    assert_eq!(fakes.notifier.notices().len(), notices);
+    assert!(engine.main_view().extension_update.is_some());
+    engine.intent(Intent::DismissExtensionUpdate);
+    assert!(engine.main_view().extension_update.is_none());
+
+    // Once Claude has the new version, nothing is shown.
+    manifest(env!("CARGO_PKG_VERSION"));
+    Preferences { onboarding_done: true, mcp_enabled: true, ..Default::default() }.save(&paths).unwrap();
+    let (engine, _host) = start();
+    assert!(engine.main_view().extension_update.is_none());
+    assert_eq!(fakes.notifier.notices().len(), notices);
+}

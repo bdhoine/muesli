@@ -138,6 +138,7 @@ input[role="switch"]:checked::after { left: 21px; }
 .main-window { display: flex; flex-direction: column; height: 100%; position: relative; }
 .toolbar { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .banner { margin: 10px 14px; padding: 8px 12px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-text); display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.banner.info { background: var(--ok-bg); color: var(--text); }
 .split { flex: 1; display: grid; grid-template-columns: minmax(260px, 360px) 1fr; min-height: 0; }
 .sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--sidebar); border-right: 1px solid var(--line); }
 .list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 16px 12px 20px; }
@@ -212,10 +213,9 @@ select.add-language {
 details summary { cursor: pointer; list-style: none; }
 details summary::-webkit-details-marker { display: none; }
 .disclosure { display: inline-flex; align-items: center; gap: 8px; }
-.disclosure::before { content: ""; width: 10px; height: 10px; flex: none; transition: transform 0.15s; background: currentColor;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3 2l3 3-3 3' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M3 2l3 3-3 3' fill='none' stroke='black' stroke-width='1.6'/%3E%3C/svg%3E") center / contain no-repeat; }
-details[open] > summary .disclosure::before { transform: rotate(90deg); }
+.disclosure .chevron { width: 10px; height: 10px; flex: none; transition: transform 0.15s; }
+details[open] > summary .chevron { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .disclosure .chevron { transition: none; } }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .advanced > .stack { margin-top: 12px; }
 .other-apps > .stack { margin-top: 8px; }

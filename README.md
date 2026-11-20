@@ -89,7 +89,7 @@ Muesli speaks the Model Context Protocol (MCP), so Claude and other assistants (
 - "Is the transcript of my last meeting ready?"
 - "Summarise this morning's weekly sync and list the action items."
 
-Everything stays on your Mac: the assistant starts Muesli's MCP server itself and talks to it directly, and nothing is exposed to the network. Claude Desktop gets Muesli as an extension, with its name and icon, in one click. For the other assistants, Settings shows the command or config to copy. On your phone there is no direct connection, but a Claude conversation started on your Mac syncs to the Claude app.
+Everything stays on your Mac: the assistant starts Muesli's MCP server itself and talks to it directly, and nothing is exposed to the network. Claude Desktop gets Muesli as an extension, with its name and icon, in one click, and when a new version of Muesli comes with a newer extension, a notification and a banner in Muesli's window offer the update. For the other assistants, Settings shows the command or config to copy. On your phone there is no direct connection, but a Claude conversation started on your Mac syncs to the Claude app.
 
 Assistants can read transcripts and manage finished meetings: rename them, set attendees, rename speakers and delete them (deleted files go to the Trash). They cannot start or stop transcribing, and they have to ask: Muesli cannot notify a conversation when a transcript is ready. What an assistant reads is sent to its provider.
 

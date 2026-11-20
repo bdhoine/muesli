@@ -115,14 +115,27 @@ fn content_type(path: &Path) -> &'static str {
 }
 
 fn file(request: Request, base: &Path, relative: &str) {
+    file_with(request, base, relative, "")
+}
+
+fn file_with(request: Request, base: &Path, relative: &str, extra: &str) {
     if relative.split('/').any(|part| part == "..") {
         return request.respond(403, "text/plain", b"");
     }
     let path = base.join(relative);
     match std::fs::read(&path) {
-        Ok(bytes) => request.respond(200, content_type(&path), &bytes),
+        Ok(bytes) => request.respond_with(200, content_type(&path), &bytes, extra),
         Err(_) => request.respond(404, "text/plain", b""),
     }
+}
+
+/// The app's Content Security Policy (`apps/desktop/tauri.conf.json`), so the UI tests catch what
+/// the app would block (a `data:` image, an inline script). The simulator's API is the page's own
+/// origin, where the app uses `ipc:`.
+fn app_csp(repo: &Path) -> Option<String> {
+    let config: Value = serde_json::from_slice(&std::fs::read(repo.join("apps/desktop/tauri.conf.json")).ok()?).ok()?;
+    let policy = config.pointer("/app/security/csp")?.as_str()?;
+    Some(policy.replace("connect-src ", "connect-src 'self' "))
 }
 
 fn handle(sim: &Sim, request: Request) {
@@ -130,7 +143,10 @@ fn handle(sim: &Sim, request: Request) {
     match (request.method, path.as_str()) {
         (Method::Get, "/") => file(request, &sim.repo.join("apps/sim/web"), "sim.html"),
         (Method::Get, p) if p.starts_with("/sim/") => file(request, &sim.repo.join("apps/sim/web"), &p["/sim/".len()..]),
-        (Method::Get, p) if p.starts_with("/ui/") => file(request, &sim.repo.join("ui"), &p["/ui/".len()..]),
+        (Method::Get, p) if p.starts_with("/ui/") => {
+            let csp = app_csp(&sim.repo).map(|policy| format!("Content-Security-Policy: {policy}\r\n")).unwrap_or_default();
+            file_with(request, &sim.repo.join("ui"), &p["/ui/".len()..], &csp)
+        }
         (Method::Get, "/api/version") => json_reply(request, json!({ "version": sim.version.load(Ordering::SeqCst) })),
         (Method::Get, p) if p.starts_with("/api/view/") => {
             let window = Window::from_label(&p["/api/view/".len()..]);

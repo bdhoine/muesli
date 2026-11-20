@@ -54,7 +54,12 @@ impl Request {
         serde_json::from_slice(&self.body).unwrap_or(serde_json::Value::Null)
     }
 
-    pub fn respond(mut self, status: u16, content_type: &str, body: &[u8]) {
+    pub fn respond(self, status: u16, content_type: &str, body: &[u8]) {
+        self.respond_with(status, content_type, body, "")
+    }
+
+    /// `extra` is more header lines, each ending in `\r\n`.
+    pub fn respond_with(mut self, status: u16, content_type: &str, body: &[u8], extra: &str) {
         let reason = match status {
             200 => "OK",
             400 => "Bad Request",
@@ -62,7 +67,7 @@ impl Request {
             _ => "Not Found",
         };
         let head = format!(
-            "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n{extra}\r\n",
             body.len()
         );
         let _ = self.stream.write_all(head.as_bytes());

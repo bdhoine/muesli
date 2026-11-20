@@ -21,12 +21,18 @@ export async function startSim({ scenario, skin = "mac", colorScheme = "light" }
   });
   const browser = await chromium.launch();
   const context = await browser.newContext({ colorScheme, viewport: { width: 1000, height: 700 } });
+  // Pages get the app's Content Security Policy from the simulator; anything it blocks would be
+  // missing in the real app too, so every test fails on a violation.
+  const violations = [];
   const post = (route, body) => fetch(url + route, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   return {
     url,
     /** Opens one of Muesli's windows, as the app would. */
     async open(window) {
       const page = await context.newPage();
+      page.on("console", (m) => {
+        if (/Content Security Policy/i.test(m.text())) violations.push(`${window}: ${m.text()}`);
+      });
       await page.goto(`${url}ui/index.html?window=${window}`, { waitUntil: "domcontentloaded" });
       return page;
     },
@@ -49,6 +55,7 @@ export async function startSim({ scenario, skin = "mac", colorScheme = "light" }
     async stop() {
       await browser.close();
       child.kill();
+      if (violations.length) throw new Error(`blocked by the app's Content Security Policy:\n${violations.join("\n")}`);
     },
   };
 }
