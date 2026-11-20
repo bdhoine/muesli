@@ -93,3 +93,11 @@ fn swift_state_loads_and_reserialises_to_the_same_data() {
     assert_eq!(s.current.as_ref().unwrap().segment_count, 3);
     same_json(&text, &to_pretty_sorted(&s));
 }
+
+#[test]
+fn vocabulary_loads_and_reserialises_to_the_same_data() {
+    let text = fixture("vocabulary.json");
+    let v: muesli_core::Vocabulary = serde_json::from_str(&text).unwrap();
+    assert_eq!(v.terms, ["LocalVQE", "Barry d'Hoine", "Muesli"]);
+    same_json(&text, &to_pretty_sorted(&v));
+}

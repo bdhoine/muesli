@@ -77,6 +77,8 @@ pub fn import_file(
     let modified: DateTime<Utc> = std::fs::metadata(path).and_then(|m| m.modified()).unwrap_or_else(|_| SystemTime::now()).into();
 
     let title = title_for(path);
+    // Names and terms to spell right (a file name says little, so only the vocabulary).
+    let prompt = muesli_core::vocabulary::whisper_prompt(&muesli_core::Vocabulary::load(paths), "", &[]);
     // An import that was cut off (the app quit or crashed) left a partial meeting of this file:
     // carry on from where it stopped instead of starting a second meeting from the beginning.
     let (mut meeting, mut offset) = match take_over_stale(&store, paths, &title, modified) {
@@ -102,7 +104,7 @@ pub fn import_file(
             return Err(ImportError::Cancelled);
         }
         let seconds = samples.len() as f64 / SAMPLE_RATE as f64;
-        let chunk = AudioChunk { speaker: SPEAKER.to_string(), offset_seconds: *offset, samples };
+        let chunk = AudioChunk { speaker: SPEAKER.to_string(), offset_seconds: *offset, samples, prompt: prompt.clone(), best: false };
         // A transcriber that stopped because of the cancel is a cancel, not a failure.
         let segments = stt.transcribe_until(&chunk, cancel).map_err(|e| {
             if cancelled(cancel) {

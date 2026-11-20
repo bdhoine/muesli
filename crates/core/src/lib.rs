@@ -21,6 +21,7 @@ pub mod segmenter;
 pub mod status;
 pub mod store;
 pub mod update;
+pub mod vocabulary;
 pub mod whisper_model;
 
 pub use aec::{EchoCanceller, EchoStage, StandInCanceller};
@@ -31,6 +32,7 @@ pub use paths::Paths;
 pub use preferences::Preferences;
 pub use segmenter::{EnergyDetector, Pacer, Segmenter, SpeechDetector};
 pub use status::AppStatus;
+pub use vocabulary::Vocabulary;
 pub use whisper_model::ModelSpec;
 
 /// The version of the Windows app: the Cargo workspace version.

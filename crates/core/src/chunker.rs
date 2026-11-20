@@ -58,7 +58,7 @@ impl AudioChunker {
             let empty = buf.is_empty();
             let offset = inner.emitted.get(speaker).copied().unwrap_or(0.0);
             inner.emitted.insert(speaker.to_string(), offset + n as f64 / self.rate);
-            (self.emit)(AudioChunk { speaker: speaker.to_string(), offset_seconds: offset, samples: chunk });
+            (self.emit)(AudioChunk { speaker: speaker.to_string(), offset_seconds: offset, samples: chunk, ..Default::default() });
             if empty {
                 break;
             }

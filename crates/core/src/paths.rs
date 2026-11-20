@@ -63,6 +63,11 @@ impl Paths {
         self.support.join("config.json")
     }
 
+    /// Names and terms for Whisper (`vocabulary.rs`), shared by the app and `muesli-mcp`.
+    pub fn vocabulary(&self) -> PathBuf {
+        self.support.join("vocabulary.json")
+    }
+
     pub fn audit_log(&self) -> PathBuf {
         self.support.join("audit.log")
     }

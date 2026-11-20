@@ -31,7 +31,7 @@ fn transcriber(with_vad: bool) -> Transcriber {
 }
 
 fn text(t: &Transcriber, samples: Vec<f32>, offset: f64) -> (String, Vec<(f64, f64)>) {
-    let chunk = AudioChunk { speaker: "You".into(), offset_seconds: offset, samples };
+    let chunk = AudioChunk { speaker: "You".into(), offset_seconds: offset, samples, ..Default::default() };
     let segments = t.transcribe(&chunk).unwrap();
     let words = segments.iter().map(|s| s.text.as_str()).collect::<Vec<_>>().join(" ");
     (words.to_lowercase(), segments.iter().map(|s| (s.start, s.end)).collect())
@@ -150,4 +150,22 @@ fn live_blocks_follow_the_pauses_with_silero() {
 fn missing_models_give_none() {
     let nothing = std::path::Path::new("/nonexistent/model.bin");
     assert!(Transcriber::new(nothing, None, vec!["en".into()]).is_none());
+}
+
+/// A name Whisper cannot know is spelled right once the prompt has it:
+///   MUESLI_TEST_NAME_WAV=name.wav MUESLI_TEST_NAME=LocalVQE (plus the models above)
+#[test]
+#[ignore]
+fn the_vocabulary_prompt_spells_a_name_right() {
+    let t = transcriber(true);
+    let name = std::env::var("MUESLI_TEST_NAME").expect("MUESLI_TEST_NAME");
+    let samples = read_wav(&env("MUESLI_TEST_NAME_WAV"));
+    let plain = AudioChunk { speaker: "You".into(), samples: samples.clone(), ..Default::default() };
+    let prompted = AudioChunk { prompt: format!("Glossary: {name}."), ..plain.clone() };
+    let best = AudioChunk { best: true, ..prompted.clone() };
+    let say = |c: &AudioChunk| t.transcribe(c).unwrap().iter().map(|s| s.text.clone()).collect::<Vec<_>>().join(" ");
+    let (without, with, with_best) = (say(&plain), say(&prompted), say(&best));
+    eprintln!("without: {without}\nwith:    {with}\nbest:    {with_best}");
+    assert!(with.contains(&name), "{with}");
+    assert!(with_best.contains(&name), "{with_best}");
 }

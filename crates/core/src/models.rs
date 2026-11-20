@@ -110,9 +110,14 @@ impl DetectedMeeting {
 }
 
 /// Audio chunk (16 kHz mono f32) from one stream.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AudioChunk {
     pub speaker: String,
     pub offset_seconds: f64,
     pub samples: Vec<f32>,
+    /// Whisper's initial prompt: the vocabulary and the meeting's names (`vocabulary.rs`), and in
+    /// the end-of-meeting pass the text just before. Empty: none.
+    pub prompt: String,
+    /// Decode as well as possible (beam search) rather than as fast: the end-of-meeting pass.
+    pub best: bool,
 }

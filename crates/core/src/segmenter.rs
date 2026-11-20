@@ -239,7 +239,12 @@ impl Segmenter {
     }
 
     fn chunk(&self, start: usize, samples: Vec<f32>) -> AudioChunk {
-        AudioChunk { speaker: self.speaker.clone(), offset_seconds: (start * FRAME) as f64 / SAMPLE_RATE as f64, samples }
+        AudioChunk {
+            speaker: self.speaker.clone(),
+            offset_seconds: (start * FRAME) as f64 / SAMPLE_RATE as f64,
+            samples,
+            ..Default::default()
+        }
     }
 
     fn slice(&self, start: usize, end: usize) -> Vec<f32> {

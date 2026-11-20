@@ -117,9 +117,20 @@ impl Transcriber {
         let language = self.detect_language(&mut state, speech_samples, threads, previous.as_deref());
         self.previous.lock().unwrap().insert(chunk.speaker.clone(), language.clone());
 
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        // The end-of-meeting pass decodes with beam search: slower, a little more accurate.
+        let strategy = if chunk.best {
+            SamplingStrategy::BeamSearch { beam_size: 5, patience: -1.0 }
+        } else {
+            SamplingStrategy::Greedy { best_of: 1 }
+        };
+        let mut params = FullParams::new(strategy);
         params.set_n_threads(threads);
         params.set_language(Some(&language));
+        // The vocabulary and the meeting's names (and, in the end-of-meeting pass, the text just
+        // before) bias spelling; `no_context` below still keeps each chunk from feeding the next.
+        if !chunk.prompt.is_empty() {
+            params.set_initial_prompt(&chunk.prompt);
+        }
         // Each chunk stands alone: carrying text over invites repetition loops.
         params.set_no_context(true);
         params.set_suppress_blank(true);
