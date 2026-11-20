@@ -1,4 +1,4 @@
-//! The engine's `SpeechModel`: the model download (`crates/whisper`, the only network request)
+//! The engine's `SpeechModel`: the model download (`crates/whisper`; the update check is the other network request)
 //! and whisper.cpp.
 
 use muesli_core::whisper_model::{DEFAULT_MODEL, VAD_MODEL};

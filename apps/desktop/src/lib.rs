@@ -4,6 +4,7 @@
 mod host;
 mod speech;
 mod tray;
+mod updater;
 mod windows;
 
 use std::sync::Arc;
@@ -56,15 +57,28 @@ pub fn run() {
     let host = Arc::new(TauriHost::default());
     let platform = platform(tray.clone());
     let speech = Arc::new(speech::WhisperSpeech::new(Paths::from_platform(&*platform.paths)));
-    let engine = Engine::new(platform, speech, host.clone(), Options { system_languages: languages::system_defaults() });
+    let context = tauri::generate_context!();
+    // Release builds made with tauri.release.conf.json carry the updater's settings; debug builds
+    // and builds without them never check for updates.
+    let updates = !cfg!(debug_assertions) && context.config().plugins.0.contains_key("updater");
+    let updater = Arc::new(updater::TauriUpdater::default());
+    let mut options = Options::new(languages::system_defaults());
+    if updates {
+        options = options.with_updater(updater.clone());
+    }
+    let engine = Engine::new(platform, speech, host.clone(), options);
 
     let for_setup = (engine.clone(), host.clone());
     let for_second = engine.clone();
     let for_drops = engine.clone();
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(move |_, _, _| for_second.intent(Intent::OpenMuesli)))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_opener::init());
+    if updates {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+    builder
         .manage(engine.clone())
         .invoke_handler(tauri::generate_handler![view, intent])
         // Audio files dropped on Muesli's window are transcribed, like files dropped on the
@@ -82,6 +96,7 @@ pub fn run() {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory); // menu bar only, no Dock icon
             let (engine, host) = for_setup;
             host.attach(app.handle(), &engine);
+            updater.attach(app.handle());
             tray.attach(app.handle(), host.clone())?;
             engine.start();
             let ticking = engine.clone();
@@ -91,7 +106,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building Muesli")
         .run(move |_handle, event| match event {
             // Closing the last window must not quit a tray app.

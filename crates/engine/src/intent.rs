@@ -92,6 +92,19 @@ pub enum Intent {
     PickAssistant {
         name: String,
     },
+    /// "Check for Updates" / "Try again" in Settings.
+    CheckForUpdates,
+    /// Installs the ready update and starts the new version.
+    RestartToUpdate,
+    /// "Not now" on the update banner: hidden until the next start.
+    DismissUpdate,
+    /// "What's new": the release notes of a version on GitHub.
+    OpenReleaseNotes {
+        version: String,
+    },
+    SetAutoUpdateCheck {
+        on: bool,
+    },
     DownloadModelAgain,
     RequestPermission {
         permission: Permission,

@@ -27,6 +27,7 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 | Questions ("Start transcribing?", "Stop and save?") | Notification with two buttons (UNUserNotificationCenter) | Toast with two buttons | Both fall back to Muesli's own prompt window when notifications are off or cannot be shown. A Windows toast is answered through an in-process event, which works because Muesli is always running. |
 | Start at login | SMAppService (System Settings → General → Login Items) | The `Run` key in the registry | Platform API. |
 | Where models are stored | `~/Library/Application Support/Muesli` | `%LOCALAPPDATA%\Muesli` (everything else in `%APPDATA%\Muesli`) | Windows roams `%APPDATA%` between PCs in company domains; multi-gigabyte files must not roam. macOS has no such split. |
+| Updates | Downloads `.app.tar.gz` and replaces the app bundle, then starts the new version | Downloads the NSIS installer and runs it per user in passive mode (a progress bar, no administrator prompt), which closes Muesli and starts the new version; the `.msi` is a manual download only | `tauri-plugin-updater` does both (`apps/desktop/src/updater.rs`, the same code on both platforms); the engine and its rules are shared. Each OS installs apps its own way. |
 | Speech model acceleration | GPU (Metal), always available on Apple Silicon | CPU | Every supported Mac has the same GPU API. On Windows it depends on the graphics card and its drivers (Vulkan or CUDA), so one build cannot rely on it. See section 2. |
 
 ## 2. Could be closed, not done yet
@@ -36,9 +37,11 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 | Meeting title without a calendar | From the calendar | "Call" / "Teams call" | Read the title of the Teams or Zoom meeting window. Windows only, and fragile across app versions. |
 | GPU transcription | yes | no | Build `whisper-rs` with Vulkan as an optional second installer; needs the Vulkan SDK in CI. |
 | Tray icon after a theme switch | not applicable | the milk or black icon is picked from the taskbar theme when the menu changes, not at the moment the theme changes | Listen for `WM_SETTINGCHANGE` ("ImmersiveColorSet") and redraw. |
-| Windows on ARM build | not applicable | x64 only (runs emulated on ARM PCs) | Add an `aarch64-pc-windows-msvc` job to the Build installers workflow. |
+| Windows on ARM build | not applicable | x64 only (runs emulated on ARM PCs) | Add an `aarch64-pc-windows-msvc` job to the Release workflow. |
 | Code signing | ad hoc (CI has no certificate) | none; SmartScreen warns | Developer ID and notarisation for macOS, a code-signing certificate for Windows, and a signing step in CI. |
-| Intel Macs | not built | not applicable | Add `x86_64-apple-darwin` to the Build installers workflow. |
+| Permissions after an update | macOS ties permissions to the app's signature, and every ad-hoc signed build has a different one, so microphone and system audio are probably asked again after each update (not verified). Muesli notices on the first start of the new version and opens the permissions screen. | Not affected: permissions are not tied to the build | A Developer ID signature (row above) would keep them. |
+| Updates without a certificate | not applicable | The update installer is unsigned. SmartScreen is not expected to stop it (the updater runs it, it was not downloaded by a browser), but this is not verified. | A code-signing certificate. |
+| Intel Macs | not built | not applicable | Add `x86_64-apple-darwin` to the Release workflow. |
 
 ## 3. Same by design, verification status
 
@@ -48,6 +51,7 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 | Files: `config.json`, `state.json`, `meetings/`, transcripts | Shared formats; old `config.json` keys are migrated on start | Golden tests against files written by the Swift app; migration tests |
 | MCP server (7 tools) | The same Rust binary (`crates/mcp`) on both; Trash / Recycle Bin wording differs | 33 recorded requests match the replies |
 | Whisper transcription | The same Rust code on both (`crates/whisper`), same models | Real speech on macOS (Swift app); a recording tested on Windows by the maintainer (2026-11-16) |
+| Updates (check, download, signature, Restart, Quit) | Rules in `crates/engine` (`engine/updates.rs`); `tauri-plugin-updater` in `apps/desktop/src/updater.rs` on both | Engine tests and the `Updater` contract against the fake (Linux); UI tests for both skins. **No update between two signed releases has run on either platform yet**, and the release workflow has not run. There is no native contract test: the adapter lives in the Tauri app. |
 | Model download, the one fixed model, voice activity model | `ModelManager` | Tests with a local server; real download on macOS (Swift app) |
 | Microphone, system audio | cpal on both (WASAPI / WASAPI loopback, Core Audio / Core Audio tap), resampled with rubato | Windows: a recording tested by the maintainer (2026-11-16). macOS through cpal: not run. |
 | Call detection: microphone in use, Teams | Core Audio process list / WASAPI sessions; process names | Port contracts on the fakes only; not run natively since the move to ports |

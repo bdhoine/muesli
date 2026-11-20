@@ -13,7 +13,7 @@ use muesli_core::store::{MeetingStore, Store};
 use muesli_core::{DetectedMeeting, Meeting, MeetingState, Paths, Preferences, TranscriptSegment};
 use muesli_engine::fake::FakeSpeech;
 use muesli_engine::{Engine, Host, Intent, Options, Window};
-use muesli_platform_fake::{FakePermissions, FakePlatform};
+use muesli_platform_fake::{FakePermissions, FakePlatform, FakeServer, FakeUpdater};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -86,6 +86,10 @@ impl Host for SimHost {
         self.say(format!("Opened {}", path.display()));
     }
 
+    fn open_url(&self, url: &str) {
+        self.say(format!("Browser opens {url}"));
+    }
+
     fn quit(&self) {
         self.say("Quit Muesli (the simulator keeps running; reset to start again)".into());
     }
@@ -123,6 +127,13 @@ pub struct Scenario {
     pub assistants: bool,
     /// The version of the Muesli extension Claude Desktop has installed, if any.
     pub claude_extension: Option<String>,
+    /// The latest Muesli release on GitHub, if any.
+    pub release: Option<String>,
+    /// The update check fails with this reason.
+    pub update_error: Option<String>,
+    /// The version that ran before this start (`lastRunVersion`): an older one means Muesli was
+    /// just updated.
+    pub last_run_version: Option<String>,
     pub steps: Vec<Value>,
 }
 
@@ -130,6 +141,7 @@ pub struct World {
     pub engine: Arc<Engine>,
     pub fakes: FakePlatform,
     pub speech: Arc<FakeSpeech>,
+    pub updater: Arc<FakeUpdater>,
     pub host: Arc<SimHost>,
     pub skin: &'static str,
     _dir: tempfile::TempDir,
@@ -152,7 +164,14 @@ impl World {
         let paths = Paths::from_platform(&*fakes.paths);
         std::fs::create_dir_all(&paths.support).unwrap();
         if scenario.setup_done {
-            Preferences { onboarding_done: true, mcp_enabled: scenario.assistants, ..Default::default() }.save(&paths).unwrap();
+            Preferences {
+                onboarding_done: true,
+                mcp_enabled: scenario.assistants,
+                last_run_version: scenario.last_run_version.clone(),
+                ..Default::default()
+            }
+            .save(&paths)
+            .unwrap();
         }
         if let Some(version) = &scenario.claude_extension {
             let claude = ClaudeDesktopConfig::default_directory(&*fakes.paths);
@@ -173,11 +192,19 @@ impl World {
             fixtures,
             skin,
         });
-        let engine =
-            Engine::new(fakes.platform(), speech.clone(), host.clone(), Options { system_languages: vec!["nl".into(), "en".into()] });
+        // The simulator plays a release build: it checks for updates, on a fake GitHub.
+        let updater = Arc::new(FakeUpdater::new(muesli_core::VERSION));
+        if let Some(version) = &scenario.release {
+            updater.publish(version);
+        }
+        if let Some(why) = &scenario.update_error {
+            updater.set_server(FakeServer::NetworkError(why.clone()));
+        }
+        let options = Options::new(vec!["nl".into(), "en".into()]).with_updater(updater.clone());
+        let engine = Engine::new(fakes.platform(), speech.clone(), host.clone(), options);
         *host.engine.lock().unwrap() = Arc::downgrade(&engine);
         engine.start();
-        let world = Self { engine, fakes, speech, host, skin, _dir: dir };
+        let world = Self { engine, fakes, speech, updater, host, skin, _dir: dir };
         for step in &scenario.steps {
             if let Err(why) = world.act(step) {
                 world.host.say(format!("Scenario step failed: {why}"));
@@ -211,6 +238,7 @@ impl World {
             "clock": self.fakes.clock.now().to_rfc3339(),
             "call": self.fakes.detector.sample(self.fakes.clock.now()).mic_busy == Some(true),
             "model": muesli_engine::SpeechModel::status(&*self.speech),
+            "updatesInstalled": { "now": self.updater.installed_now(), "onQuit": self.updater.installed_on_quit() },
             "log": self.host.log.lock().unwrap().iter().rev().take(8).cloned().collect::<Vec<_>>(),
         })
     }
@@ -270,6 +298,8 @@ impl World {
                 let intent: Intent = serde_json::from_value(step.get("intent").cloned().unwrap_or_default()).map_err(|e| e.to_string())?;
                 self.engine.intent(intent);
             }
+            "release" => self.updater.publish(&text("version", "0.2.0")),
+            "updateError" => self.updater.set_server(FakeServer::NetworkError(text("reason", "Could not connect to github.com"))),
             "wait" => std::thread::sleep(std::time::Duration::from_millis(num("ms", 200.0) as u64)),
             "meeting" => self.add_meeting(step),
             "dropFile" => {

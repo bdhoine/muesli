@@ -1,0 +1,17 @@
+{
+  "name": "Update ready while transcribing",
+  "description": "A call is being transcribed when Muesli 0.2.0 has downloaded. Every update prompt waits; after Stop and Save the menu item, the dot, the banner and the notification appear.",
+  "setupDone": true,
+  "model": "ready",
+  "release": "0.2.0",
+  "steps": [
+    { "do": "meeting", "title": "Weekly sync", "source": "calendar", "minutes": 32, "hoursAgo": 26 },
+    { "do": "call", "teams": true, "seconds": 20 },
+    { "do": "answer", "accept": true },
+    { "do": "wait", "ms": 300 },
+    { "do": "call", "teams": true, "seconds": 10 },
+    { "do": "wait", "ms": 300 },
+    { "do": "talk", "seconds": 31 },
+    { "do": "intent", "intent": { "type": "openMuesli" } }
+  ]
+}

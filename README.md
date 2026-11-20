@@ -26,7 +26,7 @@ Muesli sits in your menu bar (macOS) or system tray (Windows), notices when a ca
 ## Private by design
 
 - Audio is never stored. Only the transcript is written.
-- Transcription happens on your computer. Muesli goes online only to download the speech model, once.
+- Transcription happens on your computer. Muesli goes online only to download the speech model and to check for updates.
 - No account, no sign-up, no telemetry.
 - Transcripts are ordinary files in a folder you choose.
 
@@ -108,7 +108,7 @@ Muesli supports **macOS 14.4 or later** (Apple Silicon) and **Windows 10/11 (64-
 | Notices meetings from | Calendar, microphone in use, Teams | Microphone in use, Teams (Windows has no system calendar) |
 | Deleted transcripts go to | Trash | Recycle Bin |
 
-The installers are built by GitHub Actions: on the repository's **Actions** tab, run the **Build installers** workflow and download the `muesli-aarch64-apple-darwin` (macOS, a `.dmg`) or `muesli-x86_64-pc-windows-msvc` (Windows) artifact. Neither is signed with a certificate yet, so macOS and Windows SmartScreen ask you to confirm.
+Releases appear on the repository's [Releases page](https://github.com/bdhoine/muesli/releases) once the first one is published. Test builds come from GitHub Actions: on the repository's **Actions** tab, run the **Release** workflow by hand and download the `muesli-aarch64-apple-darwin` (macOS, a `.dmg`) or `muesli-x86_64-pc-windows-msvc` (Windows) artifact. Neither is signed with a certificate yet, so macOS and Windows SmartScreen ask you to confirm.
 
 To build it yourself you need [Rust](https://rustup.rs) and CMake (on Windows also the Visual Studio C++ build tools; on macOS the Xcode command line tools):
 
@@ -135,6 +135,14 @@ On macOS these permissions are asked for, each only when you press **Allow…**:
 | Notifications | To ask whether to start and stop transcribing (without them a small Muesli window asks) | Optional |
 
 On Windows only the microphone needs permission (Settings → Privacy & security → Microphone). Settings → Advanced shows what the system currently allows, with a button to the system settings.
+
+### Updates
+
+Muesli keeps itself up to date. Thirty seconds after it starts, and once a day after that, it asks GitHub whether a newer version of Muesli has been released, and downloads it in the background. Only finished releases count, never test versions, and Muesli never goes back to an older version. An update is installed only if it carries Muesli's signature; anything else is thrown away. GitHub sees your IP address when Muesli checks; nothing else is sent.
+
+When an update is ready, the menu's first item says **Restart to Update to <version>**, the menu bar or tray icon gets a small green dot, Muesli's window shows a banner (with **Restart**, **What's new** and **Not now**) and you get one notification. While Muesli transcribes a meeting, imports an audio file or downloads the speech model, all of that waits until it is done. **Restart** installs the update and opens the new version; quitting Muesli with an update ready installs it too. On Windows the update runs the installer for your user account, without asking for an administrator.
+
+Settings → General shows your version with **What's new**, **Check for Updates** with when Muesli last checked, and the switch **Check for updates automatically**. After an update Muesli tells you once, with **What's new**. On a Mac, macOS may ask for the microphone and system audio permissions again after an update (Muesli is not signed with an Apple certificate yet); if so, Muesli opens the permissions screen for you.
 
 ## Good to know
 

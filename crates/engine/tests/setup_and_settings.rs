@@ -252,7 +252,7 @@ fn an_outdated_claude_extension_is_announced() {
         let host = Arc::new(RecordingHost::default());
         *host.claude.lock().unwrap() = true;
         *host.extension.lock().unwrap() = Some(bundle.clone());
-        let engine = Engine::new(fakes.platform(), Arc::new(FakeSpeech::ready()), host.clone(), Options { system_languages: languages() });
+        let engine = Engine::new(fakes.platform(), Arc::new(FakeSpeech::ready()), host.clone(), Options::new(languages()));
         engine.start();
         (engine, host)
     };

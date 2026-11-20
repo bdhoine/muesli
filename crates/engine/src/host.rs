@@ -51,6 +51,8 @@ pub trait Host: Send + Sync {
     fn reveal(&self, path: &Path);
     /// Opens a file with its app (the Claude Desktop extension).
     fn open(&self, path: &Path);
+    /// Opens a web page in the browser (release notes on GitHub).
+    fn open_url(&self, url: &str);
     fn quit(&self);
     /// The `muesli-mcp` executable shipped with the app, if any.
     fn helper_path(&self) -> Option<PathBuf>;

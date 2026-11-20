@@ -28,6 +28,8 @@ COPIES = {
     "tray-transcribing.png": os.path.join(brand, "menubar", "muesliTranscribing@2x.png"),
     "tray-light.png": os.path.join(brand, "menubar", "muesliTrayLight@2x.png"),
     "tray-light-transcribing.png": os.path.join(brand, "menubar", "muesliTrayLightTranscribing@2x.png"),
+    "tray-update.png": os.path.join(brand, "menubar", "muesliUpdate@2x.png"),
+    "tray-light-update.png": os.path.join(brand, "menubar", "muesliTrayLightUpdate@2x.png"),
 }
 # The web UI's copies of the logo (ui/brand/), also generated.
 UI_OUT = os.path.join(root, "ui", "brand")

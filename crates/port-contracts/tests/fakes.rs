@@ -2,7 +2,8 @@
 
 use muesli_core::ports::{MicCapture, SystemAudioCapture};
 use muesli_platform_fake::{
-    FakeAudio, FakeLoginItem, FakeNotifier, FakePaths, FakePermissions, FakePlatform, FakeTray, FolderTrash, ManualClock, ScriptedDetector,
+    FakeAudio, FakeLoginItem, FakeNotifier, FakePaths, FakePermissions, FakePlatform, FakeServer, FakeTray, FakeUpdater, FolderTrash,
+    ManualClock, ScriptedDetector,
 };
 use muesli_port_contracts as contract;
 
@@ -55,7 +56,7 @@ fn notifier() {
 fn tray() {
     let tray = FakeTray::default();
     contract::tray(&tray);
-    assert_eq!(tray.draws(), 3);
+    assert_eq!(tray.draws(), 4);
 }
 
 #[test]
@@ -82,4 +83,25 @@ fn the_bundle_holds_one_of_each() {
     contract::clock(&*p.clock);
     contract::tray(&*p.tray);
     assert_eq!(p.words.trash, p.trash.name());
+}
+
+#[test]
+fn updater() {
+    use std::sync::atomic::Ordering;
+    let updater = FakeUpdater::new("0.1.0");
+    contract::updater(&updater); // no release
+    for server in [
+        FakeServer::Release("0.2.0".into()),
+        FakeServer::Release("0.1.0".into()),
+        FakeServer::Release("0.0.9".into()),
+        FakeServer::Release("0.3.0-beta.1".into()),
+        FakeServer::NetworkError("Could not connect to github.com (timed out after 15 s).".into()),
+    ] {
+        updater.set_server(server);
+        contract::updater(&updater);
+    }
+    updater.publish("0.2.0");
+    contract::updater_installs_only_verified_downloads(&updater, &|bad| updater.bad_signature.store(bad, Ordering::SeqCst));
+    assert_eq!(updater.installed_on_quit(), 1);
+    assert_eq!(updater.installed_now(), 0);
 }

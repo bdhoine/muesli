@@ -7,7 +7,7 @@ use std::thread::JoinHandle;
 use chrono::{DateTime, Duration, Utc};
 use muesli_core::assistants::{AssistantClient, ClaudeDesktopConfig, ClaudeDesktopExtension, ExtensionState};
 use muesli_core::editor::MeetingEditor;
-use muesli_core::ports::{Access, Notice, OnError, OnSamples, Permission, Platform, Question, TrayItem, TrayMenu};
+use muesli_core::ports::{Access, Notice, OnError, OnSamples, Permission, Platform, Question, TrayItem, TrayMenu, Updater};
 use muesli_core::status::{Activity as StatusActivity, AppStatus, Current, Detected, FileJob, LastReady};
 use muesli_core::store::{menu_subtitle_local, shorten_title, MeetingStore, Store};
 use muesli_core::whisper_model::DEFAULT_MODEL;
@@ -16,6 +16,10 @@ use muesli_core::{
     VERSION,
 };
 use serde::Serialize;
+
+mod updates;
+
+pub use updates::{CHECK_EVERY, FIRST_CHECK_AFTER};
 
 use crate::host::{Host, Window};
 use crate::intent::Intent;
@@ -40,6 +44,19 @@ const RECENT_IN_MENU: usize = 3;
 pub struct Options {
     /// The system language and English: the default transcription languages.
     pub system_languages: Vec<String>,
+    /// Muesli's own updates. `None` in builds that never update (debug builds, Linux).
+    pub updater: Option<Arc<dyn Updater>>,
+}
+
+impl Options {
+    pub fn new(system_languages: Vec<String>) -> Self {
+        Self { system_languages, updater: None }
+    }
+
+    pub fn with_updater(mut self, updater: Arc<dyn Updater>) -> Self {
+        self.updater = Some(updater);
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -132,6 +149,7 @@ struct Inner {
     capture_error: Option<String>,
     started: bool,
     quitting: bool,
+    update: updates::UpdateState,
 }
 
 /// Muesli. Create it with [`Engine::new`], call [`Engine::start`] once and [`Engine::tick`]
@@ -216,6 +234,7 @@ impl Engine {
                 capture_error: None,
                 started: false,
                 quitting: false,
+                update: updates::UpdateState::default(),
             }),
         })
     }
@@ -241,14 +260,13 @@ impl Engine {
         self.lock().prefs.clone()
     }
 
+    /// Changes the preferences and writes `config.json`. The file is written under the lock, so
+    /// changes from two threads (an update check, a click in Settings) land in order.
     fn save_prefs(&self, change: impl FnOnce(&mut Preferences)) {
-        let prefs = {
-            let mut s = self.lock();
-            change(&mut s.prefs);
-            s.prefs.clone()
-        };
+        let mut s = self.lock();
+        change(&mut s.prefs);
         let _ = std::fs::create_dir_all(&self.base.support);
-        let _ = prefs.save(&self.base);
+        let _ = s.prefs.save(&self.base);
     }
 
     fn model_ready(&self) -> bool {
@@ -276,6 +294,7 @@ impl Engine {
         } else {
             self.host.show(Window::Setup);
         }
+        self.start_updates();
         self.changed();
     }
 
@@ -387,6 +406,7 @@ impl Engine {
         if detect {
             self.detect(now);
         }
+        self.tick_updates(now);
         if expired_delete.is_some() || toast_gone {
             self.changed();
         } else if beat {
@@ -917,6 +937,7 @@ impl Engine {
             }
             Intent::Quit => {
                 self.shutdown();
+                self.install_on_quit();
                 self.host.quit();
             }
 
@@ -1036,6 +1057,17 @@ impl Engine {
                     self.host.changed();
                 }
             }
+            Intent::CheckForUpdates => self.check_for_updates(true),
+            Intent::RestartToUpdate => self.restart_to_update(),
+            Intent::DismissUpdate => {
+                self.lock().update.banner_hidden = true;
+                self.host.changed();
+            }
+            Intent::OpenReleaseNotes { version } => self.open_release_notes(&version),
+            Intent::SetAutoUpdateCheck { on } => {
+                self.save_prefs(|p| p.auto_update_check = on);
+                self.host.changed();
+            }
             Intent::DownloadModelAgain => {
                 self.download_model();
                 self.changed();
@@ -1070,7 +1102,19 @@ impl Engine {
                 self.host.changed();
             }
             Intent::FinishSetup => {
-                self.save_prefs(|p| p.onboarding_done = true);
+                let after_update = std::mem::take(&mut self.lock().update.permissions_after_update);
+                if after_update {
+                    // Only the permissions were asked again; Muesli was set up already.
+                    self.lock().setup_step = 0;
+                    self.host.close(Window::Setup);
+                    self.changed();
+                    return;
+                }
+                let version = self.running_version();
+                self.save_prefs(|p| {
+                    p.onboarding_done = true;
+                    p.last_run_version = Some(version);
+                });
                 self.host.close(Window::Setup);
                 self.host.show(Window::Main);
                 self.download_model();
@@ -1081,6 +1125,7 @@ impl Engine {
 
     fn tray(&self, id: &str) {
         match id {
+            "update" => self.intent(Intent::RestartToUpdate),
             "start" => self.intent(Intent::StartTranscribing),
             "stop" => self.intent(Intent::StopAndSave),
             "open" => self.intent(Intent::OpenMuesli),
@@ -1126,6 +1171,8 @@ impl Engine {
 
     /// The tray menu (menu bar on macOS, notification area on Windows).
     pub fn menu(&self) -> TrayMenu {
+        let update_items = self.update_menu_items();
+        let update_dot = self.update_dot();
         let model = self.speech.status();
         let paths = self.paths();
         let recent: Vec<Meeting> = {
@@ -1142,7 +1189,7 @@ impl Engine {
         let now = self.now();
         let mut since = None;
         let label = |text: String| TrayItem::Label { label: text };
-        let mut items = Vec::new();
+        let mut items = update_items;
         let ready = model.is_ready();
         let setup_done = s.prefs.onboarding_done;
         if !ready {
@@ -1195,8 +1242,15 @@ impl Engine {
         TrayMenu {
             items,
             transcribing,
-            tooltip: if transcribing { "Muesli · transcribing".into() } else { "Muesli".into() },
+            tooltip: if transcribing {
+                "Muesli · transcribing".into()
+            } else if update_dot {
+                "Muesli · update ready".into()
+            } else {
+                "Muesli".into()
+            },
             transcribing_since: if transcribing { since } else { None },
+            update_ready: update_dot && !transcribing,
         }
     }
 
@@ -1231,6 +1285,7 @@ impl Engine {
         let ready = self.model_ready();
         let extension_update = (self.extension_update_ready() && self.preferences().extension_update_dismissed.as_deref() != Some(VERSION))
             .then(|| "A newer Muesli extension for Claude Desktop is ready.".to_string());
+        let update = self.update_banner();
         let all = MeetingStore::new(&paths).all();
         let s = self.lock();
         let live_meeting = s.session.as_ref().map(|x| x.meeting.lock().unwrap().clone());
@@ -1338,6 +1393,7 @@ impl Engine {
             transcribing: matches!(s.activity, Activity::Transcribing),
             empty_text: empty.then(|| "No transcripts yet. When a meeting starts, Muesli asks whether to transcribe it.".to_string()),
             extension_update,
+            update,
         }
     }
 
@@ -1428,7 +1484,10 @@ impl Engine {
 
     pub fn setup_view(&self) -> SetupView {
         let words = self.platform.words.clone();
-        let step = self.lock().setup_step;
+        let (step, after_update) = {
+            let s = self.lock();
+            (s.setup_step, s.update.permissions_after_update)
+        };
         let permissions = self.permission_rows();
         let required_ok = permissions.iter().filter(|p| p.required).all(|p| p.granted);
         let windows_note = self.platform.permissions.status(Permission::SystemAudio) == Access::NotNeeded;
@@ -1465,7 +1524,13 @@ impl Engine {
                 true,
             ),
         };
-        SetupView {
+        let mut view = SetupView {
+            counter: match step {
+                0 => String::new(),
+                3 => "All set".into(),
+                n => format!("Step {n} of 2"),
+            },
+            finish: step == 3,
             step,
             steps: 4,
             title,
@@ -1508,7 +1573,18 @@ impl Engine {
             primary_enabled,
             can_go_back: step > 0 && step < 3,
             words,
+        };
+        if after_update {
+            // Only the permissions screen, after an update made macOS ask again (UP7).
+            view.counter = String::new();
+            view.subtitle = Some("Muesli was updated, and macOS asks for these permissions again.".into());
+            view.hint = None;
+            view.model = None;
+            view.can_go_back = false;
+            view.finish = true;
+            view.steps = 1;
         }
+        view
     }
 
     pub fn settings_view(&self) -> SettingsView {
@@ -1551,7 +1627,7 @@ impl Engine {
         };
         SettingsView {
             words: self.platform.words.clone(),
-            version: VERSION.into(),
+            version: self.running_version(),
             transcripts_folder: paths.transcripts.to_string_lossy().into_owned(),
             transcripts_folder_locked: paths.transcripts_set_by_environment(),
             start_at_login: self.platform.login_item.is_enabled(),
@@ -1559,6 +1635,7 @@ impl Engine {
             assistants,
             model: self.model_view(),
             permissions: self.permission_rows(),
+            updates: self.updates_view(),
         }
     }
 }

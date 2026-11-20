@@ -2,6 +2,16 @@
   "bundle": {
     "externalBin": ["binaries/muesli-mcp"],
     "resources": { "../../dist/Muesli.mcpb": "Muesli.mcpb" },
-    "macOS": { "signingIdentity": "-" }
+    "createUpdaterArtifacts": true,
+    "macOS": { "signingIdentity": "-" },
+    "windows": { "nsis": { "installMode": "currentUser" } }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "TODO(barry): replace with the public key from `cargo tauri signer generate` (see CONTRIBUTING.md, Releasing)",
+      "endpoints": ["https://github.com/bdhoine/muesli/releases/latest/download/latest.json"],
+      "requireSignedVersion": true,
+      "windows": { "installMode": "passive" }
+    }
   }
 }

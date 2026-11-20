@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::json::{self, to_pretty_sorted};
@@ -14,8 +15,9 @@ use crate::whisper_model::{DEFAULT_MODEL, VAD_MODEL};
 ///
 /// Keys from earlier versions (`autoStop`, `endDelaySeconds`, `recentLimit`, `customModelPath`,
 /// `savedLanguages`, `dropFolder`, `dropFolderCleanup`, `model`) are read and dropped: the next
-/// save leaves them out. [`Preferences::migrate`] says which ones a file still had.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+/// save leaves them out. [`Preferences::migrate`] says which ones a file still had. Keys added
+/// later (the update keys) take their default when a file does not have them yet.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Preferences {
     pub mcp_enabled: bool,
@@ -35,6 +37,36 @@ pub struct Preferences {
     /// The Muesli version whose update banner the user put away with "Not now".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extension_update_dismissed: Option<String>,
+    /// "Check for updates automatically" in Settings. On by default.
+    #[serde(default = "yes")]
+    pub auto_update_check: bool,
+    /// When Muesli last asked GitHub for a newer version and got an answer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_last_checked: Option<DateTime<Utc>>,
+    /// The version whose "ready to install" notification was shown, so each is announced once.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update_notified: Option<String>,
+    /// The version that ran last, so the first start of a new version is noticed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_run_version: Option<String>,
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            mcp_enabled: false,
+            claude_desktop_config_entry: false,
+            languages: None,
+            onboarding_done: false,
+            transcripts_folder: None,
+            extension_update_notified: None,
+            extension_update_dismissed: None,
+            auto_update_check: true,
+            update_last_checked: None,
+            update_notified: None,
+            last_run_version: None,
+        }
+    }
 }
 
 /// The keys earlier versions wrote that this one no longer has.
@@ -42,6 +74,10 @@ pub const REMOVED_KEYS: [&str; 8] =
     ["autoStop", "endDelaySeconds", "recentLimit", "customModelPath", "savedLanguages", "dropFolder", "dropFolderCleanup", "model"];
 
 fn done_when_missing() -> bool {
+    true
+}
+
+fn yes() -> bool {
     true
 }
 

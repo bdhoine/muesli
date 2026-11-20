@@ -110,6 +110,47 @@ pub struct MainView {
     pub empty_text: Option<String>,
     /// A newer Claude Desktop extension is ready: a banner with Update and Not now.
     pub extension_update: Option<String>,
+    /// A Muesli update is ready and Muesli is idle: a banner with Restart, What's new and Not now.
+    pub update: Option<UpdateBanner>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateBanner {
+    /// "Muesli 0.2.0 is ready to install".
+    pub text: String,
+    /// The version, for What's new.
+    pub version: String,
+}
+
+/// Settings > General: the version, updates and the automatic check.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatesView {
+    /// "Muesli 0.1.0".
+    pub title: String,
+    /// The running version, for What's new.
+    pub version: String,
+    /// This build can update itself (release builds).
+    pub available: bool,
+    /// Beside the version: "Muesli is up to date", "Downloading 0.2.0… 42%", "0.2.0 is ready",
+    /// "Couldn't check for updates: <reason>".
+    pub status: Option<String>,
+    /// "ok", "warn" or "".
+    pub tone: String,
+    pub progress: Option<f64>,
+    /// ISO 8601, for "Last checked: <when>".
+    pub last_checked: Option<String>,
+    /// "Check for Updates", "Checking…" or "Try again".
+    pub check_label: String,
+    pub can_check: bool,
+    /// Offer Restart (an update is ready).
+    pub restart: bool,
+    /// Restart is enabled (Muesli is idle).
+    pub can_restart: bool,
+    pub restart_hint: Option<String>,
+    /// "Check for updates automatically".
+    pub auto_check: bool,
 }
 
 /// The small window that asks when notifications cannot.
@@ -182,6 +223,10 @@ pub struct SetupView {
     /// 0 Welcome, 1 Languages, 2 Permissions, 3 Done.
     pub step: usize,
     pub steps: usize,
+    /// "Step 1 of 2", "All set", or empty.
+    pub counter: String,
+    /// The primary button finishes setup (closes the window) instead of going on.
+    pub finish: bool,
     pub title: String,
     pub subtitle: Option<String>,
     /// Welcome: the three promises.
@@ -249,4 +294,5 @@ pub struct SettingsView {
     pub assistants: AssistantsView,
     pub model: ModelView,
     pub permissions: Vec<PermissionRow>,
+    pub updates: UpdatesView,
 }

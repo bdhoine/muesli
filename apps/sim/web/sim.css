@@ -13,7 +13,8 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin: 
 .buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 button, select { font: inherit; }
 .tray .icon { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--text); border-radius: 4px; position: relative; }
-.tray .icon.on::after { content: ""; position: absolute; right: -6px; top: -6px; width: 8px; height: 8px; border-radius: 50%; background: #b3382c; }
+.tray .icon.on::after, .tray .icon.update::after { content: ""; position: absolute; right: -6px; top: -6px; width: 8px; height: 8px; border-radius: 50%; background: #b3382c; }
+.tray .icon.update:not(.on)::after { background: #5b7a3a; }
 #menu { list-style: none; padding: 4px 0 0; margin: 0; }
 #menu li { padding: 3px 6px; border-radius: 4px; }
 #menu li.action { cursor: pointer; }

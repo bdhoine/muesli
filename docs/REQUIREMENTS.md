@@ -4,6 +4,8 @@ Status: implemented, except where section 10 says otherwise. Scope: what must be
 
 Change on 2026-11-13: remote access was removed in favour of local-only. Section 5 lists what went.
 
+Change on 2026-11-20: Muesli updates itself from its GitHub releases (UP1 to UP9, section 3b). The update check is the only network request besides the model downloads.
+
 Change on 2026-11-19 (the refinement): one Tauri app for macOS and Windows on a Rust engine behind ports; new main window, setup, Settings and menu; the end of a call is always asked, with a 5-minute timeout; the drop folder, auto-stop, the delay and recent-count settings and the custom model file are gone. Section 3a describes the user-facing behaviour; the requirements below are updated to match.
 
 ## 1. Goals and non-goals
@@ -25,7 +27,7 @@ Non-goals
 ## 2. Architecture
 
 ```
-Muesli.app                 network only for model download; capture, detection, whisper.cpp
+Muesli.app                 network only for the model downloads and the update check; capture, detection, whisper.cpp
    │ writes state + meetings to ~/Library/Application Support/Muesli/
    │ writes .md/.json to the transcripts folder (unchanged)
    ▼
@@ -64,7 +66,7 @@ Assistant access
 - A9d. Audio files. "Transcribe Audio File…" (menu; on Windows also the main window's toolbar) picks one or more files (mp3, m4a/aac, wav, flac, ogg, alac); files dropped on a Muesli window are transcribed too. Progress shows in the main window's list, with Cancel. One file at a time, after the model is ready; a live transcription always goes first. Files are never moved or deleted. The result is a normal meeting with source `file`, speaker `Speaker`, the file name as title and the file's date; a file that cannot be read, or fails part-way, is reported and keeps what was transcribed. If the app quits during an import, the next import of that file resumes after the last transcribed chunk in the same meeting. There is no drop folder.
 - A9e. Claude plugin. `plugin/` is a plugin bundle (license, README, manifest, one skill, the `muesli-mcp` server of the installed app as its MCP server), installed from this repository; Anthropic's directory accepts local MCP servers only from Verified organizations, so it is not listed there. A plugin's MCP command cannot differ per OS, so it starts a Node launcher that finds `muesli-mcp` on macOS and Windows (A9f). It passes `claude plugin validate ./plugin --profile directory --strict`, and its version, icon and license are kept in step with the app by `scripts/sync-plugin.py` (checked in CI).
 - A9f. The app records the absolute path of its `muesli-mcp` in `mcp-path` in the support folder on every start (`record_helper_path`), so the plugin launcher finds the server wherever Muesli is installed. The `.mcpb` extension and the config-file entry are separate routes.
-- A10. The app itself opens no sockets. Its only network requests are downloading the Whisper speech model (Large v3 Turbo, one fixed model) and the small Silero voice activity model. Transcribing is disabled, and meeting prompts are not shown, until both are ready; progress is shown in setup, Settings and the menu ("Getting Ready") while they download. Audio without speech is never transcribed: the voice activity model finds the speech first, because Whisper invents text for silence and noise. System audio is captured with a Core Audio tap (macOS 14.4 or later), so only the System Audio Recording permission is needed.
+- A10. The app itself opens no listening sockets. Its only network requests are the two model downloads, the Whisper speech model (Large v3 Turbo, one fixed model) and the small Silero voice activity model, and the update check to GitHub with the download of an update it finds (UP1). Transcribing is disabled, and meeting prompts are not shown, until both are ready; progress is shown in setup, Settings and the menu ("Getting Ready") while they download. Audio without speech is never transcribed: the voice activity model finds the speech first, because Whisper invents text for silence and noise. System audio is captured with a Core Audio tap (macOS 14.4 or later), so only the System Audio Recording permission is needed.
 
 ## 3a. User-facing behaviour (2026-11 refinement)
 
@@ -76,6 +78,18 @@ The UI says "transcribe / transcribing", never "record"; JSON and MCP values kee
 - U4. Main window: list on the left, newest first, with the live meeting and file imports at the top (imports with progress and Cancel); reader on the right with title, date, duration, source, attendees and the text (`[mm:ss] **Speaker**: text`). The live meeting updates every 30 s, read-only, with a "Transcribing · live, read-only" badge and Stop and Save; its newest line is faded and "Listening · more text in about 30 seconds" follows the text. A finished meeting can be renamed (also its exported files; the same logic as `rename_transcript`) and deleted (to the Trash / Recycle Bin, no confirmation, an Undo toast for about 6 s; the same logic as `delete_transcript`). macOS (as in the design canvas): no toolbar, a round "Start transcribing" button in the bottom right corner while idle. Windows: a toolbar with Start Transcribing, Transcribe Audio File…, Show in Explorer and Settings…. No search, no speaker or attendee editing (assistants keep `rename_speaker` and `set_attendees`). macOS: a Dock icon only while a Muesli window is open.
 - U5. Settings, setup and the model: A9, A9a and A9c.
 - U6. The UI decides nothing: the engine (`crates/engine`) gives each window its view state and takes intents; platform words come from the view. Dark mode follows the system; colours and type follow `assets/brand/BRAND.md`.
+
+## 3b. Updates
+
+- UP1. Updates come from the GitHub releases of `bdhoine/muesli`, stable only: the release marked Latest, read through `https://github.com/bdhoine/muesli/releases/latest/download/latest.json`. Pre-releases and drafts are ignored. No release, or a release without `latest.json`, means up to date. Muesli never downgrades.
+- UP2. The first check runs 30 s after start, then every 24 h after the last check, with a 15 s connection timeout. On by default; Settings has the switch "Check for updates automatically" (`autoUpdateCheck` in `config.json`, default true). `updateLastChecked` records the last successful check. A failed check by itself is silent and tried again at the next one. Debug builds never check.
+- UP3. An update downloads in the background and is installed only if its Tauri updater signature matches the public key built into the app (and the version it was signed for); otherwise it is discarded. Windows updates through the per-user NSIS installer in passive mode (no administrator prompt); the MSI stays a manual download. macOS replaces the app bundle.
+- UP4. When an update is ready and Muesli is idle: the menu's first item "Restart to Update to <version>", and a small dot in Pumpkin seed (#5B7A3A) on the menu bar / tray icon (the red transcribing dot wins). The main window shows a banner "Muesli <version> is ready to install" with Restart, What's new and Not now (styled like the extension banner, no coloured stripes on card edges). One system notification per version with Restart (`updateNotified` in `config.json`). Settings shows the status beside the version. Not now hides the banner until the next start; the menu item, the dot and Settings stay.
+- UP5. While transcribing a meeting, importing an audio file or downloading the speech model, every update prompt is hidden and Restart is unavailable; the download may go on. The prompts appear once Muesli is idle.
+- UP6. Restart installs the update and starts the new version. Quit Muesli with an update ready installs it and quits without starting again.
+- UP7. On the first start of a new version (`lastRunVersion` in `config.json`; a missing value, as on a first start, says nothing) a one-time notification "Muesli updated to <version>" with What's new. On macOS Muesli then reads the permissions; if the microphone or system audio are no longer allowed, the setup window opens on the Permissions screen alone with the line "Muesli was updated, and macOS asks for these permissions again."
+- UP8. Settings > General: "Muesli <version>" with What's new; Check for Updates with "Last checked: <when>"; the result of a check from Settings inline: "Muesli is up to date", "Downloading <version>… n%", "<version> is ready" with Restart, "Couldn't check for updates: <reason>" with Try again; and the switch. What's new opens `https://github.com/bdhoine/muesli/releases/tag/v<version>`.
+- UP9. Release pipeline: the Release workflow runs on `v*` tags (and by hand for unsigned test builds). It checks that the tag matches the workspace version in `Cargo.toml`, builds Windows and macOS, signs the updater bundles with the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, writes `latest.json` (`tauri-apps/tauri-action`) and creates a draft GitHub release. The updater's endpoint, `createUpdaterArtifacts` and the Windows install mode are in `apps/desktop/tauri.release.conf.json`.
 
 ## 4. MCP server requirements (muesli-mcp)
 
@@ -111,6 +125,7 @@ Claude conversations sync across Claude apps, so work done in Claude Desktop on 
 - S3. No tool can start or stop transcribing or change settings. Management tools change only finished meetings; delete moves files to the Trash. Meetings that are still recording cannot be changed.
 - S4. The setup guide and Settings state plainly that transcript text an assistant reads is sent to its provider (Anthropic, for Claude).
 - S5. The existing notice stays: tell participants you are transcribing and check company policy.
+- S6. The update check sends nothing about the user: a plain request for `latest.json` (and the update file it names) to GitHub, which sees the IP address and nothing else. Updates are installed only with a valid signature made with Muesli's private key, which lives only in the repository's secrets.
 
 ## 7. Risks and open questions
 
@@ -118,7 +133,7 @@ Claude conversations sync across Claude apps, so work done in Claude Desktop on 
 
 ## 8. Acceptance criteria
 
-1. A network monitor shows no connections from Muesli or `muesli-mcp` during detection, recording, saving and tool calls, and no listening port.
+1. A network monitor shows no connections from Muesli or `muesli-mcp` during detection, recording, saving and tool calls, and no listening port, except the update check to GitHub (and the download of an update it found).
 2. In Claude Desktop with the extension installed: "Is Muesli recording?" returns the true state within 10 s of a change.
 3. Removed with remote access.
 4. During a recording, Claude can fetch the transcript so far.
@@ -134,8 +149,8 @@ Claude conversations sync across Claude apps, so work done in Claude Desktop on 
 
 ## 10. Implementation status
 
-Implemented in the Rust workspace and tested on Linux: the engine against the fakes (prompts, timings, main window, Settings, setup, imports, migration), the UI against the simulator in Chromium for both skins, M1 to M6, M8, M10, the stores and management tools, crash recovery (A3) and the detection rules behind A4 and A5.
+Implemented in the Rust workspace and tested on Linux: the engine against the fakes (prompts, timings, main window, Settings, setup, imports, migration, updates), the UI against the simulator in Chromium for both skins, M1 to M6, M8, M10, the stores and management tools, crash recovery (A3) and the detection rules behind A4 and A5.
 
-Not yet run in the real app on either platform since the refinement: everything that touches the OS (capture, notifications, permissions, calendar, Trash, login item, tray). The macOS adapters have not been compiled. `PLATFORMS.md` section 3 tracks what has been verified on real machines.
+Not yet run in the real app on either platform since the refinement: everything that touches the OS (capture, notifications, permissions, calendar, Trash, login item, tray). Updates: no real update between two signed releases has run yet, the release workflow has not run, and the permission behaviour after an update on macOS is unverified. The macOS adapters have not been compiled. `PLATFORMS.md` section 3 tracks what has been verified on real machines.
 
 Deviations: A5 needs macOS 14.2 or later; on 14.0 and 14.1 Muesli cannot tell its own microphone use from another app's, so the end of a call is not detected. The server answers MCP protocol versions up to 2025-06-18.

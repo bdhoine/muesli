@@ -17,6 +17,7 @@ pub mod ports;
 pub mod preferences;
 pub mod status;
 pub mod store;
+pub mod update;
 pub mod whisper_model;
 
 pub use chunker::AudioChunker;

@@ -1,0 +1,9 @@
+{
+  "name": "First start after an update",
+  "description": "Muesli was just updated from 0.0.9: a notification says so with What's new. On a Mac the update cost the microphone and system audio permissions, so the setup window opens on the permissions screen alone.",
+  "setupDone": true,
+  "model": "ready",
+  "permissions": "notAsked",
+  "lastRunVersion": "0.0.9",
+  "steps": []
+}

@@ -99,6 +99,12 @@ impl Host for TauriHost {
         }
     }
 
+    fn open_url(&self, url: &str) {
+        if let Some(handle) = self.handle() {
+            let _ = handle.opener().open_url(url, None::<&str>);
+        }
+    }
+
     fn quit(&self) {
         if let Some(handle) = self.handle() {
             handle.exit(0);

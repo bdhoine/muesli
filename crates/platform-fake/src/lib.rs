@@ -7,12 +7,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use muesli_core::ports::{
     Access, AudioStream, Clock, DetectionSample, LoginItem, MeetingDetector, MicCapture, Notice, Notifier, OnAction, OnAnswer, OnError,
-    OnSamples, Permission, Permissions, Platform, PlatformPaths, PlatformWords, Question, SystemAudioCapture, Trash, Tray, TrayMenu,
+    OnProgress, OnSamples, Permission, Permissions, Platform, PlatformPaths, PlatformWords, Question, Release, SystemAudioCapture, Trash,
+    Tray, TrayMenu, UpdateError, Updater,
 };
 use muesli_core::DetectedMeeting;
 
@@ -484,6 +485,191 @@ impl LoginItem for FakeLoginItem {
     fn set_enabled(&self, on: bool) -> Result<(), String> {
         self.on.store(on, Ordering::SeqCst);
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+
+/// What GitHub offers the fake updater.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FakeServer {
+    /// No release, or a release without `latest.json`: up to date.
+    NoRelease,
+    /// The latest release has this version (newer, equal or older than the app).
+    Release(String),
+    /// The check fails with this reason (no connection, a timeout).
+    NetworkError(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Download {
+    None,
+    /// Waiting for `finish_download` / `fail_download` (only with `hold_downloads`).
+    Running,
+    Done,
+}
+
+struct UpdaterState {
+    server: FakeServer,
+    found: Option<Release>,
+    download: Download,
+    /// The outcome a held download ends with.
+    outcome: Option<Result<(), UpdateError>>,
+    on_progress: Option<Arc<OnProgress>>,
+}
+
+/// Muesli's updates without a network. Tests and the simulator say what the server offers
+/// (`set_server`), whether the download matches its signature (`bad_signature`), and whether
+/// downloads run at once or step by step (`hold_downloads`, then `progress` and `finish_download`).
+/// Installing only records that it happened.
+pub struct FakeUpdater {
+    current: String,
+    state: Mutex<UpdaterState>,
+    changed: Condvar,
+    /// The next download does not match the signature.
+    pub bad_signature: AtomicBool,
+    /// Downloads wait for `finish_download` or `fail_download`.
+    pub hold_downloads: AtomicBool,
+    checks: AtomicUsize,
+    installed_now: AtomicUsize,
+    installed_on_quit: AtomicUsize,
+}
+
+impl FakeUpdater {
+    /// The running app is `current`; GitHub has no release yet.
+    pub fn new(current: &str) -> Self {
+        Self {
+            current: current.into(),
+            state: Mutex::new(UpdaterState {
+                server: FakeServer::NoRelease,
+                found: None,
+                download: Download::None,
+                outcome: None,
+                on_progress: None,
+            }),
+            changed: Condvar::new(),
+            bad_signature: AtomicBool::new(false),
+            hold_downloads: AtomicBool::new(false),
+            checks: AtomicUsize::new(0),
+            installed_now: AtomicUsize::new(0),
+            installed_on_quit: AtomicUsize::new(0),
+        }
+    }
+
+    pub fn set_server(&self, server: FakeServer) {
+        self.state.lock().unwrap().server = server;
+    }
+
+    /// GitHub's latest release becomes `version`.
+    pub fn publish(&self, version: &str) {
+        self.set_server(FakeServer::Release(version.into()));
+    }
+
+    /// How often `check` was called.
+    pub fn checks(&self) -> usize {
+        self.checks.load(Ordering::SeqCst)
+    }
+
+    /// Whether a held download is waiting.
+    pub fn downloading(&self) -> bool {
+        self.state.lock().unwrap().download == Download::Running
+    }
+
+    /// The held download reached `received` of `total` bytes.
+    pub fn progress(&self, received: u64, total: u64) {
+        let on_progress = self.state.lock().unwrap().on_progress.clone();
+        if let Some(f) = on_progress {
+            f(received, Some(total));
+        }
+    }
+
+    /// The held download completes (and is verified, unless `bad_signature` is set).
+    pub fn finish_download(&self) {
+        let mut s = self.state.lock().unwrap();
+        s.outcome = Some(Ok(()));
+        self.changed.notify_all();
+    }
+
+    /// The held download breaks off.
+    pub fn fail_download(&self, why: &str) {
+        let mut s = self.state.lock().unwrap();
+        s.outcome = Some(Err(UpdateError::Network(why.into())));
+        self.changed.notify_all();
+    }
+
+    /// How often "install and restart" ran.
+    pub fn installed_now(&self) -> usize {
+        self.installed_now.load(Ordering::SeqCst)
+    }
+
+    /// How often "install on quit" ran.
+    pub fn installed_on_quit(&self) -> usize {
+        self.installed_on_quit.load(Ordering::SeqCst)
+    }
+
+    fn install(&self, counter: &AtomicUsize) -> Result<(), UpdateError> {
+        let mut s = self.state.lock().unwrap();
+        if s.download != Download::Done {
+            return Err(UpdateError::Install("No update was downloaded.".into()));
+        }
+        s.download = Download::None;
+        counter.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+impl Updater for FakeUpdater {
+    fn current_version(&self) -> String {
+        self.current.clone()
+    }
+
+    fn check(&self) -> Result<Option<Release>, UpdateError> {
+        self.checks.fetch_add(1, Ordering::SeqCst);
+        let mut s = self.state.lock().unwrap();
+        let found = match &s.server {
+            FakeServer::NoRelease => None,
+            FakeServer::NetworkError(why) => return Err(UpdateError::Network(why.clone())),
+            FakeServer::Release(version) => muesli_core::update::is_newer(version, &self.current)
+                .then(|| Release { version: version.trim_start_matches('v').to_string(), notes: Some("Bug fixes.".into()) }),
+        };
+        s.found = found.clone();
+        Ok(found)
+    }
+
+    fn download(&self, release: &Release, on_progress: OnProgress) -> Result<(), UpdateError> {
+        let on_progress = Arc::new(on_progress);
+        let mut s = self.state.lock().unwrap();
+        if s.found.as_ref() != Some(release) {
+            return Err(UpdateError::Network("This release was not found by the last check.".into()));
+        }
+        s.download = Download::Running;
+        s.outcome = None;
+        s.on_progress = Some(on_progress.clone());
+        let outcome = if self.hold_downloads.load(Ordering::SeqCst) {
+            while s.outcome.is_none() {
+                s = self.changed.wait(s).unwrap();
+            }
+            s.outcome.take().unwrap()
+        } else {
+            drop(s);
+            on_progress(50, Some(100));
+            on_progress(100, Some(100));
+            s = self.state.lock().unwrap();
+            Ok(())
+        };
+        s.on_progress = None;
+        let outcome =
+            outcome.and_then(|()| if self.bad_signature.load(Ordering::SeqCst) { Err(UpdateError::BadSignature) } else { Ok(()) });
+        s.download = if outcome.is_ok() { Download::Done } else { Download::None };
+        outcome
+    }
+
+    fn install_and_restart(&self) -> Result<(), UpdateError> {
+        self.install(&self.installed_now)
+    }
+
+    fn install_on_quit(&self) -> Result<(), UpdateError> {
+        self.install(&self.installed_on_quit)
     }
 }
 

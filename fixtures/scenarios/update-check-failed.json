@@ -1,0 +1,10 @@
+{
+  "name": "Check for updates: no connection",
+  "description": "GitHub cannot be reached. A check by itself stays silent; Check for Updates in Settings shows the reason and Try again.",
+  "setupDone": true,
+  "model": "ready",
+  "updateError": "Could not connect to github.com (timed out after 15 s)",
+  "steps": [
+    { "do": "intent", "intent": { "type": "openSettings" } }
+  ]
+}

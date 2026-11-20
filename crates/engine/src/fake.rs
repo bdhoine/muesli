@@ -147,6 +147,7 @@ pub enum HostCall {
     PickTranscriptsFolder,
     Reveal(PathBuf),
     Open(PathBuf),
+    OpenUrl(String),
     Quit,
 }
 
@@ -221,6 +222,10 @@ impl Host for RecordingHost {
 
     fn open(&self, path: &Path) {
         self.record(HostCall::Open(path.to_path_buf()));
+    }
+
+    fn open_url(&self, url: &str) {
+        self.record(HostCall::OpenUrl(url.to_string()));
     }
 
     fn quit(&self) {

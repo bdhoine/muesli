@@ -181,6 +181,8 @@
     keepScroll(() => {
       root.innerHTML = `${titlebar()}<div class="main-window">
         ${toolbar}
+        ${v.update ? `<div class="banner info" role="status" data-testid="update-banner"><span class="grow">${esc(v.update.text)}</span>
+            ${button("Not now", { type: "dismissUpdate" }, { kind: "small quiet" })}${button("What's new", { type: "openReleaseNotes", version: v.update.version }, { kind: "small" })}${button("Restart", { type: "restartToUpdate" }, { kind: "small primary" })}</div>` : ""}
         ${v.extensionUpdate ? `<div class="banner info" role="status" data-testid="extension-update"><span class="grow">${esc(v.extensionUpdate)}</span>
             ${button("Not now", { type: "dismissExtensionUpdate" }, { kind: "small quiet" })}${button("Update", { type: "connectClaudeDesktop" }, { kind: "small primary" })}</div>` : ""}
         ${v.error ? `<div class="banner" role="alert">${esc(v.error)} ${button("Dismiss", { type: "dismissError" }, { kind: "small" })}</div>` : ""}
@@ -260,6 +262,27 @@
     </div>`;
   }
 
+  /** Settings > General: the version, updates and the automatic check. */
+  function updates(u) {
+    const status = u.status
+      ? `<span class="pill ${esc(u.tone)}" data-testid="update-status"><span class="dot"></span>${esc(u.status)}</span>`
+      : "";
+    const version = `<div class="setting" data-testid="version">
+        <div class="text"><span class="title">${esc(u.title)} ${button("What's new", { type: "openReleaseNotes", version: u.version }, { kind: "link" })}</span>
+          ${u.progress != null ? progress(u.progress) : ""}
+          ${u.restartHint ? `<span class="sub">${esc(u.restartHint)}</span>` : ""}</div>
+        <div class="controls">${status}${u.restart ? button("Restart", { type: "restartToUpdate" }, { kind: "primary", disabled: !u.canRestart, testid: "update-restart" }) : ""}</div>
+      </div>`;
+    if (!u.available) return version;
+    return `${version}
+      <div class="setting"><div class="text"><span class="title">Updates</span>
+        <span class="sub" data-testid="last-checked">${u.lastChecked ? `Last checked: ${esc(date(u.lastChecked))}` : "Not checked yet"}</span></div>
+        <div class="controls">${button(u.checkLabel, { type: "checkForUpdates" }, { disabled: !u.canCheck, testid: "check-updates" })}</div></div>
+      <label class="setting"><div class="text"><span class="title">Check for updates automatically</span><span class="sub">Once a day, from GitHub. Only your IP address is seen there.</span></div>
+        <input type="checkbox" role="switch" data-testid="auto-update" ${u.autoCheck ? "checked" : ""}
+          data-toggle='${esc(JSON.stringify({ type: "setAutoUpdateCheck" }))}'></label>`;
+  }
+
   function settings(v) {
     const a = v.assistants;
     const open = [...root.querySelectorAll("details[open]")].map((d) => d.dataset.key);
@@ -296,6 +319,7 @@
         <label class="setting"><div class="text"><span class="title">${esc(v.words.startAtLogin)}</span><span class="sub">So Muesli is there when a meeting starts</span></div>
           <input type="checkbox" role="switch" data-testid="login" ${v.startAtLogin ? "checked" : ""}
             data-toggle='${esc(JSON.stringify({ type: "setStartAtLogin" }))}'></label>
+        ${updates(v.updates)}
       </section>
       <h2>Languages</h2>
       <section class="card"><div class="setting stack">
@@ -313,7 +337,6 @@
         <div class="stack">
           <section class="card">${model(v.model)}</section>
           <section class="card">${permissionRows(v.permissions, { tags: false })}</section>
-          <p class="version">Muesli ${esc(v.version)}</p>
         </div>
       </details>
     </div>`;
@@ -325,8 +348,8 @@
   const promiseIcons = [icons.computer, icons.file, icons.noBot];
 
   function setup(v) {
-    const last = v.step === v.steps - 1;
-    const counter = v.step === 0 ? "" : last ? "All set" : `Step ${v.step} of ${v.steps - 2}`;
+    const last = v.finish;
+    const counter = v.counter;
     const m = v.model;
     let body = "";
     if (v.step === 0) {
@@ -359,7 +382,7 @@
             m.progress != null ? `Speech model downloading in the background · ${pct(m.progress)}` : `${esc(m.title)} · ${esc(m.text)}`
           }</span></div>`
         : "";
-    const primary = last ? { type: "finishSetup" } : { type: "setupNext" };
+    const primary = v.finish ? { type: "finishSetup" } : { type: "setupNext" };
     root.innerHTML = `${titlebar()}<div class="setup step-${v.step}">
       <div class="setup-body">
         <div class="setup-top"><span class="mark-tile"><img alt="" src="brand/mark.svg"></span><span class="counter">${esc(counter)}</span></div>

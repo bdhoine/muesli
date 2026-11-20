@@ -5,6 +5,7 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Added
+- Muesli keeps itself up to date. Once a day it checks GitHub for a new version and downloads it in the background. When it is ready, the menu offers **Restart to Update**, the menu bar or tray icon gets a small green dot, Muesli's window shows a banner and you get one notification; nothing interrupts a meeting you are transcribing. Quitting Muesli with an update ready installs it too. Settings shows your version with **What's new**, **Check for Updates**, and a switch to turn automatic checks off. After an update Muesli tells you once, and on a Mac it opens the permissions screen if macOS asks for them again.
 - When Claude Desktop has an older Muesli extension, Muesli tells you: a notification with **Update** (once per Muesli version) and a banner at the top of its window with **Update** and **Not now**. Update opens the new extension and Claude asks to install it, so you no longer have to look in Settings.
 - The menu shows the length and day of each recent transcript ("32 min · Today 14:30"), and while transcribing, how long the recording has run (macOS).
 - macOS: Muesli's window has a round **Start transcribing** button in the corner. While a meeting is transcribed, the newest line shows faded until it settles, and "Listening · more text in about 30 seconds" with three moving dots says more is coming (the dots stand still if your system asks for less motion).

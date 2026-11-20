@@ -12,7 +12,7 @@ use std::time::Duration;
 use chrono::{TimeZone, Utc};
 use muesli_core::ports::{
     Access, AudioStream, Clock, LoginItem, MeetingDetector, Notice, Notifier, OnError, OnSamples, Permission, Permissions, PlatformPaths,
-    Question, Trash, Tray, TrayItem, TrayMenu,
+    Question, Trash, Tray, TrayItem, TrayMenu, UpdateError, Updater,
 };
 use muesli_core::Paths;
 
@@ -130,9 +130,11 @@ pub fn tray(tray: &dyn Tray) {
         transcribing: true,
         tooltip: "Muesli".into(),
         transcribing_since: None,
+        update_ready: true,
     };
     tray.show(&menu);
     tray.show(&menu);
+    tray.show(&TrayMenu { transcribing: false, ..menu.clone() });
     tray.show(&TrayMenu::default());
 }
 
@@ -188,4 +190,43 @@ pub fn audio_source(start: &dyn Fn(OnSamples, OnError) -> Result<Box<dyn AudioSt
         std::thread::sleep(Duration::from_millis(300));
     }
     assert_eq!(count.load(Ordering::SeqCst), 0, "samples arrived after drop");
+}
+
+/// The running version is a version; a check says "up to date", offers a newer stable version or
+/// says why it could not check; nothing can be installed before a verified download.
+pub fn updater(updater: &dyn Updater) {
+    let current = updater.current_version();
+    assert!(muesli_core::update::is_newer("999.0.0", &current), "the current version {current:?} is not a version");
+    let started = std::time::Instant::now();
+    match updater.check() {
+        Ok(None) => {}
+        Ok(Some(release)) => {
+            assert!(muesli_core::update::is_newer(&release.version, &current), "offered {} while running {current}", release.version)
+        }
+        Err(why) => assert!(!why.to_string().is_empty(), "a failed check says why"),
+    }
+    assert!(started.elapsed() < Duration::from_secs(20), "a check gives up after 15 s");
+    assert!(updater.install_and_restart().is_err(), "nothing downloaded, nothing to install");
+    assert!(updater.install_on_quit().is_err(), "nothing downloaded, nothing to install");
+}
+
+/// With a newer release on offer: the download reports progress and can then be installed once;
+/// a download that does not match the signature is never installed. `bad_signature` makes the
+/// next download fail its verification. Only for adapters that can be driven: the fakes.
+pub fn updater_installs_only_verified_downloads(updater: &dyn Updater, bad_signature: &dyn Fn(bool)) {
+    let release = updater.check().expect("check").expect("a newer release is on offer");
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    updater.download(&release, Box::new(move |received, total| sink.lock().unwrap().push((received, total)))).expect("download");
+    let seen = seen.lock().unwrap().clone();
+    assert!(!seen.is_empty(), "no progress reported");
+    assert!(seen.windows(2).all(|w| w[0].0 <= w[1].0), "progress went backwards");
+    updater.install_on_quit().expect("install a verified download");
+    assert!(updater.install_and_restart().is_err(), "a download installs once");
+
+    bad_signature(true);
+    let release = updater.check().unwrap().unwrap();
+    assert_eq!(updater.download(&release, Box::new(|_, _| {})), Err(UpdateError::BadSignature));
+    assert!(updater.install_and_restart().is_err(), "a download that failed verification was discarded");
+    bad_signature(false);
 }

@@ -1,0 +1,9 @@
+{
+  "name": "Check for updates: up to date",
+  "description": "There is no newer release. Settings is open; Check for Updates answers \"Muesli is up to date\".",
+  "setupDone": true,
+  "model": "ready",
+  "steps": [
+    { "do": "intent", "intent": { "type": "openSettings" } }
+  ]
+}

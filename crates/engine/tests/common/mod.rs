@@ -7,7 +7,7 @@ use muesli_core::ports::{DetectionSample, PlatformWords};
 use muesli_core::{DetectedMeeting, Preferences};
 use muesli_engine::fake::{FakeSpeech, RecordingHost};
 use muesli_engine::{Engine, Options};
-use muesli_platform_fake::FakePlatform;
+use muesli_platform_fake::{FakePlatform, FakeUpdater};
 
 pub struct Harness {
     pub dir: tempfile::TempDir,
@@ -15,6 +15,8 @@ pub struct Harness {
     pub speech: Arc<FakeSpeech>,
     pub host: Arc<RecordingHost>,
     pub engine: Arc<Engine>,
+    /// Muesli's updates; only engines built with `with_updater` use it.
+    pub updater: Arc<FakeUpdater>,
 }
 
 pub fn languages() -> Vec<String> {
@@ -44,11 +46,25 @@ impl Harness {
     }
 
     pub fn with(dir: tempfile::TempDir, fakes: FakePlatform, speech: FakeSpeech) -> Self {
+        Self::start(dir, fakes, speech, None)
+    }
+
+    /// An engine that updates itself through `updater` (a release build).
+    pub fn with_updater(dir: tempfile::TempDir, fakes: FakePlatform, speech: FakeSpeech, updater: Arc<FakeUpdater>) -> Self {
+        Self::start(dir, fakes, speech, Some(updater))
+    }
+
+    fn start(dir: tempfile::TempDir, fakes: FakePlatform, speech: FakeSpeech, updater: Option<Arc<FakeUpdater>>) -> Self {
         let speech = Arc::new(speech);
         let host = Arc::new(RecordingHost::default());
-        let engine = Engine::new(fakes.platform(), speech.clone(), host.clone(), Options { system_languages: languages() });
+        let mut options = Options::new(languages());
+        if let Some(u) = &updater {
+            options = options.with_updater(u.clone());
+        }
+        let engine = Engine::new(fakes.platform(), speech.clone(), host.clone(), options);
         engine.start();
-        Self { dir, fakes, speech, host, engine }
+        let updater = updater.unwrap_or_else(|| Arc::new(FakeUpdater::new(env!("CARGO_PKG_VERSION"))));
+        Self { dir, fakes, speech, host, engine, updater }
     }
 
     /// Moves the clock on in steps of a second, ticking the engine each time.

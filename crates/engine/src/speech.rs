@@ -39,7 +39,7 @@ impl ModelStatus {
 }
 
 /// The speech model: whisper.cpp in the app (`crates/whisper`), a fake in tests and the simulator.
-/// Downloading is the only network request Muesli makes.
+/// Downloading is one of Muesli's two kinds of network request; the other is the update check.
 pub trait SpeechModel: Send + Sync {
     fn status(&self) -> ModelStatus;
     /// Starts downloading whatever is missing, in the background. Does nothing when all is there

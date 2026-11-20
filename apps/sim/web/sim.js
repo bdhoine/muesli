@@ -20,6 +20,7 @@ function render() {
   $("#model").textContent = `Speech model: ${s.model.kind}`;
   $("#tray-title").textContent = s.skin === "mac" ? "Menu bar" : "System tray";
   $("#tray-icon").classList.toggle("on", s.menu.transcribing);
+  $("#tray-icon").classList.toggle("update", s.menu.updateReady);
   $("#menu").innerHTML = s.menu.items
     .map((i) =>
       i.kind === "separator" ? `<li class="separator"></li>`

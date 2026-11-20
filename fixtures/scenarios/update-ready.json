@@ -1,0 +1,14 @@
+{
+  "name": "Update ready",
+  "description": "GitHub has Muesli 0.2.0. Thirty seconds after start Muesli checks, downloads it in the background and offers it: the first menu item, a green dot on the icon, a banner in the main window and one notification with Restart.",
+  "setupDone": true,
+  "model": "ready",
+  "release": "0.2.0",
+  "steps": [
+    { "do": "meeting", "title": "Weekly sync", "source": "calendar", "minutes": 32, "hoursAgo": 26 },
+    { "do": "advance", "seconds": 30 },
+    { "do": "wait", "ms": 300 },
+    { "do": "advance", "seconds": 1 },
+    { "do": "intent", "intent": { "type": "openMuesli" } }
+  ]
+}

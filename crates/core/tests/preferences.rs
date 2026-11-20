@@ -16,6 +16,18 @@ fn defaults_are_safe() {
     assert!(!p.claude_desktop_config_entry);
     assert!(p.languages.is_none());
     assert!(!p.onboarding_done);
+    assert!(p.auto_update_check, "checking for updates is on by default");
+    assert!(p.update_last_checked.is_none() && p.update_notified.is_none() && p.last_run_version.is_none());
+}
+
+#[test]
+fn a_config_from_before_updates_checks_for_updates() {
+    let p: Preferences = serde_json::from_str(r#"{"mcpEnabled":true,"onboardingDone":true}"#).unwrap();
+    assert!(p.auto_update_check);
+    assert!(p.last_run_version.is_none());
+    let p: Preferences = serde_json::from_str(r#"{"autoUpdateCheck":false,"updateLastChecked":"2027-01-15T09:00:00Z"}"#).unwrap();
+    assert!(!p.auto_update_check);
+    assert_eq!(p.update_last_checked.unwrap().to_rfc3339(), "2027-01-15T09:00:00+00:00");
 }
 
 #[test]

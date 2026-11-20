@@ -5,7 +5,7 @@ Muesli is an on-device meeting transcriber for **macOS and Windows**. It capture
 ## One app, two platforms
 - **macOS and Windows ship the same Tauri app** (`apps/desktop`), with the same web UI (`ui/`) and the same Rust crates, in one Cargo workspace at the repo root. A feature is done when it works on both, or when `docs/PLATFORMS.md` records why one platform differs.
 - The SwiftUI app is retired. `macos/` stays in the repository, untouched and no longer built, until the maintainer has verified the Tauri app on a real Mac; then it is deleted. Never add to it.
-- **Ports and adapters.** The core never calls the OS. Every OS service is a trait (a port) in `crates/core/src/ports.rs`: `Clock`, `MicCapture`, `SystemAudioCapture`, `MeetingDetector`, `Notifier`, `Permissions`, `Tray`, `Trash`, `PlatformPaths`, `LoginItem`, bundled in `Platform` with the platform's words (`PlatformWords`: Trash/Recycle Bin, Finder/Explorer, Mac/PC…).
+- **Ports and adapters.** The core never calls the OS. Every OS service is a trait (a port) in `crates/core/src/ports.rs`: `Clock`, `MicCapture`, `SystemAudioCapture`, `MeetingDetector`, `Notifier`, `Permissions`, `Tray`, `Trash`, `PlatformPaths`, `LoginItem`, bundled in `Platform` with the platform's words (`PlatformWords`: Trash/Recycle Bin, Finder/Explorer, Mac/PC…). `Updater` (Muesli's own updates) is a port too, but the shell provides it (`apps/desktop/src/updater.rs`, `tauri-plugin-updater`, the same on both platforms) and hands it to the engine in `Options`; debug builds have none and never check.
   - Adapters: `platform-macos` (objc2: EventKit, UNUserNotificationCenter, AVFoundation, NSFileManager, SMAppService, Core Audio), `platform-windows` (WASAPI sessions, toasts, registry), `platform-common` (what both share through portable crates: clock, folders, trash, Teams scan, cpal capture), `platform-fake` (every port, drivable, builds everywhere).
   - `port-contracts`: one test suite per port. `tests/fakes.rs` runs them against the fakes everywhere; `tests/native.rs` against the native adapters on their own OS.
   - A new OS call means: a port method, a fake, a contract and both native adapters.
@@ -16,7 +16,7 @@ Muesli is an on-device meeting transcriber for **macOS and Windows**. It capture
 ## Rules
 - Logic goes in the core crates (`crates/core` for data and rules, `crates/engine` for behaviour) with tests against the fakes. `apps/desktop` stays thin: adapters for the tray, windows and dialogs, and wiring.
 - Use libraries for the hard parts (resampling: `rubato`; audio devices: `cpal`; atomic writes: `tempfile`; ids: `uuid`; objc2 for Apple frameworks). Do not hand-roll replacements.
-- Audio is never written to disk. The only network request is the Whisper model download.
+- Audio is never written to disk. The only network requests are the model downloads (Whisper and voice activity) and the update check to GitHub (with the update download it finds).
 - Transcribing must be impossible while no model is ready, and nothing may prompt for a permission outside the setup screen and Settings (the "Allow…" buttons).
 - The UI says "transcribe / transcribing", never "record".
 - Platform differences are documented in `docs/PLATFORMS.md`, split into what the platform imposes (for example: Windows has no system calendar, needs no system-audio permission, and its tray icons take no file drops) and what is simply not done yet. Before calling something impossible on a platform, check it and record the reason there.
@@ -30,5 +30,5 @@ Muesli is an on-device meeting transcriber for **macOS and Windows**. It capture
 - `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` at the repo root. On Linux the whole workspace builds (the app with the fakes; it needs WebKitGTK), but `platform-macos` and `platform-windows` compile to nothing there.
 - UI: `cargo build -p muesli-sim`, then in `apps/sim`: `npm ci`, `npx playwright install chromium`, `node --test tests/*.test.mjs`.
 - On a Mac or PC also `cargo test -p muesli-port-contracts --test native` (and `-- --ignored` for the contracts that need a device, a person or change the machine).
-- CI: **Tests** (Rust on macOS, Windows, Linux; UI tests; generated files) and **Build installers** (Windows .msi/.exe, macOS .dmg). Both are started by hand, so nothing checks a push automatically: run the tests locally before pushing.
+- CI: **Tests** (Rust on macOS, Windows, Linux; UI tests; generated files) and **Release** (`app.yml`: on a `v*` tag, signed installers and updater bundles in a draft GitHub release; by hand, unsigned test installers). Tests are started by hand, so nothing checks a push automatically: run the tests locally before pushing. Never create tags or releases unless the maintainer asks; see CONTRIBUTING.md, "Releasing".
 - Say plainly what was not built or run on macOS or Windows. `docs/PLATFORMS.md` section 3 records what has been verified on real machines.

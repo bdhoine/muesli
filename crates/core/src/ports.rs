@@ -4,7 +4,9 @@
 //! (`platform-macos`, `platform-windows`), `platform-fake` implements all of them for tests and the
 //! simulator, and `port-contracts` holds one test suite per port that every adapter must pass.
 //!
-//! Adapters are shared as `Arc<dyn Port>`; the [`Platform`] bundle carries one of each.
+//! Adapters are shared as `Arc<dyn Port>`; the [`Platform`] bundle carries one of each. The
+//! [`Updater`] is the exception: the shell provides it (the same adapter on both platforms) and
+//! hands it to the engine with its options, and builds without updates (debug builds) have none.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -178,6 +180,9 @@ pub struct TrayMenu {
     pub tooltip: String,
     /// When the recording started, so the menu can show how long it has run when it opens.
     pub transcribing_since: Option<DateTime<Utc>>,
+    /// A small Pumpkin seed dot on the icon: an update is ready to install. The red transcribing
+    /// dot wins when both are set.
+    pub update_ready: bool,
 }
 
 pub trait Tray: Send + Sync {
@@ -218,6 +223,61 @@ pub trait PlatformPaths: Send + Sync {
 pub trait LoginItem: Send + Sync {
     fn is_enabled(&self) -> bool;
     fn set_enabled(&self, on: bool) -> Result<(), String>;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Updates
+
+/// A stable release of Muesli that is newer than the running app.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Release {
+    /// "0.2.0", without the `v`.
+    pub version: String,
+    /// The release notes, if the release has any.
+    pub notes: Option<String>,
+}
+
+/// Why an update could not be checked, downloaded or installed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateError {
+    /// No connection, a timeout, or the server answered with something unusable.
+    Network(String),
+    /// The download does not match the signature made with Muesli's key: it was discarded.
+    BadSignature,
+    /// Nothing was downloaded yet, or installing failed.
+    Install(String),
+}
+
+impl std::fmt::Display for UpdateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Network(why) | Self::Install(why) => f.write_str(why),
+            Self::BadSignature => f.write_str("The download did not match Muesli's signature, so it was discarded."),
+        }
+    }
+}
+
+/// Bytes received so far, and the total when the server says it.
+pub type OnProgress = Box<dyn Fn(u64, Option<u64>) + Send + Sync>;
+
+/// Muesli's own updates, from the GitHub releases of the project. Every call blocks; the engine
+/// calls them on a thread of its own. The adapter is the same on macOS and Windows
+/// (`tauri-plugin-updater`, in `apps/desktop`); the fake is in `platform-fake`.
+pub trait Updater: Send + Sync {
+    /// The running app's version, e.g. "0.1.0".
+    fn current_version(&self) -> String;
+    /// Looks for a newer stable release. `Ok(None)`: up to date, which includes no release at all
+    /// and a release without update information. Never offers an older or equal version.
+    fn check(&self) -> Result<Option<Release>, UpdateError>;
+    /// Downloads the release the last `check` found and verifies its signature against the
+    /// public key built into the app. A download that does not match is discarded
+    /// (`UpdateError::BadSignature`) and can never be installed.
+    fn download(&self, release: &Release, on_progress: OnProgress) -> Result<(), UpdateError>;
+    /// Installs the downloaded update and starts the new version. Returns only when that failed.
+    fn install_and_restart(&self) -> Result<(), UpdateError>;
+    /// Installs the downloaded update without starting it again: Muesli is quitting.
+    fn install_on_quit(&self) -> Result<(), UpdateError>;
 }
 
 // ---------------------------------------------------------------------------------------------

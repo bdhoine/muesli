@@ -64,6 +64,10 @@ fn config_loads_and_reserialises_to_the_same_data() {
     assert_eq!(p.languages.as_deref(), Some(&["nl".to_string(), "en".to_string()][..]));
     assert!(p.onboarding_done);
     assert_eq!(p.transcripts_folder.as_deref(), Some("/Users/me/Documents/Meetings"));
+    assert!(p.auto_update_check);
+    assert_eq!(p.last_run_version.as_deref(), Some("0.1.0"));
+    assert_eq!(p.update_notified.as_deref(), Some("0.2.0"));
+    assert_eq!(p.update_last_checked.map(|d| d.to_rfc3339()).as_deref(), Some("2027-01-15T09:00:00+00:00"));
     same_json(&text, &to_pretty_sorted(&p));
 }
 
@@ -72,6 +76,7 @@ fn a_config_from_0_0_2_loads_with_its_old_keys_dropped() {
     let text = fixture("config-0.0.2.json");
     let p: Preferences = serde_json::from_str(&text).unwrap();
     assert!(p.mcp_enabled && p.onboarding_done);
+    assert!(p.auto_update_check, "a config from before updates checks for them");
     assert_eq!(p.languages.as_deref(), Some(&["nl".to_string(), "en".to_string()][..]));
     let again = to_pretty_sorted(&p);
     for key in muesli_core::preferences::REMOVED_KEYS {

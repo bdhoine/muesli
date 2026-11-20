@@ -2,7 +2,8 @@
 //! only draws it and reports clicks.
 //!
 //! macOS: a click shows the menu. Windows: a left click opens Muesli's window and a right click
-//! shows the menu, as tray apps do there. While transcribing the icon carries a red dot.
+//! shows the menu, as tray apps do there. While transcribing the icon carries a red dot; when an
+//! update is ready, a Pumpkin seed one.
 
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -18,21 +19,34 @@ const TRAY_ID: &str = "main";
 /// The template image (black, tinted by macOS) and the same with a red dot while transcribing.
 const IDLE: &[u8] = include_bytes!("../icons/tray.png");
 const TRANSCRIBING: &[u8] = include_bytes!("../icons/tray-transcribing.png");
+const UPDATE: &[u8] = include_bytes!("../icons/tray-update.png");
 /// Windows: milk-coloured versions for a dark taskbar (the default on Windows 11).
 #[cfg(windows)]
 const IDLE_LIGHT: &[u8] = include_bytes!("../icons/tray-light.png");
 #[cfg(windows)]
 const TRANSCRIBING_LIGHT: &[u8] = include_bytes!("../icons/tray-light-transcribing.png");
+#[cfg(windows)]
+const UPDATE_LIGHT: &[u8] = include_bytes!("../icons/tray-light-update.png");
 
-/// The icon for the current state, and whether macOS may tint it (a template image).
-fn icon_for(transcribing: bool) -> (&'static [u8], bool) {
+/// The icon for the current state, and whether macOS may tint it (a template image). The red
+/// transcribing dot wins over the update dot.
+fn icon_for(transcribing: bool, update: bool) -> (&'static [u8], bool) {
     #[cfg(windows)]
     if !muesli_platform_windows::theme::taskbar_is_light() {
-        return (if transcribing { TRANSCRIBING_LIGHT } else { IDLE_LIGHT }, false);
+        let icon = if transcribing {
+            TRANSCRIBING_LIGHT
+        } else if update {
+            UPDATE_LIGHT
+        } else {
+            IDLE_LIGHT
+        };
+        return (icon, false);
     }
-    // The red dot cannot be a template image (macOS would tint it black).
+    // A coloured dot cannot be a template image (macOS would tint it black).
     if transcribing {
         (TRANSCRIBING, false)
+    } else if update {
+        (UPDATE, false)
     } else {
         (IDLE, true)
     }
@@ -48,7 +62,7 @@ pub struct TauriTray {
 impl TauriTray {
     pub fn attach(&self, handle: &AppHandle, host: Arc<TauriHost>) -> tauri::Result<()> {
         let _ = self.handle.set(handle.clone());
-        let (bytes, template) = icon_for(false);
+        let (bytes, template) = icon_for(false, false);
         let icon = Image::from_bytes(bytes)?;
         let clicks = host.clone();
         TrayIconBuilder::with_id(TRAY_ID)
@@ -87,7 +101,7 @@ impl Tray for TauriTray {
                 let _ = tray.set_menu(Some(menu));
             }
             let _ = tray.set_tooltip(Some(&wanted.tooltip));
-            let (image, template) = icon_for(wanted.transcribing);
+            let (image, template) = icon_for(wanted.transcribing, wanted.update_ready);
             if let Ok(icon) = Image::from_bytes(image) {
                 let _ = tray.set_icon(Some(icon));
                 let _ = tray.set_icon_as_template(template);
@@ -100,6 +114,7 @@ impl Tray for TauriTray {
 #[cfg(target_os = "macos")]
 fn symbol(id: &str) -> Option<&'static str> {
     Some(match id {
+        "update" => "arrow.down.circle",
         "start" => "record.circle",
         "stop" => "stop.circle",
         "dismiss" => "xmark.circle",

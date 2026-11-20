@@ -29,7 +29,8 @@ muesli-brand/
     ├── muesliTemplate.png        ← 18 × 18 px
     ├── muesliTemplate@2x.png     ← 36 × 36 px
     ├── muesliTranscribing(@2x).png        ← with the red dot, while transcribing
-    └── muesliTrayLight(Transcribing)(@2x).png ← milk versions for a dark Windows taskbar
+    ├── muesliUpdate(@2x).png              ← with the Pumpkin seed dot, when an update is ready
+    └── muesliTrayLight(Transcribing|Update)(@2x).png ← milk versions for a dark Windows taskbar
 ```
 
 Suggested place in the repo: `assets/brand/` (copy the whole folder).
@@ -158,6 +159,7 @@ MenuBarExtra { ContentView() } label: {
 In an asset catalog, set the image set's **Render As** to *Template Image*.
 
 - While transcribing, the icon carries a small red dot (`#B3382C`) at its top right: `menubar/muesliTranscribing.png` + `@2x`. This is the one exception to the template rule: the dot image is not a template image, so macOS does not tint it.
+- When an update is ready (and Muesli is not busy), the icon carries the same dot in `pumpkin-seed` (`#5B7A3A`) instead: `menubar/muesliUpdate.png` + `@2x`, and `muesliTrayLightUpdate.png` + `@2x` for a dark Windows taskbar. Not a template image either. The red transcribing dot wins when both apply. These are the transcribing images with the dot recoloured; regenerate them the same way if those change.
 - Windows: the taskbar is dark by default, so the tray uses milk-coloured versions on a dark taskbar (`menubar/muesliTrayLight.png`, `muesliTrayLightTranscribing.png`, each with `@2x`) and the black ones on a light taskbar.
 
 ---

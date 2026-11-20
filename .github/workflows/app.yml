@@ -1,17 +1,65 @@
-name: Build installers
-run-name: Build installers for ${{ github.ref_name }} (${{ github.sha }})
+name: Release
+run-name: ${{ startsWith(github.ref, 'refs/tags/v') && format('Release {0}', github.ref_name) || format('Build installers for {0} ({1})', github.ref_name, github.sha) }}
 
-# Builds the installers of the one Tauri app as downloadable artifacts: the Windows installers
-# (.msi/.exe) and the macOS disk image (.dmg; unsigned, since CI has no certificate, so macOS asks
-# before it opens it).
+# Pushing a tag v<version> builds the Windows installers (.exe, .msi) and the macOS app (.dmg and
+# the updater's .app.tar.gz), signs the updater bundles with the Tauri updater key, writes
+# latest.json and puts all of it in a DRAFT GitHub release. Publishing that release (as Latest)
+# is what offers the update to everyone; see CONTRIBUTING.md, "Releasing".
+#
+# Started by hand (workflow_dispatch) it builds unsigned test installers as downloadable artifacts,
+# without updater bundles and without a release.
+#
+# Neither is signed with a platform certificate: macOS gets an ad-hoc signature, Windows none.
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write
+
 jobs:
+  prepare:
+    name: Check the tag and create a draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The tag matches the workspace version
+        run: |
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the workspace version $version in Cargo.toml"
+            exit 1
+          fi
+      - name: The updater public key is set
+        run: |
+          if grep -q 'TODO(barry)' apps/desktop/tauri.release.conf.json; then
+            echo "::error::Replace the updater pubkey in apps/desktop/tauri.release.conf.json first (CONTRIBUTING.md, Releasing)"
+            exit 1
+          fi
+      - name: Create the draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # The release notes: this version's section of CHANGELOG.md.
+          awk -v v="$version" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Muesli $version" --notes-file notes.md
+          fi
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n 1)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
   bundle:
     name: Build ${{ matrix.name }}
+    needs: prepare
+    # Runs without `prepare` (skipped) when started by hand.
+    if: ${{ !cancelled() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -35,10 +83,32 @@ jobs:
           mkdir -p apps/desktop/binaries
           cp "target/${{ matrix.target }}/release/muesli-mcp$ext" "apps/desktop/binaries/muesli-mcp-${{ matrix.target }}$ext"
           python3 scripts/build-mcpb.py "target/${{ matrix.target }}/release/muesli-mcp$ext"
-      - name: Build the app
+
+      # A tag: signed updater bundles, latest.json, all uploaded to the draft release.
+      - name: Build, sign and upload to the draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: cargo tauri
+          args: --target ${{ matrix.target }} --config tauri.release.conf.json
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          includeUpdaterJson: true
+          # Windows updates through the per-user NSIS installer; the .msi stays a manual download.
+          updaterJsonPreferNsis: true
+
+      # By hand: unsigned test installers, no updater bundles (they need the signing key).
+      - name: Build the app (unsigned test build)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         working-directory: apps/desktop
-        run: cargo tauri build --target ${{ matrix.target }} --config tauri.release.conf.json
+        shell: bash
+        run: cargo tauri build --target ${{ matrix.target }} --config tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":false}}'
       - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         with:
           name: muesli-${{ matrix.target }}
           path: |

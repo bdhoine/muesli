@@ -1,10 +1,14 @@
 {
+  "autoUpdateCheck" : true,
   "claudeDesktopConfigEntry" : false,
   "languages" : [
     "nl",
     "en"
   ],
+  "lastRunVersion" : "0.1.0",
   "mcpEnabled" : true,
   "onboardingDone" : true,
-  "transcriptsFolder" : "\/Users\/me\/Documents\/Meetings"
+  "transcriptsFolder" : "\/Users\/me\/Documents\/Meetings",
+  "updateLastChecked" : "2027-01-15T09:00:00Z",
+  "updateNotified" : "0.2.0"
 }

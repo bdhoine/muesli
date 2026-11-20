@@ -16,7 +16,7 @@ mod intent;
 mod speech;
 pub mod views;
 
-pub use engine::{Engine, Options, ANSWER_TIMEOUT, CALL_END_DELAY, TOAST_SECONDS};
+pub use engine::{Engine, Options, ANSWER_TIMEOUT, CALL_END_DELAY, CHECK_EVERY, FIRST_CHECK_AFTER, TOAST_SECONDS};
 pub use host::{Host, Window};
 pub use intent::Intent;
 pub use speech::{ModelStatus, SpeechModel, Transcriber};
