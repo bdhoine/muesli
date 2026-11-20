@@ -12,6 +12,7 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 - The setup and Settings use the wording of the Muesli design: shorter promises, a line under each step, and "Speech model" with its size.
 
 ### Fixed
+- Without headphones, what the others said in a call no longer shows twice in the transcript (once as "Others" and once as "You", picked up by your microphone from the speakers).
 - Settings: the arrows that show **Other apps…** and **Advanced** can be opened were missing in the app.
 
 ## [0.1.0] - 2026-11-20

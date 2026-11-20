@@ -7,6 +7,7 @@
 pub mod assistants;
 pub mod chunker;
 pub mod detection;
+pub mod echo;
 pub mod editor;
 pub mod import;
 pub mod json;

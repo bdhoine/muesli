@@ -276,6 +276,8 @@ impl<'a> MeetingStore<'a> {
         }
         meeting.transcript.extend(segments);
         meeting.transcript.sort_by(|a, b| a.start.total_cmp(&b.start));
+        // The two streams arrive in either order, so look again each time.
+        crate::echo::drop_echoes(&mut meeting.transcript);
         self.save(meeting);
     }
 
