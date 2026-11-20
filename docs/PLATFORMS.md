@@ -56,6 +56,8 @@ These are not gaps to fix. Each follows from how macOS or Windows works.
 | Microphone, system audio | cpal on both (WASAPI / WASAPI loopback, Core Audio / Core Audio tap), resampled with rubato | Windows: a recording tested by the maintainer (2026-11-16). macOS through cpal: not run. |
 | Call detection: microphone in use, Teams | Core Audio process list / WASAPI sessions; process names | Port contracts on the fakes only; not run natively since the move to ports |
 | Calendar (macOS) | EventKit through objc2 | Not compiled or run yet |
+| Tray icon colour with the red or green dot | A coloured icon cannot be tinted, so milk and roast glyphs; chosen from the bar's own appearance (macOS: the status item button, redrawn every 2 s while a dot shows; Windows: the registry theme) | Not run on either platform yet |
+| Click on the notification itself | `Question::click`: "Looks like a meeting" starts, "The call seems to have ended" opens Muesli. macOS: delegate's default action; Windows: the toast's body click | Port contract and engine tests on the fakes (Linux); native adapters not compiled or run yet |
 | Notifications, permissions, Trash, login item | `platform-macos` (objc2) / `platform-windows` | Not compiled for macOS here; the Windows adapters are moved code with small changes, not run |
 | Claude plugin (`plugin/`) | A Node launcher finds `muesli-mcp` through `mcp-path`, which the app writes on start | `claude plugin validate`, launcher unit tests; server connects through the launcher in Claude Code on macOS (Swift app) |
 

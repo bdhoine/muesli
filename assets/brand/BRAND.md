@@ -158,8 +158,8 @@ MenuBarExtra { ContentView() } label: {
 
 In an asset catalog, set the image set's **Render As** to *Template Image*.
 
-- While transcribing, the icon carries a small red dot (`#B3382C`) at its top right: `menubar/muesliTranscribing.png` + `@2x`. This is the one exception to the template rule: the dot image is not a template image, so macOS does not tint it.
-- When an update is ready (and Muesli is not busy), the icon carries the same dot in `pumpkin-seed` (`#5B7A3A`) instead: `menubar/muesliUpdate.png` + `@2x`, and `muesliTrayLightUpdate.png` + `@2x` for a dark Windows taskbar. Not a template image either. The red transcribing dot wins when both apply. These are the transcribing images with the dot recoloured; regenerate them the same way if those change.
+- While transcribing, the icon carries a small red dot (`#B3382C`) at its top right: `menubar/muesliTranscribing.png` + `@2x`. This is the one exception to the template rule: the dot image is not a template image, so macOS does not tint it. That is why it comes in two glyph colours: roast (black) on a light menu bar and milk (white, `menubar/muesliTrayLightTranscribing.png` + `@2x`, the Windows image) on a dark one. The app looks at the menu bar itself (its status item's appearance, not only the system's light or dark mode, since a dark wallpaper makes a dark bar in light mode) and redraws within a couple of seconds when it changes. The idle icon stays a template and follows the bar by itself.
+- When an update is ready (and Muesli is not busy), the icon carries the same dot in `pumpkin-seed` (`#5B7A3A`) instead: `menubar/muesliUpdate.png` + `@2x`, and `muesliTrayLightUpdate.png` + `@2x` for a dark Windows taskbar or macOS menu bar. Not a template image either. The red transcribing dot wins when both apply. These are the transcribing images with the dot recoloured; regenerate them the same way if those change.
 - Windows: the taskbar is dark by default, so the tray uses milk-coloured versions on a dark taskbar (`menubar/muesliTrayLight.png`, `muesliTrayLightTranscribing.png`, each with `@2x`) and the black ones on a light taskbar.
 
 ---

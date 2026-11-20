@@ -3,7 +3,9 @@
 //!
 //! macOS: a click shows the menu. Windows: a left click opens Muesli's window and a right click
 //! shows the menu, as tray apps do there. While transcribing the icon carries a red dot; when an
-//! update is ready, a Pumpkin seed one.
+//! update is ready, a Pumpkin seed one. Such an icon is a coloured image, which the system does
+//! not tint, so there are two glyphs: milk on a dark menu bar or taskbar, roast on a light one. The
+//! shell looks at the bar itself (macOS: the status item's appearance, Windows: the registry).
 
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -20,19 +22,21 @@ const TRAY_ID: &str = "main";
 const IDLE: &[u8] = include_bytes!("../icons/tray.png");
 const TRANSCRIBING: &[u8] = include_bytes!("../icons/tray-transcribing.png");
 const UPDATE: &[u8] = include_bytes!("../icons/tray-update.png");
-/// Windows: milk-coloured versions for a dark taskbar (the default on Windows 11).
-#[cfg(windows)]
+/// Milk-coloured versions for a dark menu bar (macOS) or taskbar (Windows 11's default).
+#[cfg(any(windows, target_os = "macos"))]
 const IDLE_LIGHT: &[u8] = include_bytes!("../icons/tray-light.png");
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 const TRANSCRIBING_LIGHT: &[u8] = include_bytes!("../icons/tray-light-transcribing.png");
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 const UPDATE_LIGHT: &[u8] = include_bytes!("../icons/tray-light-update.png");
 
 /// The icon for the current state, and whether macOS may tint it (a template image). The red
-/// transcribing dot wins over the update dot.
-fn icon_for(transcribing: bool, update: bool) -> (&'static [u8], bool) {
-    #[cfg(windows)]
-    if !muesli_platform_windows::theme::taskbar_is_light() {
+/// transcribing dot wins over the update dot. `dark_bar`: the menu bar or taskbar is dark, so a
+/// coloured icon needs the milk glyph. The idle icon on macOS is a template, which follows the bar
+/// by itself.
+fn icon_for(transcribing: bool, update: bool, dark_bar: bool) -> (&'static [u8], bool) {
+    #[cfg(any(windows, target_os = "macos"))]
+    if dark_bar && (cfg!(windows) || transcribing || update) {
         let icon = if transcribing {
             TRANSCRIBING_LIGHT
         } else if update {
@@ -42,6 +46,7 @@ fn icon_for(transcribing: bool, update: bool) -> (&'static [u8], bool) {
         };
         return (icon, false);
     }
+    let _ = dark_bar;
     // A coloured dot cannot be a template image (macOS would tint it black).
     if transcribing {
         (TRANSCRIBING, false)
@@ -50,6 +55,74 @@ fn icon_for(transcribing: bool, update: bool) -> (&'static [u8], bool) {
     } else {
         (IDLE, true)
     }
+}
+
+/// Whether the menu bar (macOS) or taskbar (Windows) is dark right now. On macOS this must run on
+/// the main thread once the tray icon exists.
+fn bar_is_dark(handle: &AppHandle) -> bool {
+    #[cfg(windows)]
+    {
+        let _ = handle;
+        !muesli_platform_windows::theme::taskbar_is_light()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        handle
+            .tray_by_id(TRAY_ID)
+            .and_then(|tray| {
+                tray.with_inner_tray_icon(|inner| inner.ns_status_item().and_then(|item| muesli_platform_macos::menubar::is_dark(&item)))
+                    .ok()
+            })
+            .flatten()
+            .unwrap_or(false)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = handle;
+        false
+    }
+}
+
+/// What the icon shows now, so a change of the bar's colour can redraw it (macOS looks).
+#[derive(Clone, Copy, Default)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+struct IconState {
+    transcribing: bool,
+    update: bool,
+    dark_bar: bool,
+}
+
+static ICON: Mutex<IconState> = Mutex::new(IconState { transcribing: false, update: false, dark_bar: false });
+
+/// Draws the icon for this state. On the main thread.
+fn draw_icon(handle: &AppHandle, transcribing: bool, update: bool) {
+    let Some(tray) = handle.tray_by_id(TRAY_ID) else { return };
+    let dark_bar = bar_is_dark(handle);
+    *ICON.lock().unwrap() = IconState { transcribing, update, dark_bar };
+    let (image, template) = icon_for(transcribing, update, dark_bar);
+    if let Ok(icon) = Image::from_bytes(image) {
+        let _ = tray.set_icon(Some(icon));
+        let _ = tray.set_icon_as_template(template);
+    }
+}
+
+/// macOS: the menu bar turns dark or light with the system's mode or the wallpaper behind it. A
+/// coloured icon does not follow, so look every couple of seconds and redraw when it changed.
+#[cfg(target_os = "macos")]
+fn watch_menu_bar(handle: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let drawn = *ICON.lock().unwrap();
+        if !(drawn.transcribing || drawn.update) {
+            continue; // the template icon follows the bar by itself
+        }
+        let h = handle.clone();
+        let _ = handle.run_on_main_thread(move || {
+            if bar_is_dark(&h) != drawn.dark_bar {
+                draw_icon(&h, drawn.transcribing, drawn.update);
+            }
+        });
+    });
 }
 
 /// The handle only exists once Tauri runs, so drawing waits until `attach`.
@@ -62,7 +135,7 @@ pub struct TauriTray {
 impl TauriTray {
     pub fn attach(&self, handle: &AppHandle, host: Arc<TauriHost>) -> tauri::Result<()> {
         let _ = self.handle.set(handle.clone());
-        let (bytes, template) = icon_for(false, false);
+        let (bytes, template) = icon_for(false, false, bar_is_dark(handle));
         let icon = Image::from_bytes(bytes)?;
         let clicks = host.clone();
         TrayIconBuilder::with_id(TRAY_ID)
@@ -79,6 +152,8 @@ impl TauriTray {
                 }
             })
             .build(handle)?;
+        #[cfg(target_os = "macos")]
+        watch_menu_bar(handle.clone());
         Ok(())
     }
 }
@@ -101,11 +176,7 @@ impl Tray for TauriTray {
                 let _ = tray.set_menu(Some(menu));
             }
             let _ = tray.set_tooltip(Some(&wanted.tooltip));
-            let (image, template) = icon_for(wanted.transcribing, wanted.update_ready);
-            if let Ok(icon) = Image::from_bytes(image) {
-                let _ = tray.set_icon(Some(icon));
-                let _ = tray.set_icon_as_template(template);
-            }
+            draw_icon(&handle2, wanted.transcribing, wanted.update_ready);
         });
     }
 }

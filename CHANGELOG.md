@@ -5,13 +5,23 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Added
+- Clicking the "Looks like a meeting" notification now starts transcribing, like its **Start transcribing** button. Clicking "The call seems to have ended" only opens Muesli's window; stopping stays a button press.
+- Settings: a small green light before "Connected" for Claude Desktop (amber when an older version is connected).
 - Muesli keeps itself up to date. Once a day it checks GitHub for a new version and downloads it in the background. When it is ready, the menu offers **Restart to Update**, the menu bar or tray icon gets a small green dot, Muesli's window shows a banner and you get one notification; nothing interrupts a meeting you are transcribing. Quitting Muesli with an update ready installs it too. Settings shows your version with **What's new**, **Check for Updates**, and a switch to turn automatic checks off. After an update Muesli tells you once, and on a Mac it opens the permissions screen if macOS asks for them again.
 - When Claude Desktop has an older Muesli extension, Muesli tells you: a notification with **Update** (once per Muesli version) and a banner at the top of its window with **Update** and **Not now**. Update opens the new extension and Claude asks to install it, so you no longer have to look in Settings.
 - The menu shows the length and day of each recent transcript ("32 min · Today 14:30"), and while transcribing, how long the recording has run (macOS).
-- macOS: Muesli's window has a round **Start transcribing** button in the corner. While a meeting is transcribed, the newest line shows faded until it settles, and "Listening · more text in about 30 seconds" with three moving dots says more is coming (the dots stand still if your system asks for less motion).
+- macOS: Muesli's window has a round **Start transcribing** button in the corner. While a meeting is transcribed, the newest line shows faded until it settles, and "Listening · text appears after each pause" with three moving dots says more is coming (the dots stand still if your system asks for less motion).
 - The setup and Settings use the wording of the Muesli design: shorter promises, a line under each step, and "Speech model" with its size.
 
+### Changed
+- Live text appears a few seconds after someone pauses, instead of every 30 seconds. Long stretches of speech are cut at the latest every 10 seconds, at their quietest moment, and silence is skipped. Audio files are still handled in 30-second steps.
+- Settings: the Muesli version sits on the right of its row.
+
 ### Fixed
+- macOS: while transcribing, the menu bar icon with its red dot stays readable on a dark menu bar (white), and follows the menu bar when it changes.
+- Cancel on an audio file now stops within moments, shows "Cancelling…" and removes the unfinished transcript, instead of finishing the current part and keeping a partial transcript.
+- Settings no longer jumps back to the top when you open **Other apps…** or something else changes in the background.
+- Settings no longer shows a stray "Off" line under **Other apps…**.
 - Without headphones, what the others said in a call no longer shows twice in the transcript (once as "Others" and once as "You", picked up by your microphone from the speakers).
 - Settings: the arrows that show **Other apps…** and **Advanced** can be opened were missing in the app.
 
