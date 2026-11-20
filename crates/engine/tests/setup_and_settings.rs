@@ -38,7 +38,7 @@ fn setup_walks_through_four_screens_and_downloads_on_the_way() {
     let welcome = h.engine.setup_view();
     assert_eq!((welcome.step, welcome.steps), (0, 4));
     assert_eq!(welcome.title, "Meet Muesli");
-    assert_eq!(welcome.promises, ["Runs entirely on this Mac.", "Keeps the text, never the audio.", "No bot in your calls."]);
+    assert_eq!(welcome.promises, ["Runs entirely on this Mac", "Keeps the text, never the audio", "No bot in your calls"]);
     assert_eq!(welcome.primary, "Get started");
     assert!(welcome.model.is_none());
 
@@ -73,7 +73,7 @@ fn setup_walks_through_four_screens_and_downloads_on_the_way() {
     let done = h.engine.setup_view();
     assert_eq!(done.title, "Muesli is in your menu bar");
     assert_eq!(done.primary, "Open Muesli");
-    assert!(done.notice.unwrap().starts_with("Tell people you are transcribing"));
+    assert!(done.notice.unwrap().starts_with("Please tell the people you meet with that you are transcribing"));
     assert!(!h.engine.preferences().onboarding_done);
 
     h.engine.intent(Intent::FinishSetup);

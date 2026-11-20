@@ -16,11 +16,10 @@
   const svg = (body, extra = "") =>
     `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${body}</svg>`;
   const icons = {
-    audio: svg('<path d="M3 12h2M7 8v8M11 5v14M15 9v6"/><path d="M19 15v6M16 18h6"/>'),
-    folder: svg('<path d="M3 6h7l2 2h9v11H3z"/>'),
     computer: svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
     file: svg('<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/>'),
     noBot: svg('<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 6l4 4M21 6l-4 4"/>'),
+    record: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>'),
     stop: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor"/></svg>',
     x: '<svg aria-hidden="true" viewBox="0 0 8 8" stroke="currentColor" stroke-width="1.5"><path d="M1 1l6 6M7 1L1 7"/></svg>',
   };
@@ -29,12 +28,6 @@
   function button(text, intent, { kind = "", disabled = false, testid = "" } = {}) {
     return `<button class="btn ${kind}" ${disabled ? "disabled" : ""} ${testid ? `data-testid="${testid}"` : ""}
       data-intent='${esc(JSON.stringify(intent))}'>${esc(text)}</button>`;
-  }
-
-  /** A square button with an icon; the text is its accessible name and tooltip. */
-  function iconButton(icon, text, intent, { disabled = false, testid = "" } = {}) {
-    return `<button class="btn icon" aria-label="${esc(text)}" title="${esc(text)}" ${disabled ? "disabled" : ""}
-      ${testid ? `data-testid="${testid}"` : ""} data-intent='${esc(JSON.stringify(intent))}'>${icon}</button>`;
   }
 
   const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -68,6 +61,9 @@
     if (minutes < 60) return `${minutes} min`;
     return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
   }
+
+  /** How long a live meeting has run: "Just started", "12 min so far". */
+  const soFar = (iso) => (minutesSince(iso) < 1 ? "Just started" : `${duration(minutesSince(iso))} so far`);
 
   const minutesSince = (iso) => Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
 
@@ -122,7 +118,7 @@
       rows.push(`<li class="row live ${v.live.selected ? "selected" : ""}" data-testid="live-row"
           data-intent='${esc(JSON.stringify({ type: "select", id: v.live.id }))}'>
         <div class="row-top"><span class="title">${esc(v.live.title)}</span><span class="when">Now</span></div>
-        <div class="sub"><span class="dot red" aria-hidden="true"></span>${meta(v.live.status, duration(minutesSince(v.live.startedAt)))}</div></li>`);
+        <div class="sub"><span class="dot red" aria-hidden="true"></span>${meta(v.live.status, minutesSince(v.live.startedAt) < 1 ? "just started" : duration(minutesSince(v.live.startedAt)))}</div></li>`);
     }
     for (const m of v.meetings) {
       rows.push(`<li class="row ${m.selected ? "selected" : ""}" data-testid="meeting-row"
@@ -143,23 +139,28 @@
         : reader.editable && !renaming
           ? `<button class="btn" data-local="rename" data-testid="rename">Rename</button>` + button("Delete", { type: "delete", id: reader.id }, { kind: "danger", testid: "delete" })
           : "";
+      // Live: the newest line is still settling, so it is drawn faded (design: "Main window ·
+      // transcribing").
       const lines = reader.lines.length
         ? reader.lines
-            .map((l) => `<p class="line"><span class="time">${esc(l.time)}</span><span><strong>${esc(l.speaker)}</strong>: ${esc(l.text)}</span></p>`)
+            .map(
+              (l, i, all) =>
+                `<p class="line${reader.live && i === all.length - 1 ? " newest" : ""}"><span class="time">${esc(l.time)}</span><span><strong>${esc(l.speaker)}</strong>: ${esc(l.text)}</span></p>`,
+            )
             .join("")
         : `<p class="empty-text">${esc(reader.emptyText || "")}</p>`;
       right = `<header class="reader-head">
           <div class="top">${heading}${actions ? `<div class="actions">${actions}</div>` : ""}</div>
           <div class="meta">
             ${reader.badge ? `<span class="pill live" data-testid="live-badge"><span class="dot"></span>${esc(reader.badge)}</span>` : ""}
-            ${[date(reader.startedAt), duration(reader.durationMinutes), reader.source, reader.attendees.length ? `With ${reader.attendees.join(", ")}` : ""]
+            ${[date(reader.startedAt), reader.live ? soFar(reader.startedAt) : duration(reader.durationMinutes), reader.source, reader.attendees.length ? `With ${reader.attendees.join(", ")}` : ""]
               .filter(Boolean)
               .map((x) => `<span>${esc(x)}</span>`)
               .join("")}
           </div>
         </header>
         <article class="transcript" data-scroll="${reader.live ? "live" : "reader"}" data-testid="transcript">${lines}
-          ${reader.live ? `<p class="live-note">New text appears every 30 seconds.</p>` : ""}</article>`;
+          ${reader.live ? `<div class="listening" role="status"><span class="bounce" aria-hidden="true"><span></span><span></span><span></span></span>Listening · more text in about 30 seconds</div>` : ""}</article>`;
     }
 
     // macOS: the list carries its own two buttons, as in the design; Start and Settings live in
@@ -174,12 +175,7 @@
           <span class="grow"></span>
           ${button("Settings…", { type: "openSettings" }, { kind: "quiet" })}
         </div>`;
-    const listHead = mac
-      ? `<div class="list-head"><h1>Transcripts</h1><div class="icons">
-          ${iconButton(icons.audio, "Transcribe Audio File…", { type: "chooseAudioFiles" }, { disabled: !v.canTranscribeFile, testid: "transcribe-file" })}
-          ${iconButton(icons.folder, v.showInFileManager, revealIntent, { testid: "reveal" })}
-        </div></div>`
-      : "";
+    const listHead = mac ? `<div class="list-head"><h1>Transcripts</h1></div>` : "";
 
     keepScroll(() => {
       root.innerHTML = `${titlebar()}<div class="main-window">
@@ -190,6 +186,10 @@
             <ul class="list" data-scroll="list" data-testid="list">${rows.join("")}</ul></section>
           <main class="reader">${right}</main>
         </div>
+        ${mac && !v.transcribing
+          ? `<button class="btn primary fab" data-testid="start" ${v.canStart ? "" : "disabled"}
+              data-intent='${esc(JSON.stringify({ type: "startTranscribing" }))}'>${icons.record}Start transcribing</button>`
+          : ""}
         ${v.toast ? `<div class="toast" role="status" data-testid="toast">${esc(v.toast.text)}
             ${v.toast.undo ? button("Undo", { type: "undo" }, { kind: "small", testid: "undo" }) : ""}
             ${button("×", { type: "dismissToast" }, { kind: "small quiet" })}</div>` : ""}
@@ -247,7 +247,8 @@
     const state = m.error ? "warn" : m.text === "Ready" ? "ok" : "";
     return `<div class="setting" data-testid="model">
       <div class="text"><span class="title">${esc(m.title)}</span>
-      ${m.progress != null ? `<span class="sub">${esc(m.text)}</span>${progress(m.progress)}` : ""}
+      <span class="sub">${esc(m.detail)}${m.progress != null ? ` · ${esc(m.text)}` : ""}</span>
+      ${m.progress != null ? progress(m.progress) : ""}
       ${m.error ? `<div class="error-text">${esc(m.error)}${m.url ? `<br><code>${esc(m.url)}</code>` : ""}</div>` : ""}</div>
       <div class="controls">
         ${m.progress == null ? `<span class="pill ${state}"><span class="dot"></span>${esc(m.text)}</span>` : ""}
@@ -321,11 +322,9 @@
   const promiseIcons = [icons.computer, icons.file, icons.noBot];
 
   function setup(v) {
-    const dots = Array.from(
-      { length: v.steps },
-      (_, i) => `<span class="dot ${i === v.step ? "on" : i < v.step ? "done" : ""}" aria-hidden="true"></span>`,
-    ).join("");
-    const counter = v.step === 0 ? "Welcome" : v.step === v.steps - 1 ? "All set" : `Step ${v.step} of ${v.steps - 2}`;
+    const last = v.step === v.steps - 1;
+    const counter = v.step === 0 ? "" : last ? "All set" : `Step ${v.step} of ${v.steps - 2}`;
+    const m = v.model;
     let body = "";
     if (v.step === 0) {
       body = `<ul class="promises">${v.promises
@@ -343,12 +342,21 @@
           : ""
       }`;
     } else {
-      body = v.notice ? `<p class="notice">${esc(v.notice)}</p>` : "";
+      const model = m
+        ? `<div class="model-card" data-testid="setup-model"><div class="row-between"><span>${esc(m.title)}${m.progress != null ? " · downloading" : m.text === "Ready" ? " · ready" : ""}</span>
+            <span class="sub">${esc(m.progress != null ? pct(m.progress) : m.text)}</span></div>
+            <div class="progress thick"><span style="width:${m.progress != null ? Math.round(m.progress * 100) : m.text === "Ready" ? 100 : 0}%"></span></div></div>`
+        : "";
+      body = `<div class="stack">${model}${v.notice ? `<p class="hint">${esc(v.notice)}</p>` : ""}</div>`;
     }
-    const footerModel = v.model
-      ? `<div class="footer-model" data-testid="setup-model">${v.model.progress != null ? progress(v.model.progress) : ""}<span>${esc(v.model.title)} · ${esc(v.model.text)}</span></div>`
-      : "";
-    const primary = v.step === 3 ? { type: "finishSetup" } : { type: "setupNext" };
+    if (v.hint) body += `<p class="hint">${esc(v.hint)}</p>`;
+    const footerModel =
+      m && !last
+        ? `<div class="footer-model" data-testid="setup-model">${m.progress != null ? progress(m.progress) : ""}<span>${
+            m.progress != null ? `Speech model downloading in the background · ${pct(m.progress)}` : `${esc(m.title)} · ${esc(m.text)}`
+          }</span></div>`
+        : "";
+    const primary = last ? { type: "finishSetup" } : { type: "setupNext" };
     root.innerHTML = `${titlebar()}<div class="setup step-${v.step}">
       <div class="setup-body">
         <div class="setup-top"><span class="mark-tile"><img alt="" src="brand/mark.svg"></span><span class="counter">${esc(counter)}</span></div>
@@ -359,7 +367,7 @@
         ${body}
       </div>
       <footer>
-        <div class="left"><div class="dots" data-testid="dots">${dots}</div>${footerModel}</div>
+        <div class="left">${footerModel}</div>
         <div class="buttons">
           ${v.canGoBack ? button("Back", { type: "setupBack" }, { kind: "big" }) : ""}
           ${button(v.primary, primary, { kind: "primary big", disabled: !v.primaryEnabled, testid: "setup-primary" })}

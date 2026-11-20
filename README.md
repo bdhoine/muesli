@@ -36,7 +36,7 @@ Please tell the people you meet with that you are transcribing, and check your c
 
 ## Audio files
 
-Besides live calls, Muesli transcribes recordings you already have (mp3, m4a, wav, flac, ogg). Use **Transcribe Audio File…** in the menu or in Muesli's window, or drop the files on Muesli's window. Their progress shows at the top of the list, with Cancel. Muesli never moves or deletes your audio files, and nothing leaves your computer.
+Besides live calls, Muesli transcribes recordings you already have (mp3, m4a, wav, flac, ogg). Use **Transcribe Audio File…** in the menu (also in the window's toolbar on Windows), or drop the files on Muesli's window. Their progress shows at the top of the list, with Cancel. Muesli never moves or deletes your audio files, and nothing leaves your computer.
 
 ## What you get
 
@@ -70,12 +70,12 @@ If Muesli is quit or your Mac restarts in the middle of a meeting, the part that
 Muesli lives in the menu bar (macOS) or the system tray (Windows) and starts when you log in.
 
 1. When a meeting starts, a notification asks: **Looks like a meeting: Weekly sync. Start transcribing?** Muesli never starts by itself. If notifications are off, a small Muesli window asks instead.
-2. While Muesli transcribes, its icon shows a red dot and the menu shows **Transcribing · Weekly sync** with **Stop and Save**. Muesli's window shows the text as it grows, every 30 seconds.
+2. While Muesli transcribes, its icon shows a red dot and the menu shows **Transcribing · Weekly sync** with **Stop and Save**. Muesli's window shows the text as it grows, every 30 seconds, with "Listening" below the last line.
 3. When the call is over, Muesli asks whether to stop and save. The transcript appears in your folder, in Muesli's window and among the three latest transcripts in the menu.
 
-The menu: **Start Transcribing** (or **Stop and Save**), **Open Muesli**, **Transcribe Audio File…**, your three latest transcripts under **Recent Transcripts**, each with its day, time and length ("Today 14:30 · 32 min"; while transcribing, **Stop and Save** shows when it started and how long it has run), **Settings…** (⌘,) and **Quit Muesli** (⌘Q); on a Mac each item has an icon. On Windows a left click on the tray icon opens Muesli's window and a right click shows the menu. On a Mac, Muesli has a Dock icon only while one of its windows is open.
+The menu: **Start Transcribing** (or **Stop and Save**), **Open Muesli**, **Transcribe Audio File…**, your three latest transcripts under **Recent Transcripts**, each with its length and day ("32 min · Today 14:30"; while transcribing, **Stop and Save** shows how long it has run, on a Mac), **Settings…** (⌘,) and **Quit Muesli** (⌘Q); on a Mac each item has an icon. On Windows a left click on the tray icon opens Muesli's window and a right click shows the menu. On a Mac, Muesli has a Dock icon only while one of its windows is open.
 
-**Muesli's window** lists your transcripts, newest first, with the one being transcribed at the top. Choose one to read it. A finished transcript can be renamed (its files are renamed too) or deleted: it goes to the Trash (Recycle Bin on Windows), and **Undo** brings it back for a few seconds. **Show in Finder** (Explorer on Windows) shows the file.
+**Muesli's window** lists your transcripts, newest first, with the one being transcribed at the top. Choose one to read it. A finished transcript can be renamed (its files are renamed too) or deleted: it goes to the Trash (Recycle Bin on Windows), and **Undo** brings it back for a few seconds. On a Mac, a round **Start transcribing** button sits in the corner of the window; on Windows the toolbar has **Start Transcribing**, **Transcribe Audio File…** and **Show in Explorer**.
 
 **Settings** is one page: the transcripts folder, start at login, the languages, AI assistants and, folded away under Advanced, the speech model and the permissions.
 

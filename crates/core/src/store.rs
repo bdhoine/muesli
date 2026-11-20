@@ -134,25 +134,30 @@ pub fn shorten_title(title: &str, limit: usize) -> String {
     format!("{start}…{end}")
 }
 
-/// The second line of a transcript in the menu, in local time: "Today 14:30 · 32 min",
-/// "Yesterday 09:00 · <1 min", "17 Nov 10:00" (no length while unknown).
+/// What the menu shows beside a transcript, in local time: "32 min · Today 14:30",
+/// "<1 min · Yesterday", "Mon", "17 Nov" (no length while unknown).
 pub fn menu_subtitle(started: NaiveDateTime, ended: Option<NaiveDateTime>, today: NaiveDate) -> String {
     let date = started.date();
-    let day = if date == today {
-        "Today".to_string()
-    } else if today.pred_opt() == Some(date) {
+    let days = (today - date).num_days();
+    let when = if days == 0 {
+        format!("Today {}", started.format("%H:%M"))
+    } else if days == 1 {
         "Yesterday".to_string()
+    } else if (2..7).contains(&days) {
+        started.format("%a").to_string()
     } else if date.year() == today.year() {
         started.format("%-d %b").to_string()
     } else {
         started.format("%-d %b %Y").to_string()
     };
-    let mut text = format!("{day} {}", started.format("%H:%M"));
-    if let Some(end) = ended {
-        let minutes = (end - started).num_minutes().max(0);
-        text.push_str(&if minutes < 1 { " · <1 min".to_string() } else { format!(" · {minutes} min") });
+    match ended {
+        Some(end) => {
+            let minutes = (end - started).num_minutes().max(0);
+            let length = if minutes < 1 { "<1 min".to_string() } else { format!("{minutes} min") };
+            format!("{length} · {when}")
+        }
+        None => when,
     }
-    text
 }
 
 /// How long a recording has run: "0:42", "12:07", "1:02:07".
@@ -298,12 +303,13 @@ mod menu_text_tests {
     }
 
     #[test]
-    fn subtitles_name_the_day_and_the_length() {
+    fn subtitles_give_the_length_then_the_day() {
         let today = NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
-        assert_eq!(menu_subtitle(at("2026-11-20 14:30"), Some(at("2026-11-20 15:02")), today), "Today 14:30 · 32 min");
-        assert_eq!(menu_subtitle(at("2026-11-19 09:00"), Some(at("2026-11-19 09:00")), today), "Yesterday 09:00 · <1 min");
-        assert_eq!(menu_subtitle(at("2026-11-17 10:00"), None, today), "17 Nov 10:00");
-        assert_eq!(menu_subtitle(at("2025-12-31 23:00"), None, today), "31 Dec 2025 23:00");
+        assert_eq!(menu_subtitle(at("2026-11-20 14:30"), Some(at("2026-11-20 15:02")), today), "32 min · Today 14:30");
+        assert_eq!(menu_subtitle(at("2026-11-19 09:00"), Some(at("2026-11-19 09:00")), today), "<1 min · Yesterday");
+        assert_eq!(menu_subtitle(at("2026-11-16 10:00"), Some(at("2026-11-16 10:32")), today), "32 min · Mon");
+        assert_eq!(menu_subtitle(at("2026-11-12 10:00"), None, today), "12 Nov");
+        assert_eq!(menu_subtitle(at("2025-12-31 23:00"), None, today), "31 Dec 2025");
     }
 
     #[test]

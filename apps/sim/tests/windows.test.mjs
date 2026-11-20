@@ -15,8 +15,7 @@ for (const skin of ["mac", "windows"]) {
         const page = await sim.open("setup");
         assert.equal(await page.getAttribute("html", "data-skin"), skin);
         await page.getByTestId("setup-title").getByText("Meet Muesli").waitFor();
-        await page.getByText(`Runs entirely on this ${mac ? "Mac" : "PC"}.`).waitFor();
-        assert.equal(await page.locator("[data-testid=dots] .dot").count(), 4);
+        await page.getByText(`Runs entirely on this ${mac ? "Mac" : "PC"}`).waitFor();
         await page.getByTestId("setup-primary").click(); // Get started
 
         await page.getByTestId("chip-nl").waitFor();
@@ -41,7 +40,7 @@ for (const skin of ["mac", "windows"]) {
         }
         await page.getByTestId("setup-primary").click();
         await page.getByText(`Muesli is in your ${mac ? "menu bar" : "system tray"}`).waitFor();
-        await page.getByText("Tell people you are transcribing").waitFor();
+        await page.getByText("tell the people you meet with that you are transcribing").waitFor();
         await page.getByRole("button", { name: "Open Muesli" }).click();
         await eventually(async () => (await sim.state()).windows.join() === "main", "main window open, setup closed");
       } finally {
@@ -55,7 +54,8 @@ for (const skin of ["mac", "windows"]) {
         const page = await sim.open("main");
         await page.getByTestId("meeting-row").first().waitFor();
         assert.equal(await page.getByTestId("meeting-row").count(), 3);
-        await page.getByRole("button", { name: mac ? "Show in Finder" : "Show in Explorer" }).waitFor();
+        // macOS: the design keeps the list header bare; Windows has a command bar.
+        if (!mac) await page.getByRole("button", { name: "Show in Explorer" }).waitFor();
 
         await sim.act({ do: "call", teams: true, seconds: 20 });
         const { question } = await sim.state();
@@ -126,7 +126,8 @@ for (const skin of ["mac", "windows"]) {
       try {
         const page = await sim.open("settings");
         await page.getByText(mac ? "Start at login" : "Start when I sign in").waitFor();
-        await page.getByRole("button", { name: mac ? "Show in Finder" : "Show in Explorer" }).waitFor();
+        // macOS: the design keeps the list header bare; Windows has a command bar.
+        if (!mac) await page.getByRole("button", { name: "Show in Explorer" }).waitFor();
         await page.getByTestId("add-language").selectOption("de");
         await page.getByTestId("chip-de").waitFor();
         await page.getByRole("button", { name: "Reset" }).click();

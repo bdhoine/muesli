@@ -163,6 +163,8 @@ pub struct LanguagesView {
 pub struct ModelView {
     pub status: ModelStatus,
     pub title: String,
+    /// "Whisper Large v3 Turbo · 574 MB, on this Mac".
+    pub detail: String,
     /// "Ready", "Downloading · 42%", "Download failed", "Not downloaded".
     pub text: String,
     pub progress: Option<f64>,
@@ -184,13 +186,15 @@ pub struct SetupView {
     pub promises: Vec<String>,
     /// One line under each promise.
     pub promise_details: Vec<String>,
+    /// A line under the step's content (languages, permissions).
+    pub hint: Option<String>,
     pub languages: LanguagesView,
     pub permissions: Vec<PermissionRow>,
     /// Windows: call audio needs no permission.
     pub permissions_note: Option<String>,
     /// The model footer, from the second screen on.
     pub model: Option<ModelView>,
-    /// Done: "Tell people you are transcribing…".
+    /// Done: "Please tell the people you meet with that you are transcribing…".
     pub notice: Option<String>,
     pub primary: String,
     pub primary_enabled: bool,

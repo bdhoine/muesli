@@ -5,7 +5,9 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Added
-- The menu shows the day, time and length of each recent transcript ("Today 14:30 · 32 min"), and while transcribing, when the recording started and how long it has run (macOS; Windows shows the start time).
+- The menu shows the length and day of each recent transcript ("32 min · Today 14:30"), and while transcribing, how long the recording has run (macOS).
+- macOS: Muesli's window has a round **Start transcribing** button in the corner. While a meeting is transcribed, the newest line shows faded until it settles, and "Listening · more text in about 30 seconds" with three moving dots says more is coming (the dots stand still if your system asks for less motion).
+- The setup and Settings use the wording of the Muesli design: shorter promises, a line under each step, and "Speech model" with its size.
 
 ## [0.1.0] - 2026-11-20
 

@@ -1124,12 +1124,7 @@ impl Engine {
                 let started = s.session.as_ref().map(|x| x.meeting.lock().unwrap().started_at);
                 since = started;
                 items.push(label(format!("Transcribing · {}", shorten_title(&title, 40))));
-                items.push(TrayItem::Action {
-                    id: "stop".into(),
-                    label: "Stop and Save".into(),
-                    enabled: true,
-                    detail: started.map(|t| format!("Started {}", t.with_timezone(&chrono::Local).format("%H:%M"))),
-                });
+                items.push(TrayItem::Action { id: "stop".into(), label: "Stop and Save".into(), enabled: true, detail: None });
             }
             Activity::Starting => items.push(label("Starting…".into())),
             Activity::Saving => items.push(label("Saving the transcript…".into())),
@@ -1331,7 +1326,13 @@ impl Engine {
             ModelStatus::Missing => ("Not downloaded".to_string(), None, None),
         };
         ModelView {
-            title: format!("{} speech model", DEFAULT_MODEL.title),
+            title: "Speech model".into(),
+            detail: format!(
+                "Whisper {} · {} MB, on this {}",
+                DEFAULT_MODEL.title,
+                DEFAULT_MODEL.approximate_bytes / 1_000_000,
+                self.platform.words.computer
+            ),
             progress: status.fraction(),
             can_retry: matches!(status, ModelStatus::Failed { .. } | ModelStatus::Missing | ModelStatus::Ready),
             status,
@@ -1353,10 +1354,12 @@ impl Engine {
                     return None;
                 }
                 let (title, detail, required) = match p {
-                    Permission::Microphone => ("Microphone", "Your side of the call (“You”).", true),
-                    Permission::SystemAudio => ("System audio", "The other side of the call (“Others”), without a bot.", true),
-                    Permission::Calendar => ("Calendar", "Meeting titles and attendees, and noticing meetings.", false),
-                    Permission::Notifications => ("Notifications", "Asks whether to start and stop transcribing.", false),
+                    Permission::Microphone => ("Microphone", "Your side of the conversation", true),
+                    Permission::SystemAudio => ("System audio", "The other side of the call. Never your screen or video.", true),
+                    Permission::Calendar => ("Calendar", "Names meetings and notices them as they start", false),
+                    Permission::Notifications => {
+                        ("Notifications", "Asks before starting and stopping. Without them, a small window asks.", false)
+                    }
                 };
                 Some(PermissionRow {
                     permission: p,
@@ -1389,24 +1392,37 @@ impl Engine {
         let required_ok = permissions.iter().filter(|p| p.required).all(|p| p.granted);
         let windows_note = self.platform.permissions.status(Permission::SystemAudio) == Access::NotNeeded;
         let (title, subtitle, primary, primary_enabled) = match step {
-            0 => ("Meet Muesli".to_string(), Some("Granola's raw, unbaked cousin".to_string()), "Get started", true),
+            0 => (
+                "Meet Muesli".to_string(),
+                Some("Granola’s raw, unbaked cousin. Three quick steps, and Muesli is ready for your next meeting.".to_string()),
+                "Get started",
+                true,
+            ),
             1 => (
                 "Which languages are spoken in your meetings?".to_string(),
-                Some("Muesli picks the most likely of these every 30 seconds.".to_string()),
+                Some("Muesli listens for these.".to_string()),
                 "Continue",
                 true,
             ),
             2 => (
-                "Let Muesli listen".to_string(),
-                Some(if words.skin == "mac" {
-                    "macOS asks once for each. Muesli never asks outside this screen and Settings.".to_string()
+                "Allow Muesli to listen".to_string(),
+                Some(if windows_note {
+                    "Muesli needs the microphone. Notifications are optional.".to_string()
                 } else {
-                    "Windows asks once. Muesli never asks outside this screen and Settings.".to_string()
+                    "Muesli needs the microphone and the call audio. Calendar and notifications are optional.".to_string()
                 }),
                 "Continue",
                 required_ok,
             ),
-            _ => (format!("Muesli is in your {}", words.tray), None, "Open Muesli", true),
+            _ => (
+                format!("Muesli is in your {}", words.tray),
+                Some(
+                    "When a meeting starts, Muesli asks whether to transcribe it. Your transcripts appear in the Muesli window."
+                        .to_string(),
+                ),
+                "Open Muesli",
+                true,
+            ),
         };
         SetupView {
             step,
@@ -1415,9 +1431,9 @@ impl Engine {
             subtitle,
             promises: if step == 0 {
                 vec![
-                    format!("Runs entirely on this {}.", words.computer),
-                    "Keeps the text, never the audio.".to_string(),
-                    "No bot in your calls.".to_string(),
+                    format!("Runs entirely on this {}", words.computer),
+                    "Keeps the text, never the audio".to_string(),
+                    "No bot in your calls".to_string(),
                 ]
             } else {
                 Vec::new()
@@ -1432,12 +1448,20 @@ impl Engine {
                 Vec::new()
             },
             languages: self.languages_view(),
+            hint: match step {
+                1 => Some(format!(
+                    "Taken from your {}'s settings. Add the others your meetings use; the fewer, the fewer mistakes.",
+                    words.computer
+                )),
+                2 if words.skin == "mac" => Some("macOS asks you to confirm each one. You can change them later in Settings.".to_string()),
+                _ => None,
+            },
             permissions,
             permissions_note: windows_note
                 .then(|| "Call audio needs no permission on Windows. The microphone switch is in Privacy & security.".to_string()),
             model: (step > 0).then(|| self.model_view()),
             notice: (step == 3).then(|| {
-                "Tell people you are transcribing, and check what your company allows. Muesli asks when a meeting starts.".to_string()
+                "Please tell the people you meet with that you are transcribing, and check your company's policy first.".to_string()
             }),
             primary: primary.into(),
             primary_enabled,
