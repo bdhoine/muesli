@@ -1,0 +1,10 @@
+[package]
+name="audio-spike-aec"
+version="0.1.0"
+edition="2021"
+[dependencies]
+sonora="0.3"
+aec3="0.4"
+[profile.release]
+debug=false
+[workspace]

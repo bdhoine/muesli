@@ -16,3 +16,5 @@ macos/Sources/MuesliFFI/
 apps/desktop/gen/
 apps/desktop/binaries/
 node_modules/
+scripts/audio-spike/*/target/
+scripts/audio-spike/*/Cargo.lock
