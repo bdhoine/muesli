@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use common::{wait_for, Harness};
 use muesli_core::ports::PlatformWords;
-use muesli_engine::fake::{FakeSpeech, HostCall};
-use muesli_engine::{Intent, Window, TOAST_SECONDS};
+use muesli_engine::fake::{FakeSpeech, HostCall, RecordingHost};
+use muesli_engine::{Engine, Intent, Options, Window, TOAST_SECONDS};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio").join(name)
@@ -239,4 +239,35 @@ fn quitting_saves_a_running_transcription() {
     h.engine.intent(Intent::Quit);
     assert_eq!(h.host.calls().last(), Some(&HostCall::Quit));
     assert_eq!(exported_files(&h).len(), 2);
+}
+
+/// A second start of the same Muesli (as after a quit), with a host of its own.
+fn start_again(h: &Harness, open_main_window: bool) -> std::sync::Arc<RecordingHost> {
+    let host = std::sync::Arc::new(RecordingHost::default());
+    let engine = Engine::new(h.fakes.platform(), std::sync::Arc::new(FakeSpeech::ready()), host.clone(), Options::new(common::languages()));
+    engine.start_with(open_main_window);
+    host
+}
+
+#[test]
+fn the_main_window_opens_at_start_when_a_person_started_muesli() {
+    let h = Harness::ready();
+    assert!(!h.host.is_open(Window::Main), "a start by itself (at login) stays in the menu bar");
+    assert!(start_again(&h, true).is_open(Window::Main));
+    assert!(!start_again(&h, false).is_open(Window::Main));
+}
+
+#[test]
+fn setup_comes_first_on_a_first_start_even_when_a_person_started_muesli() {
+    let h = Harness::first_launch();
+    let host = start_again(&h, true);
+    assert!(host.is_open(Window::Setup));
+    assert!(!host.is_open(Window::Main), "the main window waits until setup is done");
+}
+
+#[test]
+fn the_settings_shortcut_in_the_main_window_opens_settings() {
+    let h = Harness::ready();
+    h.engine.intent(Intent::OpenSettings);
+    assert!(h.host.is_open(Window::Settings));
 }

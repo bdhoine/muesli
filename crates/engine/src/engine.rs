@@ -307,6 +307,12 @@ impl Engine {
     /// The first start: recover what a crash left, pick up transcripts, start downloading the
     /// model when setup is done, and open setup when it is not.
     pub fn start(&self) {
+        self.start_with(false);
+    }
+
+    /// `start`, and with `open_main_window` the main window opens too once setup is done. The
+    /// shell says so when a person started Muesli, and not when it started by itself at login.
+    pub fn start_with(&self, open_main_window: bool) {
         let paths = self.paths();
         let _ = std::fs::create_dir_all(&paths.support);
         let store = MeetingStore::new(&paths);
@@ -323,6 +329,9 @@ impl Engine {
             self.announce_extension_update();
             self.download_model(); // whenever a file went missing
             self.speech.prepare(); // a first transcription should not wait for one-time work
+            if open_main_window {
+                self.host.show(Window::Main);
+            }
         } else {
             self.host.show(Window::Setup);
         }

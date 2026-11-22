@@ -5,6 +5,7 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 ## [Unreleased]
 
 ### Added
+- macOS: Muesli's window opens when you start Muesli yourself, from Applications or Spotlight, and when you open it again while it is already running. The automatic start at login stays in the menu bar. The window has a Settings button (a gear) at the right of the "Transcripts" heading, and ⌘, opens Settings from it.
 - On a Mac, transcription is about three times faster: Muesli also downloads a version of the speech model for Apple's Neural Engine (1.2 GB) and uses it once it is there. You can transcribe while it downloads. Preparing it for your Mac takes about a minute and a half, once, in the background. Settings → Advanced shows where it stands.
 - Windows: transcription uses the graphics card (Vulkan) when its driver supports it, which is several times faster; without one it runs on the processor as before.
 - When the call is over, Muesli transcribes the meeting once more, in longer stretches and more carefully, and replaces the live text with the better version. You can follow it in the menu and in Muesli's window; starting the next meeting stops it and keeps the live text.

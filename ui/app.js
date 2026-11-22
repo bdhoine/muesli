@@ -17,6 +17,7 @@
     `<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ${extra}>${body}</svg>`;
   const icons = {
     computer: svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
+    gear: svg('<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>'),
     file: svg('<path d="M6 3h9l4 4v14H6z"/><path d="M9 12h7M9 16h5"/>'),
     noBot: svg('<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 6l4 4M21 6l-4 4"/>'),
     record: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>'),
@@ -164,8 +165,8 @@
           ${reader.live ? `<div class="listening" role="status"><span class="bounce" aria-hidden="true"><span></span><span></span><span></span></span>Listening · text follows each pause</div>` : ""}</article>`;
     }
 
-    // macOS: the list carries its own two buttons, as in the design; Start and Settings live in
-    // the menu bar menu. Windows: a command bar.
+    // macOS: no toolbar; the list header has a Settings gear (the menu bar menu has Start and
+    // Settings too). Windows: a command bar.
     const revealIntent = { type: "showInFileManager", id: reader && !reader.live ? reader.id : null };
     const toolbar = mac
       ? ""
@@ -176,7 +177,11 @@
           <span class="grow"></span>
           ${button("Settings…", { type: "openSettings" }, { kind: "quiet" })}
         </div>`;
-    const listHead = mac ? `<div class="list-head"><h1>Transcripts</h1></div>` : "";
+    const listHead = mac
+      ? `<div class="list-head"><h1>Transcripts</h1>
+          <button class="btn quiet icon" data-testid="settings" title="Settings… (⌘,)" aria-label="Settings"
+            data-intent='${esc(JSON.stringify({ type: "openSettings" }))}'>${icons.gear}</button></div>`
+      : "";
 
     keepScroll(() => {
       root.innerHTML = `${titlebar()}<div class="main-window">
@@ -498,6 +503,14 @@
     local.renaming = null;
     if (title) send({ type: "rename", id, title });
     renderers[label]?.(current);
+  });
+
+  // macOS: ⌘, opens Settings from the main window, as in every Mac app.
+  document.addEventListener("keydown", (event) => {
+    if (label === "main" && isMac() && event.metaKey && !event.ctrlKey && !event.altKey && event.key === ",") {
+      event.preventDefault();
+      send({ type: "openSettings" });
+    }
   });
 
   root.addEventListener("keydown", (event) => {

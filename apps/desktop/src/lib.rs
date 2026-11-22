@@ -98,6 +98,10 @@ pub fn run() {
             host.attach(app.handle(), &engine);
             updater.attach(app.handle());
             tray.attach(app.handle(), host.clone())?;
+            // macOS: a start by a person opens the main window; the start at login does not.
+            #[cfg(target_os = "macos")]
+            engine.start_with(!muesli_platform_macos::launch::launched_at_login());
+            #[cfg(not(target_os = "macos"))]
             engine.start();
             let ticking = engine.clone();
             std::thread::spawn(move || loop {
@@ -112,6 +116,13 @@ pub fn run() {
             // Closing the last window must not quit a tray app.
             RunEvent::ExitRequested { api, code: None, .. } => api.prevent_exit(),
             RunEvent::Exit => engine.shutdown(),
+            // macOS: opening Muesli again while it runs (Applications, Spotlight, the Dock icon)
+            // opens the main window, unless a window is open already.
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { has_visible_windows: false, .. } => {
+                let engine = engine.clone();
+                std::thread::spawn(move || engine.intent(Intent::OpenMuesli));
+            }
             _ => {}
         });
 }

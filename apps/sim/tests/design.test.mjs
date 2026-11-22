@@ -74,11 +74,14 @@ describe("macOS skin matches the design", () => {
       await page.getByTestId("meeting-row").first().click();
       await page.getByTestId("reader-title").waitFor();
 
-      // The list: 360 px, oat-tinted, a bare "Transcripts" header, no toolbar.
+      // The list: 360 px, oat-tinted, a "Transcripts" header with one quiet Settings gear, no toolbar.
       const sidebar = await look(page, ".sidebar", ["background-color"]);
       assert.deepEqual([sidebar.width, sidebar["background-color"]], [360, SIDEBAR]);
       assert.equal(await page.locator(".toolbar").count(), 0);
-      assert.equal(await page.locator(".list-head button").count(), 0);
+      assert.equal(await page.locator(".list-head button").count(), 1);
+      const gear = await look(page, ".list-head [data-testid=settings]", ["background-color", "color", "border-top-color"]);
+      assert.deepEqual([gear.width, gear.height, gear["background-color"], gear.color, gear["border-top-color"]], [30, 30, "rgba(0, 0, 0, 0)", MUTED, "rgba(0, 0, 0, 0)"]);
+      assert.equal((await look(page, ".list-head [data-testid=settings] svg", [])).width, 18);
       const head = await look(page, ".list-head h1", ["font-size"]);
       assert.equal(head["font-size"], "20px");
       const selected = await look(page, ".row.selected", ["background-color", "border-radius"]);

@@ -67,7 +67,7 @@ If Muesli is quit or your Mac restarts in the middle of a meeting, the part that
 
 ## Using Muesli
 
-Muesli lives in the menu bar (macOS) or the system tray (Windows) and starts when you log in.
+Muesli lives in the menu bar (macOS) or the system tray (Windows) and starts when you log in. Starting it yourself on a Mac, from Applications or Spotlight, also opens its window, which has a Settings button (⌘,).
 
 1. When a meeting starts, a notification asks: **Looks like a meeting: Weekly sync. Start transcribing?** Muesli never starts by itself. If notifications are off, a small Muesli window asks instead.
 2. While Muesli transcribes, its icon shows a red dot and the menu shows **Transcribing · Weekly sync** with **Stop and Save**. Muesli's window shows the text as it grows, a few seconds after each sentence, with "Listening" below the last line.

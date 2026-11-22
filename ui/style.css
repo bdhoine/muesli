@@ -103,6 +103,8 @@ code, pre { font: 12px/1.5 ui-monospace, "SF Mono", Consolas, monospace; }
 .btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
 .btn.danger { color: var(--danger-text); }
 .btn.quiet { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.icon { width: 30px; height: 30px; padding: 0; }
+.btn.icon svg { width: 18px; height: 18px; }
 .btn.small { height: 24px; padding: 0 8px; font-size: 12px; }
 .btn.big { height: 36px; padding: 0 18px; font-size: 14px; }
 .btn.link { background: none; border: 0; height: auto; padding: 0 4px; color: var(--accent-text); text-decoration: underline; }

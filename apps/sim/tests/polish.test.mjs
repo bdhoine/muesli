@@ -114,3 +114,47 @@ test("a click on the end-of-call notification only opens Muesli and keeps the qu
     await sim.stop();
   }
 });
+
+test("macOS main window: a Settings gear in the list header opens Settings", async () => {
+  const sim = await startSim({ scenario: "a-day-of-meetings", skin: "mac" });
+  try {
+    const page = await sim.open("main");
+    const gear = page.locator(".list-head").getByTestId("settings");
+    await gear.waitFor();
+    assert.equal(await gear.getAttribute("aria-label"), "Settings");
+    // at the right edge of the header, level with the "Transcripts" heading
+    const geometry = await page.locator(".list-head").evaluate((head) => {
+      const box = (el) => el.getBoundingClientRect();
+      const title = box(head.querySelector("h1"));
+      const button = box(head.querySelector("[data-testid=settings]"));
+      return { titleMid: title.top + title.height / 2, buttonMid: button.top + button.height / 2, buttonRight: button.right, headRight: box(head).right };
+    });
+    assert.ok(Math.abs(geometry.titleMid - geometry.buttonMid) < 4, "level with the heading");
+    assert.ok(geometry.headRight - geometry.buttonRight < 24, "against the right edge");
+    assert.equal(await gear.getAttribute("title"), "Settings… (⌘,)");
+    assert.ok(!(await sim.state()).windows.includes("settings"));
+    await gear.click();
+    await eventually(async () => (await sim.state()).windows.includes("settings"), "Settings opened");
+    // ⌘, does the same from the keyboard
+    await sim.act({ do: "closeWindow", window: "settings" });
+    assert.ok(!(await sim.state()).windows.includes("settings"));
+    await page.keyboard.press("Meta+,");
+    await eventually(async () => (await sim.state()).windows.includes("settings"), "Settings opened by ⌘,");
+  } finally {
+    await sim.stop();
+  }
+});
+
+test("Windows main window keeps its toolbar and has no extra gear", async () => {
+  const sim = await startSim({ scenario: "a-day-of-meetings", skin: "windows" });
+  try {
+    const page = await sim.open("main");
+    await page.getByRole("button", { name: "Settings…" }).waitFor();
+    assert.equal(await page.locator(".list-head").count(), 0);
+    await page.keyboard.press("Meta+,"); // ⌘, is a Mac shortcut
+    await page.waitForTimeout(300);
+    assert.ok(!(await sim.state()).windows.includes("settings"));
+  } finally {
+    await sim.stop();
+  }
+});
