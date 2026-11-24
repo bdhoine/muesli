@@ -7,10 +7,14 @@ use objc2_app_kit::{NSAppearanceCustomization, NSStatusItem};
 use objc2_foundation::MainThreadMarker;
 
 /// `Some(true)` when the menu bar is dark. `None` when that cannot be told (not on the main
-/// thread, or the item has no button yet).
+/// thread, the item has no button yet, or its menu is open: the highlighted button does not show
+/// the bar's own appearance).
 pub fn is_dark(item: &NSStatusItem) -> Option<bool> {
     let mtm = MainThreadMarker::new()?;
     let button = item.button(mtm)?;
+    if button.isHighlighted() {
+        return None;
+    }
     // "NSAppearanceNameDarkAqua", or "NSAppearanceNameVibrantDark" on older systems.
     Some(button.effectiveAppearance().name().to_string().contains("Dark"))
 }

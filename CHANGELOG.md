@@ -27,6 +27,7 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ### Fixed
 - macOS: while transcribing, the menu bar icon with its red dot stays readable on a dark menu bar (white), and follows the menu bar when it changes.
+- macOS: the menu bar menu no longer closes by itself after a second or two while the icon shows its red or green dot.
 - Cancel on an audio file now stops within moments, shows "Cancelling…" and removes the unfinished transcript, instead of finishing the current part and keeping a partial transcript.
 - Settings no longer jumps back to the top when you open **Other apps…** or something else changes in the background.
 - Settings no longer shows a stray "Off" line under **Other apps…**.

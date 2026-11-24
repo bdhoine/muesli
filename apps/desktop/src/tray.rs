@@ -58,7 +58,8 @@ fn icon_for(transcribing: bool, update: bool, dark_bar: bool) -> (&'static [u8],
 }
 
 /// Whether the menu bar (macOS) or taskbar (Windows) is dark right now. On macOS this must run on
-/// the main thread once the tray icon exists.
+/// the main thread once the tray icon exists; while the menu is open it keeps the last answer, as
+/// redrawing the icon then would close the menu.
 fn bar_is_dark(handle: &AppHandle) -> bool {
     #[cfg(windows)]
     {
@@ -74,7 +75,7 @@ fn bar_is_dark(handle: &AppHandle) -> bool {
                     .ok()
             })
             .flatten()
-            .unwrap_or(false)
+            .unwrap_or_else(|| ICON.lock().unwrap().dark_bar)
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
