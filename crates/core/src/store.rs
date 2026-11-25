@@ -135,16 +135,16 @@ pub fn shorten_title(title: &str, limit: usize) -> String {
 }
 
 /// What the menu shows beside a transcript, in local time: "32 min · Today 14:30",
-/// "<1 min · Yesterday", "Mon", "17 Nov" (no length while unknown).
+/// "<1 min · Yesterday 09:00", "Mon 10:00", "17 Nov" (no length while unknown).
 pub fn menu_subtitle(started: NaiveDateTime, ended: Option<NaiveDateTime>, today: NaiveDate) -> String {
     let date = started.date();
     let days = (today - date).num_days();
     let when = if days == 0 {
         format!("Today {}", started.format("%H:%M"))
     } else if days == 1 {
-        "Yesterday".to_string()
+        format!("Yesterday {}", started.format("%H:%M"))
     } else if (2..7).contains(&days) {
-        started.format("%a").to_string()
+        started.format("%a %H:%M").to_string()
     } else if date.year() == today.year() {
         started.format("%-d %b").to_string()
     } else {
@@ -308,8 +308,8 @@ mod menu_text_tests {
     fn subtitles_give_the_length_then_the_day() {
         let today = NaiveDate::from_ymd_opt(2026, 11, 20).unwrap();
         assert_eq!(menu_subtitle(at("2026-11-20 14:30"), Some(at("2026-11-20 15:02")), today), "32 min · Today 14:30");
-        assert_eq!(menu_subtitle(at("2026-11-19 09:00"), Some(at("2026-11-19 09:00")), today), "<1 min · Yesterday");
-        assert_eq!(menu_subtitle(at("2026-11-16 10:00"), Some(at("2026-11-16 10:32")), today), "32 min · Mon");
+        assert_eq!(menu_subtitle(at("2026-11-19 09:00"), Some(at("2026-11-19 09:00")), today), "<1 min · Yesterday 09:00");
+        assert_eq!(menu_subtitle(at("2026-11-16 10:00"), Some(at("2026-11-16 10:32")), today), "32 min · Mon 10:00");
         assert_eq!(menu_subtitle(at("2026-11-12 10:00"), None, today), "12 Nov");
         assert_eq!(menu_subtitle(at("2025-12-31 23:00"), None, today), "31 Dec 2025");
     }

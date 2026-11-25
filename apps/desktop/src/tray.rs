@@ -210,16 +210,17 @@ fn build_menu(
     muesli_platform_macos::menu_icons::set(
         items
             .iter()
-            .filter_map(|i| match i {
-                TrayItem::Action { id, label, detail, .. } => Some((
+            .map(|i| match i {
+                TrayItem::Separator => (String::new(), None),
+                TrayItem::Label { label } => (label.clone(), None),
+                TrayItem::Action { id, label, detail, .. } => (
                     label.clone(),
-                    muesli_platform_macos::menu_icons::Extras {
+                    Some(muesli_platform_macos::menu_icons::Extras {
                         symbol: symbol(id),
                         subtitle: detail.clone(),
                         since: if id == "stop" { since } else { None },
-                    },
-                )),
-                _ => None,
+                    }),
+                ),
             })
             .collect(),
     );

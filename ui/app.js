@@ -283,26 +283,27 @@
     </div>`;
   }
 
-  /** Settings > General: the version, updates and the automatic check. */
+  /** Settings > General: updates and the automatic check (release builds). */
   function updates(u) {
+    if (!u.available) return "";
     const status = u.status
       ? `<span class="pill ${esc(u.tone)}" data-testid="update-status"><span class="dot"></span>${esc(u.status)}</span>`
       : "";
-    const version = `<div class="setting" data-testid="version">
-        <div class="text"><span class="title">Muesli</span>
-          ${status}
-          ${u.progress != null ? progress(u.progress) : ""}
-          ${u.restartHint ? `<span class="sub">${esc(u.restartHint)}</span>` : ""}</div>
-        <div class="controls"><span class="version-number" data-testid="version-number">${esc(u.version)}</span>${button("What's new", { type: "openReleaseNotes", version: u.version }, { kind: "link" })}${u.restart ? button("Restart", { type: "restartToUpdate" }, { kind: "primary", disabled: !u.canRestart, testid: "update-restart" }) : ""}</div>
-      </div>`;
-    if (!u.available) return version;
-    return `${version}
-      <div class="setting"><div class="text"><span class="title">Updates</span>
+    return `<div class="setting"><div class="text"><span class="title">Updates</span>
+        ${status}
+        ${u.progress != null ? progress(u.progress) : ""}
+        ${u.restartHint ? `<span class="sub">${esc(u.restartHint)}</span>` : ""}
         <span class="sub" data-testid="last-checked">${u.lastChecked ? `Last checked: ${esc(date(u.lastChecked))}` : "Not checked yet"}</span></div>
-        <div class="controls">${button(u.checkLabel, { type: "checkForUpdates" }, { disabled: !u.canCheck, testid: "check-updates" })}</div></div>
+        <div class="controls">${u.restart ? button("Restart", { type: "restartToUpdate" }, { kind: "primary", disabled: !u.canRestart, testid: "update-restart" }) : ""}${button(u.checkLabel, { type: "checkForUpdates" }, { disabled: !u.canCheck, testid: "check-updates" })}</div></div>
       <label class="setting"><div class="text"><span class="title">Check for updates automatically</span><span class="sub">Once a day, from GitHub. Only your IP address is seen there.</span></div>
         <input type="checkbox" role="switch" data-testid="auto-update" ${u.autoCheck ? "checked" : ""}
           data-toggle='${esc(JSON.stringify({ type: "setAutoUpdateCheck" }))}'></label>`;
+  }
+
+  /** The foot of Settings: which Muesli this is, and what changed in it. */
+  function versionFooter(u) {
+    return `<footer class="version-footer" data-testid="version">Muesli <span class="version-number" data-testid="version-number">${esc(u.version)}</span>
+      · ${button("What's new", { type: "openReleaseNotes", version: u.version }, { kind: "link" })}</footer>`;
   }
 
   function settings(v) {
@@ -311,7 +312,7 @@
     const assistants = a.enabled
       ? `${
           a.claudeDesktop
-            ? `<div class="setting"><div class="text"><span class="title">Claude Desktop</span><span class="sub status" data-testid="claude-status"><span class="dot ${esc(a.claudeDesktop.tone)}"></span>${esc(a.claudeDesktop.status)}</span></div>
+            ? `<div class="setting"><div class="text"><span class="title">Claude Desktop</span><span class="sub status" data-testid="claude-status"><span class="dot ${esc(a.claudeDesktop.tone)}"></span>${esc(a.claudeDesktop.status)}</span>${a.claudeDesktop.detail ? `<span class="sub" data-testid="claude-detail">${esc(a.claudeDesktop.detail)}</span>` : ""}</div>
                ${a.claudeDesktop.button ? button(a.claudeDesktop.button, { type: "connectClaudeDesktop" }, { kind: "primary" }) : ""}</div>`
             : ""
         }
@@ -327,7 +328,6 @@
               : `<span class="sub">muesli-mcp is not next to the app in this build.</span>`
           }
           ${a.canAddToClaudeConfig ? `<div class="row-between"><span class="sub">Claude Desktop blocked by your organisation?</span>${button("Add to Claude's config file", { type: "addToClaudeConfig" })}</div>` : ""}
-          ${a.claudeConfigStatus ? `<span class="sub">${esc(a.claudeConfigStatus)}</span>` : ""}
         </div></details></div>`
       : "";
     root.innerHTML = `${titlebar()}<div class="settings" data-scroll="settings">
@@ -366,6 +366,7 @@
           <section class="card">${permissionRows(v.permissions, { tags: false })}</section>
         </div>
       </details>
+      ${versionFooter(v.updates)}
     </div>`;
   }
 

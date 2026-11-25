@@ -14,7 +14,7 @@ async function eventually(check, what, ms = 5000) {
 
 for (const skin of ["mac", "windows"]) {
   describe(`${skin} skin`, () => {
-    test("settings: the Claude Desktop light, the version on the right, no stray Off, no jump", async () => {
+    test("settings: the Claude Desktop light, the version at the foot, no stray Off, no jump", async () => {
       const sim = await startSim({ scenario: "extension-update", skin });
       try {
         const page = await sim.open("settings");
@@ -25,16 +25,15 @@ for (const skin of ["mac", "windows"]) {
         await status.getByText("An older version is connected").waitFor();
         assert.equal(await status.locator(".dot.warn").count(), 1, "amber light");
 
-        // The version sits at the right edge of its row, after the title.
-        const geometry = await page.getByTestId("version").evaluate((row) => {
-          const box = (el) => el.getBoundingClientRect();
-          const title = box(row.querySelector(".title"));
-          const number = box(row.querySelector("[data-testid=version-number]"));
-          const controls = box(row.querySelector(".controls"));
-          return { titleRight: title.right, numberLeft: number.left, controlsRight: controls.right, rowRight: box(row).right };
+        // The version is a small line at the foot of Settings, after every section.
+        const foot = await page.getByTestId("version").evaluate((el) => {
+          const settings = el.closest(".settings");
+          const last = el.previousElementSibling.getBoundingClientRect();
+          return { top: el.getBoundingClientRect().top, lastBottom: last.bottom, size: parseFloat(getComputedStyle(el).fontSize), isLast: settings.lastElementChild === el };
         });
-        assert.ok(geometry.numberLeft > geometry.titleRight + 100, "the number is far from the title, on the right");
-        assert.ok(geometry.rowRight - geometry.controlsRight < 40, "against the row's right edge");
+        assert.ok(foot.isLast, "the last thing in Settings");
+        assert.ok(foot.top >= foot.lastBottom, "below the sections");
+        assert.ok(foot.size <= 12, "small text");
 
         // Opening "Other apps…" shows no stray "Off" line.
         await page.getByText("Other apps…").click();

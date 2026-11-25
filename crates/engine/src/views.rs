@@ -264,8 +264,11 @@ pub struct AssistantChoice {
 pub struct ClaudeDesktopRow {
     /// "Connect Claude Desktop", "Update Claude Desktop extension", or none when connected.
     pub button: Option<String>,
-    /// "Connected", "Not connected", "An older version is connected".
+    /// "Connected", "Connected through Claude Desktop's settings file", "Not connected", "An older
+    /// version is connected".
     pub status: String,
+    /// A second line: what to do next, or why the settings file could not be changed.
+    pub detail: Option<String>,
     /// The colour of the light before the status: "ok", "warn" or "" (not connected).
     pub tone: String,
 }
@@ -282,9 +285,8 @@ pub struct AssistantsView {
     pub instructions: String,
     pub command: Option<String>,
     pub command_is_terminal: bool,
-    /// "Add to Claude's config file" is offered (Claude Desktop installed, entry not added yet).
+    /// "Add to Claude's config file" is offered (Claude Desktop installed and not connected yet).
     pub can_add_to_claude_config: bool,
-    pub claude_config_status: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

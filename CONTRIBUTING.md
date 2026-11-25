@@ -193,7 +193,7 @@ Started by hand, the workflow builds unsigned test installers as artifacts, with
 
 ## Permissions and code signing
 
-macOS asks for Microphone, System Audio Recording, Calendar and Notifications, each only when the user presses **Allow…** in setup or Settings. System Audio Recording (the "System Audio Recording Only" pane) allows capturing the other side's audio through a Core Audio tap; there is no public API to read its status, so `platform-macos/src/tcc.rs` reads it through the private TCC framework (`TCCAccessPreflight`, `TCCAccessRequest`), as the Swift app did, and falls back to opening the tap when that is unavailable. This is the one private API in Muesli: re-check it on every major macOS release.
+macOS asks for Microphone, System Audio Recording, Calendar and Notifications, each only when the user presses **Allow…** in setup or Settings; when that does not end in "allowed", the engine opens the matching System Settings pane. The app is signed with hardened runtime, which refuses the microphone and the calendar unless the signature carries their entitlements: `apps/desktop/Entitlements.plist` (`bundle.macOS.entitlements` in `tauri.conf.json`). Check a build with `codesign -d --entitlements - Muesli.app`. System Audio Recording (the "System Audio Recording Only" pane) allows capturing the other side's audio through a Core Audio tap; there is no public API to read its status, so `platform-macos/src/tcc.rs` reads it through the private TCC framework (`TCCAccessPreflight`, `TCCAccessRequest`), as the Swift app did, and falls back to opening the tap when that is unavailable. This is the one private API in Muesli: re-check it on every major macOS release.
 
 CI and `cargo tauri build` sign ad hoc, and macOS ties permissions for ad-hoc apps to the exact build, so each rebuild can invalidate them. If a permission looks enabled but still fails, reset it, relaunch and grant again:
 
@@ -203,7 +203,11 @@ tccutil reset AudioCapture com.github.bdhoine.muesli
 tccutil reset Calendar com.github.bdhoine.muesli
 ```
 
-Signing with a real certificate (set `bundle.macOS.signingIdentity`, or `APPLE_SIGNING_IDENTITY` for `cargo tauri build`) avoids this. The same applies to updates: each update is a new ad-hoc signed build, so macOS probably asks for the microphone and system audio again; Muesli notices on the first start after an update and opens the permissions screen (UP7).
+Signing with a real certificate avoids this: permissions are then tied to the certificate, not the build. For a local build use your own from the keychain (`security find-identity -v -p codesigning` lists them):
+
+```bash
+APPLE_SIGNING_IDENTITY="Apple Development: you@example.com (TEAMID)" cargo tauri build --bundles app --config tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":false}}'
+``` The same applies to updates: each update is a new ad-hoc signed build, so macOS probably asks for the microphone and system audio again; Muesli notices on the first start after an update and opens the permissions screen (UP7).
 
 ## Resetting the app for testing
 

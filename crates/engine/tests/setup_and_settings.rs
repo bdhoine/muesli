@@ -91,6 +91,23 @@ fn allow_asks_the_system_off_the_caller_thread() {
 }
 
 #[test]
+fn a_refused_allow_opens_the_system_settings() {
+    let permissions = FakePermissions::with([(Permission::Calendar, Access::Denied)]);
+    let h = first_launch(PlatformWords::MAC, permissions);
+    h.engine.intent(Intent::RequestPermission { permission: Permission::Calendar });
+    common::wait_for("settings opened", || h.fakes.permissions.opened_settings() == [Permission::Calendar]);
+}
+
+#[test]
+fn a_granted_allow_opens_nothing() {
+    let h = first_launch(PlatformWords::MAC, mac_permissions());
+    h.engine.intent(Intent::RequestPermission { permission: Permission::Microphone });
+    common::wait_for("allowed", || h.fakes.permissions.status(Permission::Microphone) == Access::Allowed);
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert!(h.fakes.permissions.opened_settings().is_empty());
+}
+
+#[test]
 fn windows_setup_asks_for_the_microphone_only() {
     let h = first_launch(PlatformWords::WINDOWS, windows_permissions());
     h.engine.intent(Intent::SetupNext);
@@ -153,6 +170,26 @@ fn a_failed_download_shows_why_and_where_and_can_be_retried() {
     h.engine.intent(Intent::DownloadModelAgain);
     assert!(matches!(h.speech.status(), ModelStatus::Downloading { .. }));
     assert_eq!(h.menu_labels()[0], "# Getting Ready");
+}
+
+#[test]
+fn claude_desktop_through_its_settings_file_counts_as_connected() {
+    use muesli_core::assistants::ClaudeDesktopConfig;
+    let h = Harness::ready();
+    *h.host.helper.lock().unwrap() = Some("/Applications/Muesli.app/Contents/MacOS/muesli-mcp".into());
+    *h.host.claude.lock().unwrap() = true;
+    *h.host.extension.lock().unwrap() = Some("/Applications/Muesli.app/Contents/Resources/Muesli.mcpb".into());
+    std::fs::create_dir_all(ClaudeDesktopConfig::default_directory(&*h.fakes.paths)).unwrap();
+    h.engine.intent(Intent::SetAssistantsEnabled { on: true });
+    h.engine.intent(Intent::AddToClaudeConfig);
+
+    let view = h.engine.settings_view().assistants;
+    let row = view.claude_desktop.unwrap();
+    assert_eq!(row.status, "Connected through Claude Desktop's settings file");
+    assert_eq!(row.tone, "ok");
+    assert_eq!(row.button, None, "nothing to connect");
+    assert_eq!(row.detail.as_deref(), Some("Quit and reopen Claude Desktop to load it."));
+    assert!(!view.can_add_to_claude_config);
 }
 
 #[test]

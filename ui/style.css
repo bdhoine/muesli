@@ -202,7 +202,9 @@ input[role="switch"]:checked::after { left: 21px; }
 .setting .title { font-size: 15px; display: flex; align-items: center; gap: 8px; }
 .setting .controls { display: flex; align-items: center; gap: 8px; flex: none; }
 .sub.status { display: flex; align-items: center; gap: 6px; }
-.setting .version-number { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 14px; text-align: right; }
+.version-footer { margin: 28px 0 8px; text-align: center; color: var(--muted); font-size: 12px; }
+.version-footer .version-number { font-variant-numeric: tabular-nums; }
+.version-footer .btn.link { font-size: 12px; }
 .setting .text .pill { align-self: flex-start; margin-top: 4px; }
 .setting.stack { flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 18px; }
 .setting .progress { margin-top: 6px; }

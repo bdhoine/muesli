@@ -146,6 +146,14 @@ impl ClaudeDesktopConfig {
         }
     }
 
+    /// Whether the config file holds Muesli's entry for this `muesli-mcp`.
+    pub fn is_registered(helper: &Path, directory: &Path) -> bool {
+        let command = helper.to_string_lossy();
+        read(&Self::file(directory))
+            .and_then(|root| root.get("mcpServers")?.get(Self::KEY)?.get("command")?.as_str().map(|c| c == command))
+            .unwrap_or(false)
+    }
+
     /// Whether Claude Desktop's config file should carry the Muesli entry: only when assistants
     /// are allowed, the user asked for the config entry, and the extension is not installed
     /// (the extension replaces it).

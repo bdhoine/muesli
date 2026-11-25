@@ -2,11 +2,11 @@
 //!
 //! Tauri's menus (muda) can only show colour images, which stay black in dark mode, and have no
 //! subtitles; the tray also hands macOS its menu only while it is open. So both are added when a
-//! menu starts tracking (`NSMenuDidBeginTrackingNotification`), matched by item title. Symbols
+//! menu starts tracking (`NSMenuDidBeginTrackingNotification`), matched by position and title
+//! (several recent transcripts can share a title). Symbols
 //! are template images: macOS tints them for light, dark and the highlighted row. The item with a
 //! start time gets how long the recording has run, counted when the menu opens.
 
-use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::{Mutex, Once};
 
@@ -16,7 +16,7 @@ use muesli_core::store::elapsed;
 use objc2_app_kit::{NSImage, NSMenu, NSMenuDidBeginTrackingNotification};
 use objc2_foundation::{NSNotification, NSNotificationCenter, NSString};
 
-/// What one menu item gets, found by its title.
+/// What one menu item gets.
 #[derive(Debug, Clone, Default)]
 pub struct Extras {
     pub symbol: Option<&'static str>,
@@ -25,11 +25,15 @@ pub struct Extras {
     pub since: Option<DateTime<Utc>>,
 }
 
-/// Item title to its extras, for the menu shown now.
-static ITEMS: Mutex<Option<HashMap<String, Extras>>> = Mutex::new(None);
+/// One menu item: its title and its extras.
+pub type Item = (String, Option<Extras>);
 
-/// Sets the extras for the menu's items and starts watching menus.
-pub fn set(items: HashMap<String, Extras>) {
+/// Every item of the menu shown now, in order.
+static ITEMS: Mutex<Option<Vec<Item>>> = Mutex::new(None);
+
+/// Sets the extras for the menu's items and starts watching menus. Other menus, whose items do
+/// not line up with these, are left alone.
+pub fn set(items: Vec<Item>) {
     *ITEMS.lock().unwrap() = Some(items);
     watch();
 }
@@ -56,8 +60,16 @@ fn watch() {
 fn decorate(menu: &NSMenu) {
     let Ok(guard) = ITEMS.lock() else { return };
     let Some(items) = guard.as_ref() else { return };
-    for item in menu.itemArray().iter() {
-        let Some(extras) = items.get(&item.title().to_string()) else { continue };
+    let shown = menu.itemArray();
+    if shown.count() != items.len() {
+        return;
+    }
+    let lines_up = shown.iter().zip(items.iter()).all(|(item, (title, extras))| extras.is_none() || item.title().to_string() == *title);
+    if !lines_up {
+        return;
+    }
+    for (item, (_, extras)) in shown.iter().zip(items.iter()) {
+        let Some(extras) = extras else { continue };
         if let Some(name) = extras.symbol {
             if item.image().is_none() {
                 if let Some(image) = NSImage::imageWithSystemSymbolName_accessibilityDescription(&NSString::from_str(name), None) {

@@ -207,6 +207,23 @@ fn clock_text(seconds: f64) -> String {
 }
 
 /// How a meeting came about, in words.
+/// The Claude Desktop row: connected through the extension or Claude Desktop's settings file, or
+/// not connected. `file_status` is what the last change of that file reported.
+fn claude_desktop_row(extension: &ExtensionState, through_file: bool, can_connect: bool, file_status: Option<&str>) -> ClaudeDesktopRow {
+    let (status, tone, button, detail) = match extension {
+        ExtensionState::Installed { .. } => ("Connected", "ok", None, None),
+        ExtensionState::Outdated { .. } => ("An older version is connected", "warn", Some("Update Claude Desktop extension"), None),
+        _ if through_file => (
+            "Connected through Claude Desktop's settings file",
+            "ok",
+            None,
+            file_status.and_then(|s| s.strip_prefix("Registered with Claude Desktop.")).map(str::trim).filter(|s| !s.is_empty()),
+        ),
+        _ => ("Not connected", "", can_connect.then_some("Connect Claude Desktop"), file_status.filter(|s| !s.starts_with("Removed"))),
+    };
+    ClaudeDesktopRow { status: status.into(), tone: tone.into(), button: button.map(Into::into), detail: detail.map(Into::into) }
+}
+
 pub fn source_label(source: &str) -> String {
     match source {
         "calendar" => "Calendar",
@@ -1213,7 +1230,11 @@ impl Engine {
                 let me = self.me();
                 // The system's question can block; never on the caller's thread.
                 std::thread::spawn(move || {
-                    let _ = me.platform.permissions.request(permission);
+                    let permissions = &me.platform.permissions;
+                    let asked = permissions.request(permission);
+                    if asked.is_err() || !matches!(permissions.status(permission), Access::Allowed | Access::NotNeeded) {
+                        let _ = permissions.open_settings(permission);
+                    }
                     me.changed();
                 });
             }
@@ -1758,29 +1779,19 @@ impl Engine {
             let s = self.lock();
             (s.prefs.clone(), s.assistant.clone(), s.claude_status.clone(), s.vocabulary_error.clone())
         };
+        let through_file = !extension.is_installed()
+            && prefs.claude_desktop_config_entry
+            && helper
+                .as_ref()
+                .is_some_and(|h| ClaudeDesktopConfig::is_registered(h, &ClaudeDesktopConfig::default_directory(&*self.platform.paths)));
+        let extension_path = self.host.extension_path().is_some();
         let client = AssistantClient::ALL.into_iter().find(|c| c.name() == assistant).unwrap_or(AssistantClient::ClaudeCode);
         // Terminal or PowerShell, and how to quote, follow the platform's words, not the build.
         let windows = self.platform.words.skin == "windows";
         let assistants = AssistantsView {
             enabled: prefs.mcp_enabled,
             privacy: "Assistants read transcripts on this computer. The text an assistant reads is sent to its provider (Anthropic, for Claude) like anything else you share with it.".into(),
-            claude_desktop: (prefs.mcp_enabled && claude_installed).then(|| ClaudeDesktopRow {
-                button: match &extension {
-                    ExtensionState::Installed { .. } => None,
-                    ExtensionState::Outdated { .. } => Some("Update Claude Desktop extension".into()),
-                    _ => self.host.extension_path().map(|_| "Connect Claude Desktop".into()),
-                },
-                status: match &extension {
-                    ExtensionState::Installed { .. } => "Connected".into(),
-                    ExtensionState::Outdated { .. } => "An older version is connected".into(),
-                    _ => "Not connected".into(),
-                },
-                tone: match &extension {
-                    ExtensionState::Installed { .. } => "ok".into(),
-                    ExtensionState::Outdated { .. } => "warn".into(),
-                    _ => String::new(),
-                },
-            }),
+            claude_desktop: (prefs.mcp_enabled && claude_installed).then(|| claude_desktop_row(&extension, through_file, extension_path, claude_status.as_deref())),
             assistants: AssistantClient::ALL
                 .into_iter()
                 .filter(|c| *c != AssistantClient::Other)
@@ -1789,8 +1800,10 @@ impl Engine {
             instructions: client.instructions_for(windows),
             command: helper.as_ref().map(|h| client.snippet_for(&h.to_string_lossy(), windows)),
             command_is_terminal: client.is_terminal_command(),
-            can_add_to_claude_config: prefs.mcp_enabled && claude_installed && !prefs.claude_desktop_config_entry,
-            claude_config_status: claude_status,
+            can_add_to_claude_config: prefs.mcp_enabled
+                && claude_installed
+                && !prefs.claude_desktop_config_entry
+                && !extension.is_installed(),
         };
         SettingsView {
             words: self.platform.words.clone(),
