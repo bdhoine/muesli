@@ -282,7 +282,7 @@ fn checks_from_settings_answer_inline() {
 #[test]
 fn never_a_downgrade_or_a_pre_release() {
     let h = mac();
-    for version in ["0.0.1", RUNNING, "99.0.0-beta.1"] {
+    for version in ["0.0.0", RUNNING, "99.0.0-beta.1"] {
         h.updater.publish(version);
         h.engine.intent(Intent::CheckForUpdates);
         wait_for("up to date", || h.engine.settings_view().updates.status.as_deref() == Some("Muesli is up to date"));
@@ -317,7 +317,7 @@ fn a_build_without_updates_never_checks() {
 
 #[test]
 fn the_first_start_of_a_new_version_says_so_once() {
-    let h = muesli(PlatformWords::MAC, Preferences { last_run_version: Some("0.0.1".into()), ..Default::default() });
+    let h = muesli(PlatformWords::MAC, Preferences { last_run_version: Some("0.0.0".into()), ..Default::default() });
     let notice = h.fakes.notifier.pending_notice().expect("a notification");
     assert_eq!(notice.title, format!("Muesli updated to {RUNNING}"));
     assert_eq!(notice.action.as_deref(), Some("What's new"));
@@ -343,7 +343,7 @@ fn macos_asks_for_permissions_again_after_an_update() {
     fakes.permissions.set(Permission::SystemAudio, Access::NotAsked);
     let paths = muesli_core::Paths::from_platform(&*fakes.paths);
     std::fs::create_dir_all(&paths.support).unwrap();
-    Preferences { onboarding_done: true, last_run_version: Some("0.0.1".into()), ..Default::default() }.save(&paths).unwrap();
+    Preferences { onboarding_done: true, last_run_version: Some("0.0.0".into()), ..Default::default() }.save(&paths).unwrap();
     let h = Harness::with_updater(dir, fakes, FakeSpeech::ready(), Arc::new(FakeUpdater::new(RUNNING)));
 
     assert!(h.host.is_open(Window::Setup));
@@ -367,7 +367,7 @@ fn windows_keeps_its_permissions_after_an_update() {
     fakes.permissions.set(Permission::Microphone, Access::Denied);
     let paths = muesli_core::Paths::from_platform(&*fakes.paths);
     std::fs::create_dir_all(&paths.support).unwrap();
-    Preferences { onboarding_done: true, last_run_version: Some("0.0.1".into()), ..Default::default() }.save(&paths).unwrap();
+    Preferences { onboarding_done: true, last_run_version: Some("0.0.0".into()), ..Default::default() }.save(&paths).unwrap();
     let h = Harness::with_updater(dir, fakes, FakeSpeech::ready(), Arc::new(FakeUpdater::new(RUNNING)));
     assert_eq!(notices(&h), vec![format!("Muesli updated to {RUNNING}")]);
     assert!(!h.host.is_open(Window::Setup));

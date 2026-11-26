@@ -1,7 +1,7 @@
 {
   "name": "muesli",
   "displayName": "Muesli",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Read and manage the meeting transcripts of Muesli, an on-device meeting transcriber for macOS and Windows: recording status, the list of meetings, full transcripts, renaming speakers and meetings.",
   "author": { "name": "Barry d'Hoine", "url": "https://github.com/bdhoine" },
   "homepage": "https://github.com/bdhoine/muesli",

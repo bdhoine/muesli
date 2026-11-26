@@ -1,65 +1,92 @@
 name: Release
-run-name: ${{ startsWith(github.ref, 'refs/tags/v') && format('Release {0}', github.ref_name) || format('Build installers for {0} ({1})', github.ref_name, github.sha) }}
+run-name: ${{ inputs.test_build && format('Test installers for {0} ({1})', github.ref_name, github.sha) || format('Release from {0}', github.ref_name) }}
 
-# Pushing a tag v<version> builds the Windows installers (.exe, .msi) and the macOS app (.dmg and
-# the updater's .app.tar.gz), signs the updater bundles with the Tauri updater key, writes
-# latest.json and puts all of it in a DRAFT GitHub release. Publishing that release (as Latest)
-# is what offers the update to everyone; see CONTRIBUTING.md, "Releasing".
+# Started by hand from main (Actions tab, or `gh workflow run Release`):
+#   1. prepare: dates this version's CHANGELOG section, commits it, tags main v<version> (the
+#      version in Cargo.toml) and creates a DRAFT GitHub release with that section as its notes.
+#   2. bundle:  builds the Windows installers (.exe, .msi) and the macOS app (.dmg) from the tag,
+#      with the signed updater bundles and latest.json, and attaches them to the draft.
+#   3. bump:    moves main to the next patch version.
+# Publishing the draft (as Latest) is what offers the update to everyone; see CONTRIBUTING.md,
+# "Releasing".
 #
-# Started by hand (workflow_dispatch) it builds unsigned test installers as downloadable artifacts,
-# without updater bundles and without a release.
+# With test_build it only builds installers as downloadable artifacts: no tag, no release, no
+# updater bundles.
 #
-# Neither is signed with a platform certificate: macOS gets an ad-hoc signature, Windows none.
+# macOS is signed with the certificate in the APPLE_CERTIFICATE secrets when they are set, ad hoc
+# otherwise; Windows is not signed.
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
+    inputs:
+      test_build:
+        description: Only build test installers (no tag, no release)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   prepare:
-    name: Check the tag and create a draft release
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Tag main and create a draft release
+    if: ${{ !inputs.test_build }}
     runs-on: ubuntu-latest
     outputs:
+      version: ${{ steps.tag.outputs.version }}
       release_id: ${{ steps.release.outputs.id }}
     steps:
-      - uses: actions/checkout@v4
-      - name: The tag matches the workspace version
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
         run: |
-          version=$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' Cargo.toml)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match the workspace version $version in Cargo.toml"
-            exit 1
-          fi
+          echo "::error::Run the release from main, not $GITHUB_REF_NAME"
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - name: The updater public key is set
         run: |
           if grep -q 'TODO(barry)' apps/desktop/tauri.release.conf.json; then
             echo "::error::Replace the updater pubkey in apps/desktop/tauri.release.conf.json first (CONTRIBUTING.md, Releasing)"
             exit 1
           fi
+      - name: Date the changelog, commit and tag
+        id: tag
+        run: |
+          version=$(python3 scripts/release.py version)
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is already tagged; main should be on the next version"
+            exit 1
+          fi
+          python3 scripts/release.py changelog "$(date -u +%Y-%m-%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git commit -am "Release $version"
+          fi
+          git tag "v$version"
+          git push origin HEAD:main "v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Create the draft release
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          # The release notes: this version's section of CHANGELOG.md.
-          awk -v v="$version" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
-          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Muesli $version" --notes-file notes.md
-          fi
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n 1)
+          python3 scripts/release.py notes > notes.md
+          gh release create "v$VERSION" --draft --verify-tag --title "Muesli $VERSION" --notes-file notes.md
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"v$VERSION\") | .id" | head -n 1)
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   bundle:
     name: Build ${{ matrix.name }}
     needs: prepare
-    # Runs without `prepare` (skipped) when started by hand.
-    if: ${{ !cancelled() && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped') }}
+    # Runs without `prepare` (skipped) for a test build.
+    if: ${{ !cancelled() && (needs.prepare.result == 'success' || (inputs.test_build && needs.prepare.result == 'skipped')) }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -70,6 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.test_build && github.sha || format('v{0}', needs.prepare.outputs.version) }}
           submodules: recursive # LocalVQE (crates/aec)
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -102,10 +130,28 @@ jobs:
           mkdir -p apps/desktop/binaries
           cp "target/${{ matrix.target }}/release/muesli-mcp$ext" "apps/desktop/binaries/muesli-mcp-${{ matrix.target }}$ext"
           python3 scripts/build-mcpb.py "target/${{ matrix.target }}/release/muesli-mcp$ext"
+      # The Tauri bundler imports the .p12 into a temporary keychain and signs with it; the identity
+      # overrides the ad-hoc "-" in tauri.release.conf.json. Without the secrets: ad hoc.
+      - name: Use the signing certificate (macOS)
+        if: runner.os == 'macOS'
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -n "$CERTIFICATE" ] && [ -n "$IDENTITY" ]; then
+            {
+              echo "APPLE_CERTIFICATE=$(echo "$CERTIFICATE" | tr -d '\n')"
+              echo "APPLE_CERTIFICATE_PASSWORD=$PASSWORD"
+              echo "APPLE_SIGNING_IDENTITY=$IDENTITY"
+            } >> "$GITHUB_ENV"
+            echo "Signing with $IDENTITY"
+          else
+            echo "::warning::No APPLE_CERTIFICATE secrets: the macOS app is signed ad hoc"
+          fi
 
-      # A tag: signed updater bundles, latest.json, all uploaded to the draft release.
       - name: Build, sign and upload to the draft release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: ${{ !inputs.test_build }}
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -120,17 +166,36 @@ jobs:
           # Windows updates through the per-user NSIS installer; the .msi stays a manual download.
           updaterJsonPreferNsis: true
 
-      # By hand: unsigned test installers, no updater bundles (they need the signing key).
-      - name: Build the app (unsigned test build)
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      - name: Build the app (test build)
+        if: ${{ inputs.test_build }}
         working-directory: apps/desktop
         shell: bash
         run: cargo tauri build --target ${{ matrix.target }} --config tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":false}}'
       - uses: actions/upload-artifact@v4
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ inputs.test_build }}
         with:
           name: muesli-${{ matrix.target }}
           path: |
             target/${{ matrix.target }}/release/bundle/**/*.msi
             target/${{ matrix.target }}/release/bundle/nsis/*.exe
             target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+  bump:
+    name: Move main to the next version
+    needs: [prepare, bundle]
+    if: ${{ !inputs.test_build }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Next patch version, Cargo.lock and the plugin
+        run: |
+          next=$(python3 scripts/release.py bump)
+          cargo update --workspace
+          python3 scripts/sync-plugin.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Start $next"
+          git push origin HEAD:main

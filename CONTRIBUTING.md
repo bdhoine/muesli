@@ -85,7 +85,7 @@ cargo build -p muesli-sim && cd apps/sim && npm ci && npx playwright install chr
 - The engine tests (`crates/engine/tests`) drive the fakes with a manual clock: prompts and their wording, the 60 s and 5 minute timings, the prompt-window fallback, the live transcript, rename/delete/undo, imports, setup on both skins, Settings, the config migration.
 - The UI tests (`apps/sim/tests`) run Chromium against the simulator for both skins. The simulator serves `ui/` with the app's Content Security Policy (read from `apps/desktop/tauri.conf.json`), and a test fails on any violation, so something the app would block (a `data:` image, an inline script) cannot pass in the browser and break in the app. `design.test.mjs` measures the macOS skin against the design canvas ("Muesli – macOS app", a claude.ai design artifact): sizes, colours and what each window shows for setup, the main window (idle and transcribing) and Settings. When the design changes, update the numbers there along with the UI.
 - On a Mac or PC: `cargo test -p muesli-port-contracts --test native`, and `-- --ignored` for the contracts that need a microphone, something playing, a notification or that change the login item.
-- **Tests** (`.github/workflows/ci.yml`) runs clippy and the Rust tests on macOS, Windows and Linux, the UI tests, and the checks that generated files (icons, plugin) are current. It is started by hand (Actions tab, or `gh workflow run Tests`). **Release** (`app.yml`) builds the Windows installers and the macOS disk image: by hand as unsigned test artifacts, on a `v*` tag into a draft release (see [Releasing](#releasing)). A macOS job can wait a long time for a runner and is cancelled after 15 minutes in the queue; run it again.
+- **Tests** (`.github/workflows/ci.yml`) runs clippy and the Rust tests on macOS, Windows and Linux, the UI tests, and the checks that generated files (icons, plugin) are current. It runs on every push and pull request (and by hand: Actions tab, or `gh workflow run Tests`). **Release** (`app.yml`), started by hand from `main`, tags the version in `Cargo.toml`, builds the Windows installers and the macOS disk image into a draft release and moves `main` to the next version; with `test_build` it only builds installers as artifacts (see [Releasing](#releasing)). A macOS job can wait a long time for a runner and is cancelled after 15 minutes in the queue; run it again.
 - Check capture on a real machine: `cargo run -p muesli-platform-common --features capture --example probe -- 8`. Check the resampler by ear or with Whisper: `cargo run -p muesli-audio --example resample_wav -- in.wav out.wav`. Real speech: the ignored tests in `crates/whisper/tests/transcribe.rs` and `crates/import/tests` (`MUESLI_TEST_MODEL`, `MUESLI_TEST_VAD`, `MUESLI_TEST_AUDIO`). Echo cancellation with the real model: `MUESLI_AEC_NEAR_WAV=near.wav MUESLI_AEC_FAR_WAV=far.wav cargo test --release -p muesli-aec --features localvqe -- --ignored` (two voices, 16 kHz mono WAV; on a Mac `say -o near.wav --data-format=LEI16@16000 "…"`).
 
 ### The simulator
@@ -170,7 +170,7 @@ The plugin is installed from this repo (`/plugin install muesli --marketplace bd
 
 ## Changelog
 
-`CHANGELOG.md` follows Keep a Changelog and lists only what a user can see or use. Add a line under `[Unreleased]` with every such change. To release: bump the version in `Cargo.toml` at the repo root, run `python3 scripts/sync-plugin.py`, update the fixtures that carry the version (`fixtures/mcp/expected.jsonl`), rename `[Unreleased]` to the version and date, add a new empty `[Unreleased]` and update the compare links.
+`CHANGELOG.md` follows Keep a Changelog and lists only what a user can see or use. Add a line under `[Unreleased]` with every such change. The Release workflow turns `[Unreleased]` into the version being released with its date and updates the compare links (`scripts/release.py changelog`); nothing else in the repository carries the version by hand (tests read it from `Cargo.toml`, `fixtures/mcp/expected.jsonl` says `VERSION`).
 
 ## Releasing
 
@@ -179,17 +179,17 @@ Muesli updates itself from the GitHub release marked Latest (`latest.json`, see 
 Once, before the first release (the pubkey there is a `TODO(barry)` placeholder, and the Release workflow refuses to run until it is replaced):
 
 1. `cargo tauri signer generate -w ~/.tauri/muesli.key` and choose a password. Keep the private key and password safe (a password manager); losing them means existing installs can never be updated again.
-2. In the repository's Settings → Secrets and variables → Actions add `TAURI_SIGNING_PRIVATE_KEY` (the contents of `~/.tauri/muesli.key`) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+2. Add the secrets `TAURI_SIGNING_PRIVATE_KEY` (the contents of `~/.tauri/muesli.key`) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (Settings → Secrets and variables → Actions, or `gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.tauri/muesli.key` and `gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD`).
 3. Replace the `pubkey` value in `apps/desktop/tauri.release.conf.json` with the contents of `~/.tauri/muesli.key.pub` and commit it.
+4. Optional, for the macOS signature: the certificate secrets (see [Permissions and code signing](#permissions-and-code-signing)).
 
 Each release:
 
-1. Bump the version and the changelog (see [Changelog](#changelog)), commit, and push.
-2. Tag it: `git tag v<version> && git push origin v<version>`. The tag must match the workspace version in `Cargo.toml`, or the workflow stops.
-3. The **Release** workflow builds Windows and macOS, signs the updater bundles, writes `latest.json` and puts everything in a draft release, with this version's changelog section as its notes.
-4. Check the draft (try the installers), then publish it as Latest. From then on every Muesli that checks gets the update. Never mark a test build as Latest; pre-releases are ignored by the updater.
+1. Make sure `[Unreleased]` in `CHANGELOG.md` says what is new, and that **Tests** passed on `main`.
+2. Run **Release** from `main` (Actions tab, or `gh workflow run Release --ref main`). It dates the changelog section and commits it ("Release <version>"), tags `main` with `v<version>` (the version in `Cargo.toml`), creates a draft release with that section as its notes, builds Windows (`.exe`, `.msi`) and macOS (`.dmg`) with the signed updater bundles and `latest.json`, attaches them to the draft, and then moves `main` to the next patch version ("Start <next>"). If a build fails, nothing is bumped: fix it and re-run the failed jobs.
+3. Check the draft (try the installers), then publish it as Latest. From then on every Muesli that checks gets the update. Never mark a test build as Latest; pre-releases are ignored by the updater.
 
-Started by hand, the workflow builds unsigned test installers as artifacts, without updater bundles and without a release. The updater is off in debug builds (`cargo run`), so test it with release builds: install version N, publish N+1, start N and wait 30 s (or use Check for Updates in Settings).
+Run with **test_build** (`gh workflow run Release -f test_build=true`), the workflow only builds installers as artifacts, without updater bundles, tag or release. The updater is off in debug builds (`cargo run`), so test it with release builds: install version N, publish N+1, start N and wait 30 s (or use Check for Updates in Settings).
 
 ## Permissions and code signing
 
@@ -203,7 +203,7 @@ tccutil reset AudioCapture com.github.bdhoine.muesli
 tccutil reset Calendar com.github.bdhoine.muesli
 ```
 
-Signing with a real certificate avoids this: permissions are then tied to the certificate, not the build. For a local build use your own from the keychain (`security find-identity -v -p codesigning` lists them):
+Signing with a real certificate avoids this: permissions are then tied to the certificate, not the build. The Release workflow signs the macOS app with the certificate in the secrets `APPLE_CERTIFICATE` (the `.p12`, base64), `APPLE_CERTIFICATE_PASSWORD` and `APPLE_SIGNING_IDENTITY` (its name, as `security find-identity -v -p codesigning` prints it), and ad hoc when they are not set. To add them: in Keychain Access, My Certificates, export the certificate with its private key as a `.p12` with a password, then `base64 -i muesli.p12 | gh secret set APPLE_CERTIFICATE`, `gh secret set APPLE_CERTIFICATE_PASSWORD` and `gh secret set APPLE_SIGNING_IDENTITY`, and delete the `.p12`. An Apple Development certificate keeps permissions across updates; only a Developer ID Application certificate with notarisation (the paid Apple Developer Program) also stops macOS from blocking the downloaded app on first open. For a local build use your own from the keychain (`security find-identity -v -p codesigning` lists them):
 
 ```bash
 APPLE_SIGNING_IDENTITY="Apple Development: you@example.com (TEAMID)" cargo tauri build --bundles app --config tauri.release.conf.json --config '{"bundle":{"createUpdaterArtifacts":false}}'

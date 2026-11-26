@@ -1,10 +1,16 @@
 name: Tests
 run-name: Tests on ${{ github.ref_name }} (${{ github.sha }})
 
-# Started by hand (Actions tab, or `gh workflow run Tests`). Put `push` and `pull_request` here to run
-# it automatically. Rust runs on macOS, Windows and Linux.
+# On every push and pull request, and by hand (Actions tab, or `gh workflow run Tests`). Rust runs on
+# macOS, Windows and Linux.
 on:
+  push:
+  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   rust:

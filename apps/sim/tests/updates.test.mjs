@@ -2,10 +2,11 @@
 // Settings, and the first start after an update.
 //   cargo build -p muesli-sim && node --test apps/sim/tests/*.test.mjs
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, test } from "node:test";
 import { eventually, startSim } from "./sim.mjs";
 
-const VERSION = "0.1.0"; // the workspace version the simulator runs as
+const VERSION = readFileSync(new URL("../../../Cargo.toml", import.meta.url), "utf8").match(/^version = "([^"]+)"/m)[1];
 
 for (const skin of ["mac", "windows"]) {
   const mac = skin === "mac";

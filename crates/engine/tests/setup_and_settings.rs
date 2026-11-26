@@ -283,7 +283,7 @@ fn an_outdated_claude_extension_is_announced() {
     let manifest = |version: &str| {
         std::fs::write(installed.join("manifest.json"), format!(r#"{{"name": "muesli", "version": "{version}"}}"#)).unwrap()
     };
-    manifest("0.0.1");
+    manifest("0.0.0");
     let bundle = std::path::PathBuf::from("/Applications/Muesli.app/Contents/Resources/Muesli.mcpb");
     let start = || {
         let host = Arc::new(RecordingHost::default());

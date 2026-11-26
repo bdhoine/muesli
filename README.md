@@ -109,7 +109,7 @@ Muesli supports **macOS 14.4 or later** (Apple Silicon) and **Windows 10/11 (64-
 | Deleted transcripts go to | Trash | Recycle Bin |
 | Transcribes on | The GPU (Metal) | The graphics card (Vulkan) when its driver supports it, otherwise the processor |
 
-Releases appear on the repository's [Releases page](https://github.com/bdhoine/muesli/releases) once the first one is published. Test builds come from GitHub Actions: on the repository's **Actions** tab, run the **Release** workflow by hand and download the `muesli-aarch64-apple-darwin` (macOS, a `.dmg`) or `muesli-x86_64-pc-windows-msvc` (Windows) artifact. Neither is signed with a certificate yet, so macOS and Windows SmartScreen ask you to confirm.
+Releases appear on the repository's [Releases page](https://github.com/bdhoine/muesli/releases) once the first one is published. Test builds come from GitHub Actions: on the repository's **Actions** tab, run the **Release** workflow by hand with **test_build** and download the `muesli-aarch64-apple-darwin` (macOS, a `.dmg`) or `muesli-x86_64-pc-windows-msvc` (Windows) artifact. Neither is signed with a certificate yet, so macOS and Windows SmartScreen ask you to confirm.
 
 To build it yourself you need [Rust](https://rustup.rs), CMake and Python 3 (on Windows also the Visual Studio C++ build tools and the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home); on macOS the Xcode command line tools):
 

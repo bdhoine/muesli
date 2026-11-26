@@ -4,7 +4,7 @@
   "setupDone": true,
   "model": "ready",
   "assistants": true,
-  "claudeExtension": "0.0.1",
+  "claudeExtension": "0.0.0",
   "steps": [
     { "do": "meeting", "title": "Weekly sync", "source": "calendar", "minutes": 32, "hoursAgo": 26 },
     { "do": "intent", "intent": { "type": "openMuesli" } }

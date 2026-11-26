@@ -59,7 +59,9 @@ fn replies_match_the_swift_server() {
 
     let server = Server::new(paths.clone(), trash(&dir));
     let requests = std::fs::read_to_string(fixtures().join("requests.jsonl")).unwrap();
-    let expected = std::fs::read_to_string(fixtures().join("expected.jsonl")).unwrap();
+    let expected = std::fs::read_to_string(fixtures().join("expected.jsonl"))
+        .unwrap()
+        .replace(r#""version":"VERSION""#, &format!(r#""version":"{}""#, muesli_core::VERSION));
 
     let mut replies = Vec::new();
     for line in requests.lines().filter(|l| !l.is_empty()) {

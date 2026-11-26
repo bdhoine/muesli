@@ -2521,7 +2521,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-aec"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "cmake",
  "hound",
@@ -2531,7 +2531,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-app"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
@@ -2555,7 +2555,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-audio"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "audioadapter-buffers",
  "rubato",
@@ -2565,7 +2565,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-platform-fake",
@@ -2579,7 +2579,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-engine"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2592,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-import"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-audio",
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-mcp"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2616,7 +2616,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-platform-common"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "cpal",
@@ -2629,7 +2629,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-platform-fake"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-audio",
@@ -2638,7 +2638,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-platform-macos"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "block2",
  "chrono",
@@ -2658,7 +2658,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-platform-windows"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2670,7 +2670,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-port-contracts"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2683,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-sim"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "chrono",
  "muesli-core",
@@ -2696,7 +2696,7 @@ dependencies = [
 
 [[package]]
 name = "muesli-whisper"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "muesli-core",
  "tempfile",
