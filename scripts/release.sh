@@ -8,9 +8,10 @@ Muesli's release process, from your Mac.
   scripts/release.sh setup [--certificate FILE.p12] [--identity NAME]
       Once: creates the updater key (~/.tauri/muesli.key) if it is missing, stores it and its
       password as repository secrets, and writes its public key into
-      apps/desktop/tauri.release.conf.json (commit and push that). With --certificate, also
-      stores the macOS signing certificate (exported from Keychain Access as .p12) and its
-      identity, so CI signs the Mac app with it.
+      apps/desktop/tauri.release.conf.json (commit and push that). It also stores the macOS
+      signing certificate (exported from Keychain Access as .p12; --certificate, or ~/muesli.p12
+      when that exists) and its identity, so CI signs the Mac app with it, and then offers to
+      delete the .p12.
 
   scripts/release.sh run
       Checks that main is pushed and clean, the updater key is in place and the secrets exist,
@@ -46,6 +47,7 @@ setup() {
       *) usage; exit 1 ;;
     esac
   done
+  if [ -z "$certificate" ] && [ -f "$HOME/muesli.p12" ]; then certificate="$HOME/muesli.p12"; fi
   need_gh
   for dir in /opt/homebrew/opt/rustup/bin "$HOME/.cargo/bin"; do [ -d "$dir" ] && PATH="$dir:$PATH"; done
 
@@ -91,7 +93,15 @@ PY
     gh secret set APPLE_CERTIFICATE_PASSWORD
     printf '%s' "$identity" | gh secret set APPLE_SIGNING_IDENTITY
     echo "CI signs the Mac app as: $identity"
-    echo "Delete $certificate now that it is stored."
+    read -r -p "Delete $certificate now that it is stored? [Y/n] " answer
+    if [ "$answer" != "n" ] && [ "$answer" != "N" ]; then
+      rm -P "$certificate" 2>/dev/null || rm "$certificate"
+      echo "Deleted."
+    else
+      echo "Kept $certificate; delete it yourself once you no longer need it."
+    fi
+  else
+    echo "No certificate (--certificate, or ~/muesli.p12): the Mac app stays signed ad hoc in CI."
   fi
 }
 
