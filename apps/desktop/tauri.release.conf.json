@@ -8,7 +8,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "TODO(barry): replace with the public key from `cargo tauri signer generate` (see CONTRIBUTING.md, Releasing)",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhBNjIzRUY3ODg4NzFDRjgKUldUNEhJZUk5ejVpaXZpaXlQdFRCRHAvcnl2NGJCNk1ZY2VHK211eStuamNOenBCOVBVTWt4SmYK",
       "endpoints": ["https://github.com/bdhoine/muesli/releases/latest/download/latest.json"],
       "requireSignedVersion": true,
       "windows": { "installMode": "passive" }
