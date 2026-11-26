@@ -4,6 +4,9 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
+### Fixed
+- Windows: a transcript that Muesli or an AI assistant was saving at that moment no longer goes missing from the list for a moment.
+
 ## [0.0.1] - 2026-11-26
 
 The first release of Muesli, an on-device meeting transcriber for macOS (14.4 or later, Apple Silicon) and Windows.
