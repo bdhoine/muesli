@@ -51,7 +51,7 @@ jobs:
 
   ui:
     name: UI tests (simulator, both skins)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
