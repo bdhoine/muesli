@@ -15,13 +15,15 @@ const CONTROL_LINE = "rgb(201, 185, 148)";
 
 /** The computed style properties of the first element matching `selector`, and its box. */
 async function look(page, selector, props) {
-  return page.locator(selector).first().evaluate((el, props) => {
+  await page.locator(selector).first().waitFor();
+  return page.evaluate(([selector, props]) => {
+    const el = document.querySelector(selector);
     const cs = getComputedStyle(el);
     const box = el.getBoundingClientRect();
     const out = { width: box.width, height: box.height, right: box.right, bottom: box.bottom };
     for (const p of props) out[p] = cs.getPropertyValue(p);
     return out;
-  }, props);
+  }, [selector, props]);
 }
 
 describe("macOS skin matches the design", () => {

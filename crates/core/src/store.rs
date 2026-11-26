@@ -60,7 +60,7 @@ impl Store {
         Self::recent(folder, limit)
             .into_iter()
             .map(|md| {
-                let meeting: Option<Meeting> = fs::read_to_string(md.with_extension("json")).ok().and_then(|t| json::from_str(&t));
+                let meeting: Option<Meeting> = json::read_shared(&md.with_extension("json")).ok().and_then(|t| json::from_str(&t));
                 RecentTranscript {
                     title: meeting
                         .as_ref()
@@ -205,7 +205,7 @@ impl<'a> MeetingStore<'a> {
     }
 
     pub fn load(&self, id: &str) -> Option<Meeting> {
-        json::from_str(&fs::read_to_string(self.url(id)?).ok()?)
+        json::from_str(&json::read_shared(&self.url(id)?).ok()?)
     }
 
     /// All meetings, newest first.
@@ -216,7 +216,7 @@ impl<'a> MeetingStore<'a> {
             .flatten()
             .map(|e| e.path())
             .filter(|p| p.extension().is_some_and(|e| e == "json"))
-            .filter_map(|p| json::from_str(&fs::read_to_string(p).ok()?))
+            .filter_map(|p| json::from_str(&json::read_shared(&p).ok()?))
             .collect();
         meetings.sort_by_key(|m| std::cmp::Reverse(m.started_at));
         meetings
@@ -255,7 +255,7 @@ impl<'a> MeetingStore<'a> {
             if path.extension().is_none_or(|e| e != "json") {
                 continue;
             }
-            let Some(m) = fs::read_to_string(&path).ok().and_then(|t| json::from_str::<Meeting>(&t)) else {
+            let Some(m) = json::read_shared(&path).ok().and_then(|t| json::from_str::<Meeting>(&t)) else {
                 continue;
             };
             let Some(target) = self.url(&m.id) else { continue };

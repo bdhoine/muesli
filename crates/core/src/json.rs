@@ -47,6 +47,21 @@ pub fn from_str<T: DeserializeOwned>(text: &str) -> Option<T> {
     serde_json::from_str(text).ok()
 }
 
+/// Reads a file another process may be replacing with `write_atomic`. On Windows, opening it
+/// while the rename is in flight fails for a moment with "access denied"; that is retried.
+pub fn read_shared(path: &std::path::Path) -> std::io::Result<String> {
+    let mut tries = 0;
+    loop {
+        match std::fs::read_to_string(path) {
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && tries < 50 => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            result => return result,
+        }
+    }
+}
+
 /// Writes through a uniquely named temporary file in the same folder and renames it into place,
 /// so readers never see half a file and two writers (the app and muesli-mcp) never share a temp file.
 pub fn write_atomic(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
