@@ -4,7 +4,7 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
-## [0.0.1]
+## [0.0.1] - 2026-11-26
 
 The first release of Muesli, an on-device meeting transcriber for macOS (14.4 or later, Apple Silicon) and Windows.
 
