@@ -51,46 +51,64 @@ setup() {
   need_gh
   for dir in /opt/homebrew/opt/rustup/bin "$HOME/.cargo/bin"; do [ -d "$dir" ] && PATH="$dir:$PATH"; done
 
-  step "Updater key"
-  if [ -f "$key" ]; then
-    echo "Using the existing $key"
+  local names; names="$(secret_names)"
+  if grep -qx TAURI_SIGNING_PRIVATE_KEY <<<"$names" && grep -qx TAURI_SIGNING_PRIVATE_KEY_PASSWORD <<<"$names" \
+    && ! grep -q 'TODO(barry)' "$config"; then
+    step "Updater key"
+    echo "Already stored and its public key is in $config: skipped."
   else
-    command -v cargo >/dev/null && cargo tauri --version >/dev/null 2>&1 || fail "the Tauri CLI is needed: cargo install tauri-cli --version '^2' --locked"
-    mkdir -p "$(dirname "$key")"
-    echo "Choose a password for the updater key and keep both in your password manager:"
-    cargo tauri signer generate -w "$key"
-  fi
+    step "Updater key"
+    if [ -f "$key" ]; then
+      echo "Using the existing $key"
+    else
+      command -v cargo >/dev/null && cargo tauri --version >/dev/null 2>&1 || fail "the Tauri CLI is needed: cargo install tauri-cli --version '^2' --locked"
+      mkdir -p "$(dirname "$key")"
+      echo "Choose a password for the updater key and keep both in your password manager:"
+      cargo tauri signer generate -w "$key"
+    fi
 
-  step "Secrets for the updater key"
-  gh secret set TAURI_SIGNING_PRIVATE_KEY < "$key"
-  echo "Type the updater key's password:"
-  gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+    step "Secrets for the updater key"
+    gh secret set TAURI_SIGNING_PRIVATE_KEY < "$key"
+    echo "Type the updater key's password:"
+    gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 
-  step "Public key in $config"
-  KEY_PUB="$(tr -d '\n' < "$key.pub")" CONFIG="$config" python3 - <<'PY'
+    step "Public key in $config"
+    KEY_PUB="$(tr -d '\n' < "$key.pub")" CONFIG="$config" python3 - <<'PY'
 import json, os, re
 path, pub = os.environ["CONFIG"], os.environ["KEY_PUB"]
 text = open(path).read()
 text = re.sub(r'("pubkey"\s*:\s*)"[^"]*"', lambda m: m.group(1) + json.dumps(pub), text, count=1)
 open(path, "w").write(text)
 PY
-  if git diff --quiet -- "$config"; then
-    echo "Already set."
-  else
-    echo "Updated. Commit and push it: git commit -m 'Updater public key' $config && git push"
+    if git diff --quiet -- "$config"; then
+      echo "Already set."
+    else
+      echo "Updated. Commit and push it: git commit -m 'Updater public key' $config && git push"
+    fi
   fi
 
   if [ -n "$certificate" ]; then
     step "macOS signing certificate"
     [ -f "$certificate" ] || fail "$certificate does not exist"
+    command -v openssl >/dev/null || fail "openssl is needed to check the certificate"
+    local password contents=""
+    read -r -s -p "Password of $certificate: " password; echo
+    for flags in "" "-legacy"; do
+      # shellcheck disable=SC2086
+      contents="$(P12_PASSWORD="$password" openssl pkcs12 -in "$certificate" -nodes -passin env:P12_PASSWORD $flags 2>/dev/null)" && break
+      contents=""
+    done
+    [ -n "$contents" ] || fail "cannot open $certificate: wrong password, or not a .p12"
+    grep -q "PRIVATE KEY" <<<"$contents" || fail "$certificate has no private key. Export the certificate together with its key: Keychain Access, login keychain, My Certificates, select the certificate (the row with the arrow), Export, .p12"
+    grep -q "BEGIN CERTIFICATE" <<<"$contents" || fail "$certificate has no certificate"
     if [ -z "$identity" ]; then
-      identity="$(security find-identity -v -p codesigning 2>/dev/null \
-        | sed -nE 's/.*"((Apple Development|Developer ID Application): [^"]*)".*/\1/p' | head -n 1)"
+      identity="$(openssl x509 -noout -subject -nameopt multiline <<<"$contents" | sed -nE 's/^ *commonName *= *(.*)$/\1/p' | head -n 1)"
     fi
-    [ -n "$identity" ] || fail "no signing identity found; pass --identity 'Apple Development: …'"
+    [ -n "$identity" ] || fail "no certificate name found; pass --identity 'Apple Development: …'"
+    contents=""
     base64 -i "$certificate" | tr -d '\n' | gh secret set APPLE_CERTIFICATE
-    echo "Type the .p12 password:"
-    gh secret set APPLE_CERTIFICATE_PASSWORD
+    printf '%s' "$password" | gh secret set APPLE_CERTIFICATE_PASSWORD
+    password=""
     printf '%s' "$identity" | gh secret set APPLE_SIGNING_IDENTITY
     echo "CI signs the Mac app as: $identity"
     read -r -p "Delete $certificate now that it is stored? [Y/n] " answer
@@ -113,7 +131,15 @@ check_ready() {
   [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || fail "main differs from origin/main: push or pull first"
   git diff --quiet && git diff --cached --quiet || fail "uncommitted changes"
   version="$(python3 scripts/release.py version)"
-  if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then fail "v$version is already released; main should be on the next version"; fi
+  resume=0
+  if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+    if [ "$(gh release view "v$version" --json isDraft --jq .isDraft 2>/dev/null)" = "true" ]; then
+      resume=1
+      echo "v$version is tagged and its draft release exists: the builds run again for it"
+    else
+      fail "v$version is already released; main should be on the next version"
+    fi
+  fi
   local released_config; released_config="$(git show "origin/main:$config")"
   if grep -q 'TODO(barry)' <<<"$released_config"; then fail "the updater public key is not set on main: run 'scripts/release.sh setup', commit and push"; fi
   local names; names="$(secret_names)"
@@ -144,7 +170,9 @@ start_and_watch() {
 
 run() {
   check_ready
-  read -r -p "Release Muesli $version (tag v$version, draft release, main moves to the next version)? [y/N] " answer
+  local question="Release Muesli $version (tag v$version, draft release, main moves to the next version)?"
+  [ "$resume" = 1 ] && question="Build Muesli $version again for the existing draft v$version, then move main to the next version?"
+  read -r -p "$question [y/N] " answer
   [ "$answer" = "y" ] || [ "$answer" = "Y" ] || { echo "Nothing done."; exit 0; }
   step "Release workflow"
   start_and_watch
