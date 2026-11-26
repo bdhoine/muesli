@@ -66,6 +66,7 @@ You need [Rust](https://rustup.rs) and CMake (whisper.cpp, LocalVQE). Clone with
 ```bash
 cargo run -p muesli-app                      # the app (on Linux: real folders, fakes for audio and the OS)
 cd apps/desktop && cargo tauri build         # an installer (.dmg on macOS, .msi/.exe on Windows)
+scripts/install-mac.sh                       # macOS: build a signed release app and install it in ~/Applications
 cargo run -p muesli-sim -- --skin windows --scenario call-in-progress   # the simulator
 ```
 
@@ -175,6 +176,8 @@ The plugin is installed from this repo (`/plugin install muesli --marketplace bd
 ## Releasing
 
 Muesli updates itself from the GitHub release marked Latest (`latest.json`, see `docs/REQUIREMENTS.md` UP1 to UP9). Updates are signed with a Tauri updater key; the app checks the signature against the public key in `apps/desktop/tauri.release.conf.json`.
+
+`scripts/release.sh` does the steps below from your Mac: `setup` (once: updater key, its secrets and public key, and with `--certificate muesli.p12` the macOS certificate secrets), `run` (checks that `main` is pushed and clean, the key and secrets are in place and the version is not tagged yet, asks, starts **Release**, follows it and lists the draft's files) and `test-build`. By hand:
 
 Once, before the first release (the pubkey there is a `TODO(barry)` placeholder, and the Release workflow refuses to run until it is replaced):
 
