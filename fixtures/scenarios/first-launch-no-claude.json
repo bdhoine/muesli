@@ -1,0 +1,9 @@
+{
+  "name": "First launch, no Claude Desktop",
+  "description": "A fresh computer without Claude Desktop: setup's AI assistants screen explains the other apps.",
+  "setupDone": false,
+  "model": "missing",
+  "permissions": "notAsked",
+  "noClaudeDesktop": true,
+  "steps": []
+}

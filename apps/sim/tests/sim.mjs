@@ -46,6 +46,11 @@ export async function startSim({ scenario, skin = "mac", colorScheme = "light" }
       const reply = await post("api/sim", step);
       if (!reply.ok) throw new Error(await reply.text());
     },
+    /** Sends an intent, as a window would. */
+    async intent(intent) {
+      const reply = await post("api/intent", intent);
+      if (!reply.ok) throw new Error(await reply.text());
+    },
     async state() {
       return (await fetch(url + "api/sim")).json();
     },

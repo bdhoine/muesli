@@ -218,7 +218,6 @@ input[role="switch"]:checked::after { left: 21px; }
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 13px 18px; }
 .card > * + * { border-top: 1px solid var(--divider); }
 .features > * + * { border-top: 1px solid var(--divider); }
-.setting.footer { justify-content: flex-end; padding: 6px 10px; }
 .setting.feature .progress { margin-top: 6px; }
 .setting .text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .setting .title { font-size: 15px; display: flex; align-items: center; gap: 8px; }

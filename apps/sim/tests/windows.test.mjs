@@ -8,7 +8,7 @@ for (const skin of ["mac", "windows"]) {
   const mac = skin === "mac";
 
   describe(`${skin} skin`, () => {
-    test("setup: four screens, the model downloads on the way, Open Muesli", async () => {
+    test("setup: five screens, the model downloads on the way, Open Muesli", async () => {
       const sim = await startSim({ scenario: "first-launch", skin });
       try {
         assert.deepEqual((await sim.state()).windows, ["setup"]);
@@ -38,6 +38,15 @@ for (const skin of ["mac", "windows"]) {
           await page.getByTestId("permission-microphone").getByRole("button", { name: "Allow…" }).click();
           await eventually(async () => !(await page.getByTestId("setup-primary").isDisabled()), "Continue enabled");
         }
+        await page.getByTestId("setup-primary").click();
+
+        // AI assistants: on, and Claude Desktop (installed here) with Connect; no other apps.
+        await page.getByTestId("setup-title").getByText("Use Muesli with your AI assistant").waitFor();
+        assert.equal((await page.locator(".counter").textContent()).trim(), "Step 3 of 3");
+        assert.equal(await page.getByTestId("assistants").isChecked(), true, "on by default here");
+        await page.getByTestId("claude-connect").getByText("Connect").waitFor();
+        assert.equal(await page.getByTestId("other-apps").count(), 0);
+        await page.getByTestId("setup-skip").waitFor();
         await page.getByTestId("setup-primary").click();
         await page.getByText(`Muesli is in your ${mac ? "menu bar" : "system tray"}`).waitFor();
         await page.getByText("tell the people you meet with that you are transcribing").waitFor();
@@ -161,6 +170,9 @@ for (const skin of ["mac", "windows"]) {
 
         await page.getByTestId("model").getByText("Download failed").waitFor();
         await page.getByTestId("model").getByText("huggingface.co").first().waitFor();
+        // The way out sits on the failed line, and only there.
+        await page.getByTestId("feature-speech").getByTestId("retry-speech").getByText("Try again").waitFor();
+        assert.equal(await page.getByRole("button", { name: "Download again" }).count(), 0);
       } finally {
         await sim.stop();
       }

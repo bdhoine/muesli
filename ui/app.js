@@ -282,12 +282,12 @@
         <div class="text"><span class="title">${esc(f.title)}</span><span class="sub">${esc(f.detail)}</span>
           ${f.progress != null ? progress(f.progress) : ""}
           ${f.id === "speech" && m.error ? `<div class="error-text">${esc(m.error)}${m.url ? `<br><code>${esc(m.url)}</code>` : ""}</div>` : ""}</div>
-        <div class="controls"><span class="pill ${esc(f.tone)}"><span class="dot"></span>${esc(f.status)}</span></div>
+        <div class="controls"><span class="pill ${esc(f.tone)}"><span class="dot"></span>${esc(f.status)}</span>
+          ${f.action ? button(f.action, { type: "downloadModelAgain" }, { testid: `retry-${f.id}` }) : ""}</div>
       </div>`,
       )
       .join("");
-    return `<div class="features" data-testid="model">${rows}
-      ${m.canRetry ? `<div class="setting footer">${button("Download again", { type: "downloadModelAgain" }, { kind: "small quiet" })}</div>` : ""}</div>`;
+    return `<div class="features" data-testid="model">${rows}</div>`;
   }
 
   /** Settings > Updates: the check and the automatic check (release builds). */
@@ -313,30 +313,46 @@
       · ${button("What's new", { type: "openReleaseNotes", version: u.version }, { kind: "link" })}</footer>`;
   }
 
+  /** The "Let AI assistants use Muesli" switch, with what it means for privacy. */
+  function assistantsSwitch(a) {
+    return `<label class="setting"><div class="text"><span class="title">Let AI assistants use Muesli</span><span class="sub">${esc(a.privacy)}</span></div>
+          <input type="checkbox" role="switch" data-testid="assistants" ${a.enabled ? "checked" : ""}
+            data-toggle='${esc(JSON.stringify({ type: "setAssistantsEnabled" }))}'></label>`;
+  }
+
+  /** Claude Desktop (when installed) and the other apps, for Settings and setup. Setup shows the
+   * other apps only when Claude Desktop is not there (`others: false` hides them). */
+  function assistantsBlock(a, { others = true } = {}) {
+    if (!a.enabled) return "";
+    const c = a.claudeDesktop;
+    const claude = c
+      ? `<div class="setting" data-testid="claude-desktop"><div class="text"><span class="title">Claude Desktop</span>${c.detail ? `<span class="sub" data-testid="claude-detail">${esc(c.detail)}</span>` : ""}</div>
+         <div class="controls"><span class="pill ${esc(c.tone)}" data-testid="claude-status"><span class="dot"></span>${esc(c.status)}</span>
+         ${c.button ? button(c.button, { type: "connectClaudeDesktop" }, { kind: "primary", testid: "claude-connect" }) : ""}
+         ${c.canDisconnect ? button("Disconnect", { type: "disconnectClaudeDesktop" }, { testid: "claude-disconnect" }) : ""}</div></div>`
+      : "";
+    if (!others) return claude;
+    const tabs = a.assistants
+      .map((x) => `<button role="tab" aria-selected="${x.selected}" class="seg ${x.selected ? "on" : ""}" data-intent='${esc(JSON.stringify({ type: "pickAssistant", name: x.name }))}'>${esc(x.name)}</button>`)
+      .join("");
+    const command = a.command
+      ? `<div class="command"><pre data-testid="command">${esc(a.command)}</pre><button class="btn" data-local="copy">Copy</button></div>`
+      : `<span class="sub">muesli-mcp is not next to the app in this build.</span>`;
+    const configFile = a.canAddToClaudeConfig
+      ? `<div class="row-between"><span class="sub">Claude Desktop blocked by your organisation?</span>${button("Add to Claude's config file", { type: "addToClaudeConfig" })}</div>`
+      : "";
+    return `${claude}
+      <div class="setting stack" data-testid="other-apps"><span class="title">Other apps</span>
+        <div class="segmented" role="tablist" aria-label="Assistant">${tabs}</div>
+        <span class="sub">${esc(a.instructions)}</span>
+        ${command}
+        ${configFile}
+      </div>`;
+  }
+
   function settings(v) {
     const a = v.assistants;
-    const assistants = a.enabled
-      ? `${
-          a.claudeDesktop
-            ? `<div class="setting" data-testid="claude-desktop"><div class="text"><span class="title">Claude Desktop</span>${a.claudeDesktop.detail ? `<span class="sub" data-testid="claude-detail">${esc(a.claudeDesktop.detail)}</span>` : ""}</div>
-               <div class="controls"><span class="pill ${esc(a.claudeDesktop.tone)}" data-testid="claude-status"><span class="dot"></span>${esc(a.claudeDesktop.status)}</span>
-               ${a.claudeDesktop.button ? button(a.claudeDesktop.button, { type: "connectClaudeDesktop" }, { kind: "primary", testid: "claude-connect" }) : ""}
-               ${a.claudeDesktop.canDisconnect ? button("Disconnect", { type: "disconnectClaudeDesktop" }, { testid: "claude-disconnect" }) : ""}</div></div>`
-            : ""
-        }
-        <div class="setting stack" data-testid="other-apps"><span class="title">Other apps</span>
-          <div class="segmented" role="tablist" aria-label="Assistant">${a.assistants
-            .map((c) => `<button role="tab" aria-selected="${c.selected}" class="seg ${c.selected ? "on" : ""}" data-intent='${esc(JSON.stringify({ type: "pickAssistant", name: c.name }))}'>${esc(c.name)}</button>`)
-            .join("")}</div>
-          <span class="sub">${esc(a.instructions)}</span>
-          ${
-            a.command
-              ? `<div class="command"><pre data-testid="command">${esc(a.command)}</pre><button class="btn" data-local="copy">Copy</button></div>`
-              : `<span class="sub">muesli-mcp is not next to the app in this build.</span>`
-          }
-          ${a.canAddToClaudeConfig ? `<div class="row-between"><span class="sub">Claude Desktop blocked by your organisation?</span>${button("Add to Claude's config file", { type: "addToClaudeConfig" })}</div>` : ""}
-        </div>`
-      : "";
+    const assistants = assistantsBlock(a);
     root.innerHTML = `${titlebar()}<div class="settings" data-scroll="settings">
       <h2>General</h2>
       <section class="card">
@@ -365,9 +381,7 @@
       <section class="card">${permissionRows(v.permissions, { tags: false })}</section>
       <h2>AI assistants</h2>
       <section class="card">
-        <label class="setting"><div class="text"><span class="title">Let AI assistants use Muesli</span><span class="sub">${esc(a.privacy)}</span></div>
-          <input type="checkbox" role="switch" data-testid="assistants" ${a.enabled ? "checked" : ""}
-            data-toggle='${esc(JSON.stringify({ type: "setAssistantsEnabled" }))}'></label>
+        ${assistantsSwitch(a)}
         ${assistants}
       </section>
       ${v.updates.available ? `<h2>Updates</h2><section class="card">${updates(v.updates)}</section>` : ""}
@@ -400,6 +414,11 @@
           ? `<p class="hint">${esc(v.permissionsNote)} ${button("Open privacy settings", { type: "openPermissionSettings", permission: "microphone" }, { kind: "link" })}</p>`
           : ""
       }`;
+    } else if (v.step === 3 && v.assistants) {
+      const a = v.assistants;
+      body = `<section class="card" data-testid="setup-assistants">${assistantsSwitch(a)}${assistantsBlock(a, { others: !a.claudeDesktop })}</section>${
+        a.enabled && v.claudeDesktopMissing ? `<p class="hint">${esc(v.claudeDesktopMissing)}</p>` : ""
+      }`;
     } else {
       const model = m
         ? `<div class="model-card" data-testid="setup-model"><div class="row-between"><span>${esc(m.title)}${m.progress != null ? " · downloading" : m.text === "Ready" ? " · ready" : ""}</span>
@@ -428,6 +447,7 @@
       <footer>
         <div class="left">${footerModel}</div>
         <div class="buttons">
+          ${v.canSkip ? button("Skip for now", { type: "setupNext" }, { kind: "big quiet", testid: "setup-skip" }) : ""}
           ${v.canGoBack ? button("Back", { type: "setupBack" }, { kind: "big" }) : ""}
           ${button(v.primary, primary, { kind: "primary big", disabled: !v.primaryEnabled, testid: "setup-primary" })}
         </div>
@@ -457,13 +477,73 @@
     Object.entries({ main, settings, setup, prompt }).map(([name, fn]) => [name, name === "main" ? fn : (v) => keepScroll(() => fn(v))]),
   );
 
-  async function refresh() {
-    const v = await view();
+  // Re-rendering replaces the page. Under a pressed mouse button that loses the click, and an
+  // open drop-down closes, so a render waits for the button to come up or the drop-down to close.
+  // A view that did not change is not rendered at all, and one request runs at a time.
+  let rendered = null; // the JSON of the view on screen
+  let waiting = null; // a newer view held back while busy
+  let fetching = false;
+  let fetchAgain = false;
+  let pressed = false;
+  const busy = () => pressed || document.activeElement?.tagName === "SELECT";
+
+  function render(v) {
     current = v;
     setSkin(v?.words);
     document.body.className = `window-${label}`;
     renderers[label]?.(v);
   }
+
+  function show(v) {
+    const json = JSON.stringify(v);
+    if (json === rendered) {
+      waiting = null;
+      return;
+    }
+    if (busy()) {
+      waiting = v;
+      return;
+    }
+    waiting = null;
+    rendered = json;
+    render(v);
+  }
+
+  /** Renders a view that waited, once nothing is held any more (after the click has landed). */
+  function release() {
+    setTimeout(() => {
+      if (waiting && !busy()) show(waiting);
+    }, 0);
+  }
+
+  async function refresh() {
+    if (fetching) {
+      fetchAgain = true;
+      return;
+    }
+    fetching = true;
+    try {
+      do {
+        fetchAgain = false;
+        show(await view());
+      } while (fetchAgain);
+    } finally {
+      fetching = false;
+    }
+  }
+
+  document.addEventListener("pointerdown", () => (pressed = true), true);
+  for (const type of ["pointerup", "pointercancel"]) {
+    document.addEventListener(type, () => {
+      pressed = false;
+      release();
+    }, true);
+  }
+  window.addEventListener("blur", () => {
+    pressed = false;
+    release();
+  });
+  document.addEventListener("focusout", release, true);
 
   root.addEventListener("click", (event) => {
     const localAction = event.target.closest("[data-local]");
@@ -565,7 +645,10 @@
   root.addEventListener("change", (event) => {
     const t = event.target;
     if (t.dataset.toggle) send({ ...JSON.parse(t.dataset.toggle), on: t.checked });
-    if (t.matches(".add-language") && t.value) send({ type: "addLanguage", code: t.value });
+    if (t.matches(".add-language") && t.value) {
+      t.blur(); // chosen: the page may render again
+      send({ type: "addLanguage", code: t.value });
+    }
   });
 
   // Permissions switched on in the system settings show up when the window comes back.

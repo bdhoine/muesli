@@ -164,6 +164,10 @@ struct Inner {
     pending_delete: Option<PendingDelete>,
     toast: Option<ToastState>,
     setup_step: usize,
+    /// Setup reached the AI assistants step once: the switch was turned on then, never again.
+    assistants_offered: bool,
+    /// The last refresh caused by a download: when, and what kind of state it showed.
+    last_download_refresh: Option<(DateTime<Utc>, DownloadKind)>,
     last_ready: Option<LastReady>,
     claude_status: Option<String>,
     /// Disconnect was pressed while the extension is installed: Settings says where to uninstall it.
@@ -187,6 +191,36 @@ pub struct Engine {
     base: Paths,
     me: Weak<Engine>,
     inner: Mutex<Inner>,
+}
+
+/// Setup's screens: 0 Welcome, 1 Languages, 2 Permissions, 3 AI assistants, 4 Done.
+const SETUP_DONE: usize = 4;
+
+/// Download progress refreshes the windows and the tray at most this often (A10).
+const DOWNLOAD_REFRESH_MS: i64 = 250;
+
+/// What a download refresh shows, without the numbers: a change of kind refreshes at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DownloadKind(u8, u8);
+
+impl DownloadKind {
+    fn of(status: &ModelStatus, speed: Option<SpeedUpStage>) -> Self {
+        let model = match status {
+            ModelStatus::Missing => 0,
+            ModelStatus::Downloading { .. } => 1,
+            ModelStatus::Ready => 2,
+            ModelStatus::Failed { .. } => 3,
+        };
+        let speed = match speed {
+            None => 0,
+            Some(SpeedUpStage::Waiting) => 1,
+            Some(SpeedUpStage::Downloading(_)) => 2,
+            Some(SpeedUpStage::Preparing) => 3,
+            Some(SpeedUpStage::Ready) => 4,
+            Some(SpeedUpStage::Failed) => 5,
+        };
+        Self(model, speed)
+    }
 }
 
 /// "40%" for the end-of-meeting pass.
@@ -303,6 +337,8 @@ impl Engine {
                 pending_delete: None,
                 toast: None,
                 setup_step: 0,
+                assistants_offered: false,
+                last_download_refresh: None,
                 last_ready: None,
                 claude_status: None,
                 claude_disconnecting: false,
@@ -390,9 +426,28 @@ impl Engine {
         self.speech.download(Box::new(move || {
             if let Some(engine) = me.upgrade() {
                 engine.speech.prepare(); // the model, or the Core ML encoder, may have just arrived
-                engine.changed();
+                engine.download_changed();
             }
         }));
+    }
+
+    /// A download reported progress. On a fast line that is dozens of times a second; refreshing
+    /// that often rebuilt the tray and re-rendered every window so fast that clicks in setup never
+    /// landed. So: at once when the state changes kind (started, finished, failed), else at most
+    /// every [`DOWNLOAD_REFRESH_MS`].
+    fn download_changed(&self) {
+        let kind = DownloadKind::of(&self.speech.status(), self.speech.speed_up().map(|s| s.stage));
+        let now = self.now();
+        {
+            let mut s = self.lock();
+            if let Some((at, last)) = s.last_download_refresh {
+                if last == kind && (now - at).num_milliseconds() < DOWNLOAD_REFRESH_MS {
+                    return;
+                }
+            }
+            s.last_download_refresh = Some((now, kind));
+        }
+        self.changed();
     }
 
     /// Refreshes everything that shows state: the tray, the windows, `state.json`.
@@ -483,6 +538,22 @@ impl Engine {
             };
             (detect, beat, timed_out, expired_delete, toast_gone)
         };
+        // Some model states change without a download event (the speed-up finishes setting up in
+        // the background): show them when the tick sees them.
+        let kind = DownloadKind::of(&self.speech.status(), self.speech.speed_up().map(|s| s.stage));
+        let stale = {
+            let mut s = self.lock();
+            match s.last_download_refresh {
+                Some((_, shown)) => shown != kind,
+                None => {
+                    s.last_download_refresh = Some((now, kind));
+                    false
+                }
+            }
+        };
+        if stale {
+            self.download_changed();
+        }
         if let Some(prompt) = timed_out {
             if prompt.in_window {
                 self.host.close(Window::Prompt);
@@ -1289,13 +1360,21 @@ impl Engine {
             }
 
             Intent::SetupNext => {
-                let step = {
+                let (step, offer) = {
                     let mut s = self.lock();
-                    s.setup_step = (s.setup_step + 1).min(3);
-                    s.setup_step
+                    s.setup_step = (s.setup_step + 1).min(SETUP_DONE);
+                    let offer = s.setup_step == 3 && !s.assistants_offered;
+                    s.assistants_offered |= offer;
+                    (s.setup_step, offer)
                 };
                 if step == 1 {
                     self.download_model(); // "Get started": the model downloads during setup
+                }
+                if offer {
+                    // The AI assistants step starts with the switch on; once, so Back and
+                    // Continue keep what the user chose.
+                    self.save_prefs(|p| p.mcp_enabled = true);
+                    self.sync_assistants();
                 }
                 self.changed();
             }
@@ -1664,6 +1743,11 @@ impl Engine {
             status: text.clone(),
             tone,
             progress: status.fraction(),
+            action: match status {
+                ModelStatus::Failed { .. } => Some("Try again"),
+                ModelStatus::Missing => Some("Download"),
+                _ => None,
+            },
         }];
         if let Some(speed) = self.speech.speed_up() {
             features.push(speed_row(&speed));
@@ -1676,6 +1760,7 @@ impl Engine {
                 status: "On".into(),
                 tone: "ok",
                 progress: None,
+                action: None,
             }
         } else {
             FeatureRow {
@@ -1685,6 +1770,7 @@ impl Engine {
                 status: "Off".into(),
                 tone: "",
                 progress: None,
+                action: None,
             }
         });
         ModelView {
@@ -1692,7 +1778,6 @@ impl Engine {
             detail,
             about: format!("Whisper {} · {} MB", DEFAULT_MODEL.title, DEFAULT_MODEL.approximate_bytes / 1_000_000),
             progress: status.fraction(),
-            can_retry: matches!(status, ModelStatus::Failed { .. } | ModelStatus::Missing | ModelStatus::Ready),
             status,
             text,
             error,
@@ -1751,6 +1836,7 @@ impl Engine {
             (s.setup_step, s.update.permissions_after_update)
         };
         let permissions = self.permission_rows();
+        let assistants = (step == 3 && !after_update).then(|| self.assistants_view());
         let required_ok = permissions.iter().filter(|p| p.required).all(|p| p.granted);
         let windows_note = self.platform.permissions.status(Permission::SystemAudio) == Access::NotNeeded;
         let (title, subtitle, primary, primary_enabled) = match step {
@@ -1763,6 +1849,12 @@ impl Engine {
             1 => (
                 "Which languages are spoken in your meetings?".to_string(),
                 Some("Muesli listens for these.".to_string()),
+                "Continue",
+                true,
+            ),
+            3 => (
+                "Use Muesli with your AI assistant".to_string(),
+                Some("Ask Claude or another assistant about your meetings: summaries, decisions, action items.".to_string()),
                 "Continue",
                 true,
             ),
@@ -1789,12 +1881,12 @@ impl Engine {
         let mut view = SetupView {
             counter: match step {
                 0 => String::new(),
-                3 => "All set".into(),
-                n => format!("Step {n} of 2"),
+                SETUP_DONE => "All set".into(),
+                n => format!("Step {n} of 3"),
             },
-            finish: step == 3,
+            finish: step == SETUP_DONE,
             step,
-            steps: 4,
+            steps: SETUP_DONE + 1,
             title,
             subtitle,
             promises: if step == 0 {
@@ -1828,12 +1920,17 @@ impl Engine {
             permissions_note: windows_note
                 .then(|| "Call audio needs no permission on Windows. The microphone switch is in Privacy & security.".to_string()),
             model: (step > 0).then(|| self.model_view()),
-            notice: (step == 3).then(|| {
+            assistants: assistants.clone(),
+            claude_desktop_missing: (step == 3 && !self.host.claude_installed())
+                .then(|| "Claude Desktop is not on this computer. Install it later and connect it in Settings.".to_string()),
+            // Skip while assistants are on but Claude Desktop is not connected (off: Continue says it).
+            can_skip: assistants.as_ref().is_some_and(|a| a.enabled && !a.claude_desktop.as_ref().is_some_and(|c| c.status == "Connected")),
+            notice: (step == SETUP_DONE).then(|| {
                 "Please tell the people you meet with that you are transcribing, and check your company's policy first.".to_string()
             }),
             primary: primary.into(),
             primary_enabled,
-            can_go_back: step > 0 && step < 3,
+            can_go_back: step > 0 && step < SETUP_DONE,
             words,
         };
         if after_update {
@@ -1843,20 +1940,22 @@ impl Engine {
             view.hint = None;
             view.model = None;
             view.can_go_back = false;
+            view.can_skip = false;
             view.finish = true;
             view.steps = 1;
         }
         view
     }
 
-    pub fn settings_view(&self) -> SettingsView {
-        let paths = self.paths();
+    /// AI assistants, for Settings and the setup step: the Claude Desktop row (when it is
+    /// installed and assistants are on) and the other apps' instructions.
+    fn assistants_view(&self) -> AssistantsView {
         let claude_installed = self.host.claude_installed();
         let extension = self.extension_state();
         let helper = self.host.helper_path();
-        let (prefs, assistant, claude_status, vocabulary_error, disconnecting) = {
+        let (prefs, assistant, claude_status, disconnecting) = {
             let s = self.lock();
-            (s.prefs.clone(), s.assistant.clone(), s.claude_status.clone(), s.vocabulary_error.clone(), s.claude_disconnecting)
+            (s.prefs.clone(), s.assistant.clone(), s.claude_status.clone(), s.claude_disconnecting)
         };
         let through_file = !extension.is_installed()
             && prefs.claude_desktop_config_entry
@@ -1867,7 +1966,7 @@ impl Engine {
         let client = AssistantClient::ALL.into_iter().find(|c| c.name() == assistant).unwrap_or(AssistantClient::ClaudeCode);
         // Terminal or PowerShell, and how to quote, follow the platform's words, not the build.
         let windows = self.platform.words.skin == "windows";
-        let assistants = AssistantsView {
+        AssistantsView {
             enabled: prefs.mcp_enabled,
             privacy: "Assistants read transcripts on this computer. The text an assistant reads is sent to its provider (Anthropic, for Claude) like anything else you share with it.".into(),
             claude_desktop: (prefs.mcp_enabled && claude_installed).then(|| claude_desktop_row(&extension, through_file, extension_path, claude_status.as_deref(), disconnecting)),
@@ -1883,7 +1982,13 @@ impl Engine {
                 && claude_installed
                 && !prefs.claude_desktop_config_entry
                 && !extension.is_installed(),
-        };
+        }
+    }
+
+    pub fn settings_view(&self) -> SettingsView {
+        let paths = self.paths();
+        let vocabulary_error = self.lock().vocabulary_error.clone();
+        let assistants = self.assistants_view();
         SettingsView {
             words: self.platform.words.clone(),
             version: self.running_version(),
@@ -1918,7 +2023,8 @@ fn speed_row(speed: &SpeedUp) -> FeatureRow {
         }
         SpeedUpStage::Preparing => (format!("{uses}. Setting up, once, about a minute"), "Setting up".to_string(), "", None),
         SpeedUpStage::Ready => (uses, "Ready".to_string(), "ok", None),
-        SpeedUpStage::Failed => (format!("{uses}. Download again to try once more"), "Download failed".to_string(), "warn", None),
+        SpeedUpStage::Failed => (format!("{uses}. You can transcribe without it."), "Download failed".to_string(), "warn", None),
     };
-    FeatureRow { id: "speed", title: "Extra speed".into(), detail, status, tone, progress }
+    let action = matches!(speed.stage, SpeedUpStage::Failed).then_some("Try again");
+    FeatureRow { id: "speed", title: "Extra speed".into(), detail, status, tone, progress, action }
 }

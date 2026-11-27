@@ -30,13 +30,13 @@ fn windows_permissions() -> FakePermissions {
 }
 
 #[test]
-fn setup_walks_through_four_screens_and_downloads_on_the_way() {
+fn setup_walks_through_five_screens_and_downloads_on_the_way() {
     let h = first_launch(PlatformWords::MAC, mac_permissions());
     assert!(h.host.is_open(Window::Setup));
     assert_eq!(h.speech.downloads(), 0, "nothing downloads before Get started");
 
     let welcome = h.engine.setup_view();
-    assert_eq!((welcome.step, welcome.steps), (0, 4));
+    assert_eq!((welcome.step, welcome.steps), (0, 5));
     assert_eq!(welcome.title, "Meet Muesli");
     assert_eq!(welcome.promises, ["Runs entirely on this Mac", "Keeps the text, never the audio", "No bot in your calls"]);
     assert_eq!(welcome.primary, "Get started");
@@ -47,6 +47,7 @@ fn setup_walks_through_four_screens_and_downloads_on_the_way() {
     h.speech.progress(250);
     let languages = h.engine.setup_view();
     assert_eq!(languages.step, 1);
+    assert_eq!(languages.counter, "Step 1 of 3");
     assert_eq!(languages.model.unwrap().text, "Downloading · 25%");
     let chosen: Vec<_> = languages.languages.chosen.iter().map(|c| c.code.as_str()).collect();
     assert_eq!(chosen, ["nl", "en"], "the system language and English");
@@ -69,8 +70,22 @@ fn setup_walks_through_four_screens_and_downloads_on_the_way() {
     h.fakes.permissions.request(Permission::SystemAudio).unwrap();
     assert!(h.engine.setup_view().primary_enabled, "optional ones are not needed");
 
+    assert!(!h.engine.preferences().mcp_enabled, "assistants are off until the assistants screen");
+    h.engine.intent(Intent::SetupNext);
+    let assistants = h.engine.setup_view();
+    assert_eq!((assistants.step, assistants.counter.as_str()), (3, "Step 3 of 3"));
+    assert_eq!(assistants.title, "Use Muesli with your AI assistant");
+    assert!(h.engine.preferences().mcp_enabled, "the assistants screen starts with the switch on");
+    let a = assistants.assistants.unwrap();
+    assert!(a.enabled && a.claude_desktop.is_none(), "Claude Desktop is not installed here");
+    assert!(a.command.is_some() || a.assistants.len() == 5, "the other apps are explained");
+    assert!(assistants.claude_desktop_missing.unwrap().contains("Install it later"));
+    assert!(assistants.can_skip && assistants.can_go_back);
+
     h.engine.intent(Intent::SetupNext);
     let done = h.engine.setup_view();
+    assert_eq!((done.step, done.counter.as_str()), (4, "All set"));
+    assert!(done.assistants.is_none() && !done.can_go_back);
     assert_eq!(done.title, "Muesli is in your menu bar");
     assert_eq!(done.primary, "Open Muesli");
     assert!(done.notice.unwrap().starts_with("Please tell the people you meet with that you are transcribing"));
@@ -117,6 +132,8 @@ fn windows_setup_asks_for_the_microphone_only() {
     assert_eq!(titles, ["Microphone", "Notifications"]);
     assert!(view.permissions_note.unwrap().contains("Call audio needs no permission"));
     assert!(view.primary_enabled);
+    h.engine.intent(Intent::SetupNext);
+    assert_eq!(h.engine.setup_view().step, 3);
     h.engine.intent(Intent::SetupNext);
     assert_eq!(h.engine.setup_view().title, "Muesli is in your system tray");
     assert_eq!(h.engine.setup_view().words.skin, "windows");
@@ -166,7 +183,8 @@ fn a_failed_download_shows_why_and_where_and_can_be_retried() {
     assert_eq!(model.text, "Download failed");
     assert_eq!(model.error.as_deref(), Some("Could not connect"));
     assert_eq!(model.url.as_deref(), Some("https://huggingface.co/model.bin"));
-    assert!(model.can_retry);
+    let speech = model.features.iter().find(|f| f.id == "speech").unwrap();
+    assert_eq!(speech.action, Some("Try again"), "the button sits on the failed line");
     h.engine.intent(Intent::DownloadModelAgain);
     assert!(matches!(h.speech.status(), ModelStatus::Downloading { .. }));
     assert_eq!(h.menu_labels()[0], "# Getting Ready");
@@ -368,4 +386,61 @@ fn the_model_is_prepared_at_start_and_when_a_download_moves_on() {
     let before = h.speech.prepared.load(Ordering::SeqCst);
     h.speech.finish();
     assert!(h.speech.prepared.load(Ordering::SeqCst) > before, "again once the files are in");
+}
+
+#[test]
+fn the_assistants_screen_offers_claude_desktop_and_keeps_a_switched_off_choice() {
+    let h = first_launch(PlatformWords::MAC, mac_permissions());
+    *h.host.claude.lock().unwrap() = true;
+    for _ in 0..3 {
+        h.engine.intent(Intent::SetupNext);
+    }
+    let view = h.engine.setup_view();
+    let row = view.assistants.unwrap().claude_desktop.expect("Claude Desktop is installed: its row");
+    assert_eq!(row.status, "Not connected");
+    assert!(view.claude_desktop_missing.is_none());
+    assert!(view.can_skip, "Skip for now while it is not connected");
+
+    // Switched off, then Back and Continue again: it stays off.
+    h.engine.intent(Intent::SetAssistantsEnabled { on: false });
+    assert!(!h.engine.setup_view().can_skip, "off: Continue says it");
+    h.engine.intent(Intent::SetupBack);
+    h.engine.intent(Intent::SetupNext);
+    assert!(!h.engine.preferences().mcp_enabled, "the user's choice is kept");
+    assert!(h.engine.setup_view().assistants.unwrap().claude_desktop.is_none());
+}
+
+#[test]
+fn download_progress_refreshes_at_most_four_times_a_second() {
+    let h = first_launch(PlatformWords::MAC, mac_permissions());
+    h.engine.intent(Intent::SetupNext); // Get started: the download begins
+    let before = h.host.changes();
+    for received in 1..=50 {
+        h.speech.progress(received * 10);
+    }
+    assert_eq!(h.host.changes(), before, "the start refreshed; fifty reports right after it add nothing");
+    h.fakes.clock.advance(chrono::Duration::milliseconds(300));
+    h.speech.progress(600);
+    assert_eq!(h.host.changes() - before, 1, "a quarter of a second later: the next");
+    h.speech.progress(700);
+    assert_eq!(h.host.changes() - before, 1);
+    h.speech.finish();
+    assert_eq!(h.host.changes() - before, 2, "finished: at once");
+}
+
+#[test]
+fn the_speed_up_finishing_its_setup_shows_without_a_download_event() {
+    use muesli_engine::{SpeedUp, SpeedUpStage};
+    let speech = FakeSpeech::ready();
+    *speech.speed_up.lock().unwrap() = Some(SpeedUp { by: "your Mac's Neural Engine", stage: SpeedUpStage::Preparing });
+    let h = Harness::build(PlatformWords::MAC, true, speech);
+    h.advance(1);
+    let before = h.host.changes();
+    h.advance(3);
+    assert_eq!(h.host.changes(), before, "nothing changed: no refresh");
+    *h.speech.speed_up.lock().unwrap() = Some(SpeedUp { by: "your Mac's Neural Engine", stage: SpeedUpStage::Ready });
+    h.advance(1);
+    assert!(h.host.changes() > before, "ready: the windows hear of it");
+    let speed = h.engine.settings_view().model.features.into_iter().find(|f| f.id == "speed").unwrap();
+    assert_eq!(speed.status, "Ready");
 }

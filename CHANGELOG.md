@@ -4,6 +4,15 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
+### Added
+- Setup has a step for your AI assistant: connect Claude Desktop with one button, or see how to add Muesli to Claude Code, Codex, Gemini CLI, VS Code or Cursor.
+
+### Changed
+- Settings → Transcription shows **Try again** only on a line whose download failed, instead of a "Download again" button that was always there.
+
+### Fixed
+- Setup no longer stops responding to clicks and the language list while the speech model downloads.
+
 ## [0.0.2] - 2026-11-27
 
 ### Added

@@ -215,7 +215,6 @@ pub struct ModelView {
     pub progress: Option<f64>,
     pub error: Option<String>,
     pub url: Option<String>,
-    pub can_retry: bool,
     /// The model's name and size, for those who want to know (a tooltip in Settings):
     /// "Whisper Large v3 Turbo · 574 MB".
     pub about: String,
@@ -237,13 +236,16 @@ pub struct FeatureRow {
     /// "ok" (green), "warn" (amber) or "" (neutral).
     pub tone: &'static str,
     pub progress: Option<f64>,
+    /// Only when something needs doing: "Try again" after a failed download, "Download" when
+    /// nothing is downloaded and no download runs. Sends `DownloadModelAgain`.
+    pub action: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupView {
     pub words: PlatformWords,
-    /// 0 Welcome, 1 Languages, 2 Permissions, 3 Done.
+    /// 0 Welcome, 1 Languages, 2 Permissions, 3 AI assistants, 4 Done.
     pub step: usize,
     pub steps: usize,
     /// "Step 1 of 2", "All set", or empty.
@@ -264,6 +266,12 @@ pub struct SetupView {
     pub permissions_note: Option<String>,
     /// The model footer, from the second screen on.
     pub model: Option<ModelView>,
+    /// The AI assistants screen: the same switch, Claude Desktop row and other apps as Settings.
+    pub assistants: Option<AssistantsView>,
+    /// The AI assistants screen, when Claude Desktop is not installed: where to connect it later.
+    pub claude_desktop_missing: Option<String>,
+    /// The AI assistants screen while Claude Desktop is not connected: "Skip for now".
+    pub can_skip: bool,
     /// Done: "Please tell the people you meet with that you are transcribing…".
     pub notice: Option<String>,
     pub primary: String,

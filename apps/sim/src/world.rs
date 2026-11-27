@@ -26,6 +26,8 @@ pub struct SimHost {
     pub home: PathBuf,
     pub fixtures: PathBuf,
     pub skin: &'static str,
+    /// Claude Desktop is on this computer (scenarios say `noClaudeDesktop` otherwise).
+    pub claude: bool,
 }
 
 impl SimHost {
@@ -107,7 +109,7 @@ impl Host for SimHost {
     }
 
     fn claude_installed(&self) -> bool {
-        true
+        self.claude
     }
 }
 
@@ -125,6 +127,8 @@ pub struct Scenario {
     pub permissions: Option<String>,
     /// AI assistants switched on in Settings.
     pub assistants: bool,
+    /// Claude Desktop is not installed (by default it is).
+    pub no_claude_desktop: bool,
     /// The version of the Muesli extension Claude Desktop has installed, if any.
     pub claude_extension: Option<String>,
     /// The latest Muesli release on GitHub, if any.
@@ -199,6 +203,7 @@ impl World {
             home: dir.path().to_path_buf(),
             fixtures,
             skin,
+            claude: !scenario.no_claude_desktop,
         });
         // The simulator plays a release build: it checks for updates, on a fake GitHub.
         let updater = Arc::new(FakeUpdater::new(muesli_core::VERSION));

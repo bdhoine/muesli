@@ -57,7 +57,7 @@ describe("macOS skin matches the design", () => {
       // Languages: "Step 1 of 2" and the download line in the footer.
       await page.getByTestId("setup-primary").click();
       await page.getByTestId("chip-en").waitFor();
-      assert.equal((await page.locator(".counter").textContent()).trim(), "Step 1 of 2");
+      assert.equal((await page.locator(".counter").textContent()).trim(), "Step 1 of 3");
       await page.getByTestId("setup-model").getByText("Speech model downloading in the background").waitFor();
       const chip = await look(page, ".chip", ["border-radius"]);
       assert.deepEqual([chip.height, chip["border-radius"]], [36, "18px"]);
@@ -185,6 +185,7 @@ describe("macOS skin matches the design", () => {
       assert.equal(await speech.getAttribute("title"), "Whisper Large v3 Turbo · 574 MB");
       await page.getByTestId("feature-echo").getByText("Works without headphones").waitFor();
       assert.equal(await page.getByTestId("model").getByText("574 MB").count(), 0, "no sizes in the text");
+      assert.equal(await page.getByTestId("model").getByRole("button").count(), 0, "everything ready: no buttons");
       // Optional permissions carry a small badge, not a text prefix.
       await page.getByTestId("permission-calendar").getByTestId("optional").waitFor();
       await page.getByTestId("permission-microphone").getByText("Your side of the conversation").waitFor();
