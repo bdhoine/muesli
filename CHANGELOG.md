@@ -4,8 +4,23 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
+### Added
+- Settings: **Disconnect** for Claude Desktop. If Muesli connected through Claude Desktop's settings file it removes that; for the extension it opens Claude Desktop and shows where to uninstall it.
+- Right-click a transcript in the list and choose **Delete…** to delete it; Muesli asks first, and **Undo** still brings it back. Right-click does nothing anywhere else in Muesli's windows.
+- Windows: Muesli's window opens when you start Muesli yourself (or open it again while it runs), or Getting started if you have not finished it. The automatic start when you sign in stays in the system tray. Ctrl+, opens Settings.
+
+### Changed
+- Settings shows every section at once, in a clearer order: General, Transcription, Languages, Vocabulary, Permissions, AI assistants and Updates. Nothing is folded away any more.
+- Settings → Transcription says in plain words what Muesli has ready: speech recognition, extra speed on a Mac's Neural Engine, and working without headphones.
+- Optional permissions carry a small "Optional" badge.
+- Mac and Windows windows look the same.
+- Windows: Muesli's window looks like the Mac version: no toolbar, a Settings gear next to "Transcripts" and a round **Start transcribing** button. The title bar has the window's colour. **Transcribe Audio File…** is in the tray menu, and you can still drop files on the window.
+- Windows: a bigger app icon in the taskbar and Start menu, the same size as other apps' icons.
+
 ### Fixed
 - Windows: a transcript that Muesli or an AI assistant was saving at that moment no longer goes missing from the list for a moment.
+- macOS: after you allow the calendar, Settings shows it as allowed straight away instead of still offering **Allow…**.
+- Windows: uninstalling with "Delete the application data" ticked now deletes Muesli's settings and downloaded models (not your transcripts), so Getting started shows again after reinstalling.
 
 ## [0.0.1] - 2026-11-26
 

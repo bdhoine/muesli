@@ -202,13 +202,13 @@ pub struct LanguagesView {
     pub can_remove: bool,
 }
 
-/// The speech model, for the setup footer and Settings > Advanced.
+/// The speech model, for the setup footer and Settings > Transcription.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelView {
     pub status: ModelStatus,
     pub title: String,
-    /// "Whisper Large v3 Turbo · 574 MB, on this Mac".
+    /// "Understands your languages, on this Mac".
     pub detail: String,
     /// "Ready", "Downloading · 42%", "Download failed", "Not downloaded".
     pub text: String,
@@ -216,8 +216,27 @@ pub struct ModelView {
     pub error: Option<String>,
     pub url: Option<String>,
     pub can_retry: bool,
-    /// What speeds it up here: "Neural Engine (Core ML): ready" (macOS).
-    pub acceleration: Option<String>,
+    /// The model's name and size, for those who want to know (a tooltip in Settings):
+    /// "Whisper Large v3 Turbo · 574 MB".
+    pub about: String,
+    /// Settings: what Muesli has loaded, in plain words, one line each: speech recognition, the
+    /// speed-up (when this computer has one) and echo removal.
+    pub features: Vec<FeatureRow>,
+}
+
+/// One line of Settings' "Transcription" card.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureRow {
+    /// "speech", "speed" or "echo".
+    pub id: &'static str,
+    pub title: String,
+    pub detail: String,
+    /// "Ready", "On", "Downloading · 42%"…
+    pub status: String,
+    /// "ok" (green), "warn" (amber) or "" (neutral).
+    pub tone: &'static str,
+    pub progress: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -262,13 +281,15 @@ pub struct AssistantChoice {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeDesktopRow {
-    /// "Connect Claude Desktop", "Update Claude Desktop extension", or none when connected.
+    /// "Connect", "Update", or none when connected.
     pub button: Option<String>,
-    /// "Connected", "Connected through Claude Desktop's settings file", "Not connected", "An older
-    /// version is connected".
+    /// "Connected", "Not connected", "An older version is connected".
     pub status: String,
-    /// A second line: what to do next, or why the settings file could not be changed.
+    /// A second line: what the connection does, what to do next, or why the settings file could
+    /// not be changed.
     pub detail: Option<String>,
+    /// Disconnect is offered (connected, through the extension or the settings file).
+    pub can_disconnect: bool,
     /// The colour of the light before the status: "ok", "warn" or "" (not connected).
     pub tone: String,
 }

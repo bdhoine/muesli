@@ -40,8 +40,8 @@ pub struct FakeSpeech {
     pub prompts: Arc<Mutex<Vec<(bool, String)>>>,
     /// How often the engine asked to prepare the model.
     pub prepared: Arc<AtomicUsize>,
-    /// What `acceleration` says.
-    pub acceleration: Mutex<Option<String>>,
+    /// What `speed_up` says.
+    pub speed_up: Mutex<Option<crate::SpeedUp>>,
 }
 
 impl FakeSpeech {
@@ -61,7 +61,7 @@ impl FakeSpeech {
             fail_best: Arc::new(AtomicBool::new(false)),
             prompts: Arc::new(Mutex::new(Vec::new())),
             prepared: Arc::new(AtomicUsize::new(0)),
-            acceleration: Mutex::new(None),
+            speed_up: Mutex::new(None),
         }
     }
 
@@ -136,8 +136,12 @@ impl SpeechModel for FakeSpeech {
         self.prepared.fetch_add(1, Ordering::SeqCst);
     }
 
-    fn acceleration(&self) -> Option<String> {
-        self.acceleration.lock().unwrap().clone()
+    fn speed_up(&self) -> Option<crate::SpeedUp> {
+        self.speed_up.lock().unwrap().clone()
+    }
+
+    fn echo_removal(&self) -> bool {
+        self.echo.load(Ordering::SeqCst)
     }
 
     fn echo_canceller(&self) -> Option<Box<dyn EchoCanceller>> {

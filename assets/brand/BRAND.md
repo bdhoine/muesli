@@ -23,6 +23,7 @@ muesli-brand/
 │   ├── app-icon-1024.svg / .png  ← macOS app icon master (light)
 │   ├── app-icon-dark-1024.svg    ← dark variant (optional, e.g. docs/website)
 │   ├── extension-icon-512.png    ← the tile cropped to its edges, for the Claude Desktop extension
+│   ├── windows/                  ← the tile cropped to its edges (SVG and 16–256 px PNGs), for the Windows .ico
 │   └── AppIcon.iconset/          ← all macOS sizes, ready for iconutil
 └── menubar/
     ├── muesliTemplate.svg
@@ -136,6 +137,11 @@ In native macOS UI, keep system colours for standard controls and use `pumpkin-s
 - Or in Xcode: drag the PNGs from `AppIcon.iconset` into `Assets.xcassets/AppIcon.appiconset` (16, 32, 128, 256, 512 at 1x and 2x).
 - `extension-icon-512.png` is the 824 × 824 tile of the master, cropped to its edges and scaled to 512 px, without the 100 px transparent margin of the macOS icon grid. Claude Desktop draws the extension icon in a box of its own, so with the margin the tile looked too small there. Regenerate it from the master if the master changes (crop 100,100 to 924,924).
 - Electron/Tauri: point the bundler's icon setting at the `.icns` (macOS) and `app-icon-1024.png` (other platforms).
+
+### Windows app icon
+
+- `app-icon/windows/app-icon-windows.svg` is the master with its view box cropped to the tile (`viewBox="100 100 824 824"`): nothing redrawn, only the 100 px transparent margin of the macOS grid left out. Windows draws app icons edge to edge, so with the margin Muesli looked smaller than the apps next to it in the taskbar.
+- `icon_16/24/32/48/64/256.png` are rendered from it: `rsvg-convert -w N -h N app-icon-windows.svg -o icon_N.png`. `scripts/sync-icons.py` packs them into `apps/desktop/icons/icon.ico`. Regenerate them if the master changes.
 
 ## 6. macOS menu bar icon
 

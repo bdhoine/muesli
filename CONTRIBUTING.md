@@ -13,7 +13,7 @@ crates/           core (data, rules, ports), engine (behaviour, view states, int
                   platform-windows, platform-fake, port-contracts
 apps/desktop/     The Tauri app: picks the adapters, draws the tray and the windows. Thin.
 apps/sim/         muesli-sim: the engine with fakes and the real UI in a browser; the UI tests
-ui/               The web UI (plain JS and CSS, no build step), skins/mac.css and skins/windows.css
+ui/               The web UI (plain JS and CSS, no build step), the same look on macOS and Windows
 fixtures/         Frozen file formats and MCP replies, audio samples, simulator scenarios
 assets/brand/     The one source for logo, icons and colours
 scripts/          build-mcpb.py (Claude Desktop extension), fetch-aec-model.py, fetch-vulkan-loader.py,
@@ -39,7 +39,7 @@ apps/desktop (Tauri)  ── Host, Tray, Updater ──►  crates/engine (muesl
 
 - **The core never calls the OS.** Ports in `crates/core/src/ports.rs`: `Clock`, `MicCapture`, `SystemAudioCapture`, `MeetingDetector`, `Notifier`, `Permissions`, `Tray`, `Trash`, `PlatformPaths`, `LoginItem`, plus `PlatformWords` (Trash/Recycle Bin, Finder/Explorer, Mac/PC, menu bar/system tray, Start at login/Start when I sign in). `Platform` bundles one adapter of each. `Updater` is the one port outside the bundle: the shell provides it (`apps/desktop/src/updater.rs`, `tauri-plugin-updater`, the same on both platforms) and passes it in `Options`; debug builds pass none and never check for updates.
 - **The engine decides.** `crates/engine` owns what Muesli does: detection prompts, transcribing, the end-of-call question with its 5-minute timeout, the prompt window when notifications cannot ask, audio-file imports, the main window (list, reader, rename, delete with undo), Settings and setup. `Engine::view(window)` gives a window its view state as JSON; `Engine::intent` takes what the user did; `Engine::menu` is the tray menu; `Engine::tick` runs the timers once a second. `Host` is what the shell does for it (windows, pickers, reveal, quit; implemented by `apps/desktop/src/host.rs` and the simulator).
-- **The UI renders.** `ui/app.js` draws the view it gets and sends intents; `ui/bridge.js` talks to Tauri (`view`, `intent`, the `state-changed` event) or to the simulator (HTTP). The skin is `words.skin`; dark mode follows the system.
+- **The UI renders.** `ui/app.js` draws the view it gets and sends intents; `ui/bridge.js` talks to Tauri (`view`, `intent`, the `state-changed` event) or to the simulator (HTTP). Both platforms look the same; `words.skin` ("mac" or "windows") only picks the Settings shortcut (⌘, or Ctrl+,) and whether the page draws the Mac title bar strip. Dark mode follows the system.
 - **Contracts.** `crates/port-contracts` has one suite per port. `tests/fakes.rs` runs them against `platform-fake`; `tests/native.rs` against the native adapters of the OS it runs on.
 
 | Crate | What it holds |

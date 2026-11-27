@@ -161,7 +161,9 @@ describe("macOS skin matches the design", () => {
 
       // One page: uppercase headings above white cards, rows 18 px in, 44 × 26 switches.
       const headings = (await page.locator(".settings > h2").allTextContents()).map((t) => t.trim());
-      assert.deepEqual(headings, ["General", "Languages", "Vocabulary", "AI assistants"]); // Vocabulary is ours, after the design
+      // Ours, after the design: every section visible with its own heading, nothing folded away.
+      assert.deepEqual(headings, ["General", "Transcription", "Languages", "Vocabulary", "Permissions", "AI assistants", "Updates"]);
+      assert.equal(await page.locator("details").count(), 0, "no folds");
       const h2 = await look(page, ".settings > h2", ["font-size", "text-transform", "color", "letter-spacing"]);
       assert.deepEqual([h2["font-size"], h2["text-transform"], h2.color], ["12.5px", "uppercase", MUTED]);
       const card = await look(page, ".card", ["background-color", "border-top-color", "border-radius"]);
@@ -175,19 +177,16 @@ describe("macOS skin matches the design", () => {
       const button = await look(page, ".setting .btn", ["border-top-color", "border-radius"]);
       assert.deepEqual([button.height, button["border-top-color"], button["border-radius"]], [32, CONTROL_LINE, "7px"]);
 
-      // Advanced and Other apps… fold, with an arrow that turns when open.
-      const turn = (sel) => page.locator(`${sel} > summary .chevron`).evaluate((el) => getComputedStyle(el).transform);
-      for (const sel of [".advanced"]) {
-        const arrow = await look(page, `${sel} > summary .chevron`, []);
-        assert.deepEqual([arrow.width, arrow.height], [10, 10]);
-        assert.equal(await turn(sel), "none");
-      }
-      // Advanced: the speech model as "Speech model" with its size, and the permissions.
-      await page.locator(".advanced summary").click();
-      await page.waitForTimeout(200);
-      assert.equal(await turn(".advanced"), "matrix(0, 1, -1, 0, 0, 0)");
-      await page.getByTestId("model").getByText("Speech model").waitFor();
-      await page.getByTestId("model").getByText("574 MB, on this Mac").waitFor();
+      // Our change after the design: what Muesli has loaded, in plain words; the model's name and
+      // size only on hover.
+      const speech = page.getByTestId("feature-speech");
+      await speech.getByText("Speech recognition").waitFor();
+      await speech.getByText("Understands your languages, on this Mac").waitFor();
+      assert.equal(await speech.getAttribute("title"), "Whisper Large v3 Turbo · 574 MB");
+      await page.getByTestId("feature-echo").getByText("Works without headphones").waitFor();
+      assert.equal(await page.getByTestId("model").getByText("574 MB").count(), 0, "no sizes in the text");
+      // Optional permissions carry a small badge, not a text prefix.
+      await page.getByTestId("permission-calendar").getByTestId("optional").waitFor();
       await page.getByTestId("permission-microphone").getByText("Your side of the conversation").waitFor();
     } finally {
       await sim.stop();

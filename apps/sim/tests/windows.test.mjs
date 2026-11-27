@@ -54,8 +54,6 @@ for (const skin of ["mac", "windows"]) {
         const page = await sim.open("main");
         await page.getByTestId("meeting-row").first().waitFor();
         assert.equal(await page.getByTestId("meeting-row").count(), 3);
-        // macOS: the design keeps the list header bare; Windows has a command bar.
-        if (!mac) await page.getByRole("button", { name: "Show in Explorer" }).waitFor();
 
         await sim.act({ do: "call", teams: true, seconds: 20 });
         const { question } = await sim.state();
@@ -142,8 +140,6 @@ for (const skin of ["mac", "windows"]) {
       try {
         const page = await sim.open("settings");
         await page.getByText(mac ? "Start at login" : "Start when I sign in").waitFor();
-        // macOS: the design keeps the list header bare; Windows has a command bar.
-        if (!mac) await page.getByRole("button", { name: "Show in Explorer" }).waitFor();
         await page.getByTestId("add-language").selectOption("de");
         await page.getByTestId("chip-de").waitFor();
         await page.getByRole("button", { name: "Reset" }).click();
@@ -160,11 +156,9 @@ for (const skin of ["mac", "windows"]) {
 
         assert.equal(await page.getByTestId("command").count(), 0, "assistants are off by default");
         await page.getByTestId("assistants").check();
-        await page.getByText("Connect Claude Desktop").waitFor();
-        await page.getByText("Other apps…").click();
+        await page.getByTestId("claude-connect").getByText("Connect").waitFor();
         await page.getByTestId("command").getByText("muesli-mcp").waitFor();
 
-        await page.getByText("Advanced").click();
         await page.getByTestId("model").getByText("Download failed").waitFor();
         await page.getByTestId("model").getByText("huggingface.co").first().waitFor();
       } finally {

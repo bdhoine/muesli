@@ -36,7 +36,7 @@ Please tell the people you meet with that you are transcribing, and check your c
 
 ## Audio files
 
-Besides live calls, Muesli transcribes recordings you already have (mp3, m4a, wav, flac, ogg). Use **Transcribe Audio File…** in the menu (also in the window's toolbar on Windows), or drop the files on Muesli's window. Their progress shows at the top of the list, with Cancel. Muesli never moves or deletes your audio files, and nothing leaves your computer.
+Besides live calls, Muesli transcribes recordings you already have (mp3, m4a, wav, flac, ogg). Use **Transcribe Audio File…** in the menu, or drop the files on Muesli's window. Their progress shows at the top of the list, with Cancel. Muesli never moves or deletes your audio files, and nothing leaves your computer.
 
 ## What you get
 
@@ -75,9 +75,9 @@ Muesli lives in the menu bar (macOS) or the system tray (Windows) and starts whe
 
 The menu: **Start Transcribing** (or **Stop and Save**), **Open Muesli**, **Transcribe Audio File…**, your three latest transcripts under **Recent Transcripts**, each with its length, day and start time ("32 min · Today 14:30"; while transcribing, **Stop and Save** shows how long it has run, on a Mac), **Settings…** (⌘,) and **Quit Muesli** (⌘Q); on a Mac each item has an icon. On Windows a left click on the tray icon opens Muesli's window and a right click shows the menu. On a Mac, Muesli has a Dock icon only while one of its windows is open.
 
-**Muesli's window** lists your transcripts, newest first, with the one being transcribed at the top. Choose one to read it. A finished transcript can be renamed (its files are renamed too) or deleted: it goes to the Trash (Recycle Bin on Windows), and **Undo** brings it back for a few seconds. On a Mac, a round **Start transcribing** button sits in the corner of the window; on Windows the toolbar has **Start Transcribing**, **Transcribe Audio File…** and **Show in Explorer**.
+**Muesli's window** lists your transcripts, newest first, with the one being transcribed at the top. Choose one to read it. A finished transcript can be renamed (its files are renamed too) or deleted: it goes to the Trash (Recycle Bin on Windows), and **Undo** brings it back for a few seconds. You can also right-click a transcript in the list and choose **Delete…**; Muesli asks before deleting. A round **Start transcribing** button sits in the corner of the window, and the gear next to "Transcripts" opens Settings (also ⌘, on a Mac, Ctrl+, on Windows).
 
-**Settings** is one page: the transcripts folder, start at login, the languages, AI assistants and, folded away under Advanced, the speech model and the permissions.
+**Settings** is one page, every section in view: **General** (transcripts folder, start at login), **Transcription** (what Muesli has ready: speech recognition, extra speed on a Mac's Neural Engine, and working without headphones), **Languages**, **Vocabulary**, **Permissions** (optional ones carry a small badge), **AI assistants** (Claude Desktop with Connect or Disconnect, and the setup for other apps) and **Updates**, with the version at the foot.
 
 By default Muesli listens for your computer's language plus English. Add the other languages your meetings use in Settings, and **Reset** goes back to the default. Keep the list short: the fewer languages, the fewer mistakes.
 
@@ -138,7 +138,7 @@ On macOS these permissions are asked for, each only when you press **Allow…**:
 | Calendar | To notice meetings as they start, and to name the transcript | Optional |
 | Notifications | To ask whether to start and stop transcribing (without them a small Muesli window asks) | Optional |
 
-On Windows only the microphone needs permission (Settings → Privacy & security → Microphone). Settings → Advanced shows what the system currently allows, with a button to the system settings.
+On Windows only the microphone needs permission (Settings → Privacy & security → Microphone). Settings → Permissions shows what the system currently allows, with a button to the system settings.
 
 ### Updates
 

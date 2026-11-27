@@ -1,7 +1,0 @@
-/* macOS skin: the design canvas is drawn for macOS, so style.css already is the Mac look. This
-   only adds what is Mac-only: the window's own title bar strip (see .titlebar in app.js). */
-[data-skin="mac"] {
-  --radius: 12px;
-  --control-radius: 7px;
-}
-[data-skin="mac"] .settings { max-width: 760px; width: 100%; margin: 0 auto; }

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use common::{wait_for, Harness};
 use muesli_core::ports::PlatformWords;
 use muesli_engine::fake::{FakeSpeech, HostCall, RecordingHost};
-use muesli_engine::{Engine, Intent, Options, Window, TOAST_SECONDS};
+use muesli_engine::{Engine, Host, Intent, Options, Window, TOAST_SECONDS};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/audio").join(name)
@@ -263,6 +263,19 @@ fn setup_comes_first_on_a_first_start_even_when_a_person_started_muesli() {
     let host = start_again(&h, true);
     assert!(host.is_open(Window::Setup));
     assert!(!host.is_open(Window::Main), "the main window waits until setup is done");
+}
+
+#[test]
+fn opening_muesli_again_shows_setup_until_it_is_done_and_then_the_main_window() {
+    let h = Harness::first_launch();
+    h.host.close(Window::Setup);
+    h.engine.intent(Intent::OpenMuesli); // a second start, or "Open Muesli" in the tray
+    assert!(h.host.is_open(Window::Setup));
+    assert!(!h.host.is_open(Window::Main));
+
+    let h = Harness::ready();
+    h.engine.intent(Intent::OpenMuesli);
+    assert!(h.host.is_open(Window::Main));
 }
 
 #[test]

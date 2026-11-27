@@ -20,10 +20,14 @@ for (const skin of ["mac", "windows"]) {
         const page = await sim.open("settings");
         await page.setViewportSize({ width: 900, height: 420 });
 
-        // A light before the status: amber for an older extension.
+        // A status badge with a light: amber for an older extension; Update and Disconnect beside it.
         const status = page.getByTestId("claude-status");
         await status.getByText("An older version is connected").waitFor();
-        assert.equal(await status.locator(".dot.warn").count(), 1, "amber light");
+        assert.ok(await status.evaluate((el) => el.classList.contains("warn")), "amber light");
+        await page.getByTestId("claude-connect").getByText("Update").waitFor();
+        await page.getByTestId("claude-detail").getByText("Claude can read and search your transcripts.").waitFor();
+        await page.getByTestId("claude-disconnect").click();
+        await page.getByTestId("claude-detail").getByText("Settings → Extensions").waitFor();
 
         // The version is a small line at the foot of Settings, after every section.
         const foot = await page.getByTestId("version").evaluate((el) => {
@@ -35,12 +39,11 @@ for (const skin of ["mac", "windows"]) {
         assert.ok(foot.top >= foot.lastBottom, "below the sections");
         assert.ok(foot.size <= 12, "small text");
 
-        // Opening "Other apps…" shows no stray "Off" line.
-        await page.getByText("Other apps…").click();
-        await page.getByTestId("command").waitFor();
-        assert.equal(await page.getByText("Off", { exact: true }).count(), 0);
+        // "Other apps" is always shown, with no stray "Off" line.
+        await page.getByTestId("other-apps").getByTestId("command").waitFor();
+        assert.equal(await page.getByTestId("other-apps").getByText("Off", { exact: true }).count(), 0);
 
-        // A re-render (something changes in the background) keeps the scroll position and the open fold.
+        // A re-render (something changes in the background) keeps the scroll position.
         await page.locator(".settings").evaluate((el) => (el.scrollTop = 150));
         const before = await page.locator(".settings").evaluate((el) => el.scrollTop);
         assert.ok(before > 100, "the page scrolls in this window");
@@ -50,7 +53,6 @@ for (const skin of ["mac", "windows"]) {
         await page.waitForTimeout(400);
         const after = await page.locator(".settings").evaluate((el) => el.scrollTop);
         assert.equal(after, before, "scroll position kept");
-        assert.equal(await page.locator("details.other-apps[open]").count(), 1, "the fold stays open");
       } finally {
         await sim.stop();
       }
@@ -114,46 +116,88 @@ test("a click on the end-of-call notification only opens Muesli and keeps the qu
   }
 });
 
-test("macOS main window: a Settings gear in the list header opens Settings", async () => {
-  const sim = await startSim({ scenario: "a-day-of-meetings", skin: "mac" });
-  try {
-    const page = await sim.open("main");
-    const gear = page.locator(".list-head").getByTestId("settings");
-    await gear.waitFor();
-    assert.equal(await gear.getAttribute("aria-label"), "Settings");
-    // at the right edge of the header, level with the "Transcripts" heading
-    const geometry = await page.locator(".list-head").evaluate((head) => {
-      const box = (el) => el.getBoundingClientRect();
-      const title = box(head.querySelector("h1"));
-      const button = box(head.querySelector("[data-testid=settings]"));
-      return { titleMid: title.top + title.height / 2, buttonMid: button.top + button.height / 2, buttonRight: button.right, headRight: box(head).right };
-    });
-    assert.ok(Math.abs(geometry.titleMid - geometry.buttonMid) < 4, "level with the heading");
-    assert.ok(geometry.headRight - geometry.buttonRight < 24, "against the right edge");
-    assert.equal(await gear.getAttribute("title"), "Settings… (⌘,)");
-    assert.ok(!(await sim.state()).windows.includes("settings"));
-    await gear.click();
-    await eventually(async () => (await sim.state()).windows.includes("settings"), "Settings opened");
-    // ⌘, does the same from the keyboard
-    await sim.act({ do: "closeWindow", window: "settings" });
-    assert.ok(!(await sim.state()).windows.includes("settings"));
-    await page.keyboard.press("Meta+,");
-    await eventually(async () => (await sim.state()).windows.includes("settings"), "Settings opened by ⌘,");
-  } finally {
-    await sim.stop();
-  }
-});
+for (const [skin, keys, shortcut, other] of [
+  ["mac", "Meta+,", "⌘,", "Control+,"],
+  ["windows", "Control+,", "Ctrl+,", "Meta+,"],
+]) {
+  test(`${skin} main window: a Settings gear in the list header opens Settings, as does ${shortcut}`, async () => {
+    const sim = await startSim({ scenario: "a-day-of-meetings", skin });
+    try {
+      const page = await sim.open("main");
+      const gear = page.locator(".list-head").getByTestId("settings");
+      await gear.waitFor();
+      assert.equal(await page.locator(".toolbar").count(), 0, "no toolbar on either platform");
+      await page.getByTestId("start").waitFor(); // the round Start button
+      assert.equal(await gear.getAttribute("aria-label"), "Settings");
+      // at the right edge of the header, level with the "Transcripts" heading
+      const geometry = await page.locator(".list-head").evaluate((head) => {
+        const box = (el) => el.getBoundingClientRect();
+        const title = box(head.querySelector("h1"));
+        const button = box(head.querySelector("[data-testid=settings]"));
+        return { titleMid: title.top + title.height / 2, buttonMid: button.top + button.height / 2, buttonRight: button.right, headRight: box(head).right };
+      });
+      assert.ok(Math.abs(geometry.titleMid - geometry.buttonMid) < 4, "level with the heading");
+      assert.ok(geometry.headRight - geometry.buttonRight < 24, "against the right edge");
+      assert.equal(await gear.getAttribute("title"), `Settings… (${shortcut})`);
+      assert.ok(!(await sim.state()).windows.includes("settings"));
+      await gear.click();
+      await eventually(async () => (await sim.state()).windows.includes("settings"), "Settings opened");
+      await sim.act({ do: "closeWindow", window: "settings" });
+      // the other platform's shortcut does nothing
+      await page.keyboard.press(other);
+      await page.waitForTimeout(300);
+      assert.ok(!(await sim.state()).windows.includes("settings"));
+      await page.keyboard.press(keys);
+      await eventually(async () => (await sim.state()).windows.includes("settings"), `Settings opened by ${shortcut}`);
+    } finally {
+      await sim.stop();
+    }
+  });
 
-test("Windows main window keeps its toolbar and has no extra gear", async () => {
-  const sim = await startSim({ scenario: "a-day-of-meetings", skin: "windows" });
-  try {
-    const page = await sim.open("main");
-    await page.getByRole("button", { name: "Settings…" }).waitFor();
-    assert.equal(await page.locator(".list-head").count(), 0);
-    await page.keyboard.press("Meta+,"); // ⌘, is a Mac shortcut
-    await page.waitForTimeout(300);
-    assert.ok(!(await sim.state()).windows.includes("settings"));
-  } finally {
-    await sim.stop();
-  }
-});
+  test(`${skin}: right-click offers Delete on a meeting, asks first, and does nothing elsewhere`, async () => {
+    const sim = await startSim({ scenario: "a-day-of-meetings", skin });
+    try {
+      const page = await sim.open("main");
+      const rows = page.getByTestId("meeting-row");
+      await rows.first().waitFor();
+      const count = await rows.count();
+
+      // elsewhere: no menu of any kind
+      await page.getByTestId("transcript").or(page.locator(".reader")).first().click({ button: "right" });
+      await page.locator(".list-head h1").click({ button: "right" });
+      assert.equal(await page.getByTestId("context-menu").count(), 0);
+
+      // a meeting: Delete…, then a question; Cancel keeps it
+      await rows.first().click({ button: "right" });
+      await page.getByTestId("context-delete").click();
+      await page.getByTestId("confirm-delete").waitFor();
+      assert.match(await page.getByTestId("confirm-delete").innerText(), new RegExp(skin === "mac" ? "Trash" : "Recycle Bin"));
+      await page.getByTestId("cancel-delete").click();
+      assert.equal(await page.getByTestId("confirm-delete").count(), 0);
+      assert.equal(await rows.count(), count, "nothing deleted");
+
+      // Escape closes the menu
+      await rows.first().click({ button: "right" });
+      await page.getByTestId("context-menu").waitFor();
+      await page.keyboard.press("Escape");
+      assert.equal(await page.getByTestId("context-menu").count(), 0);
+
+      // Delete deletes
+      await rows.first().click({ button: "right" });
+      await page.getByTestId("context-delete").click();
+      await page.getByTestId("confirm-delete-button").click();
+      await eventually(async () => (await rows.count()) === count - 1, "the meeting is gone");
+      await page.getByTestId("undo").waitFor();
+
+      // other windows: right-click does nothing
+      const settings = await sim.open("settings");
+      const blocked = await settings.evaluate(() => {
+        const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+        return !document.body.dispatchEvent(event);
+      });
+      assert.ok(blocked, "Settings blocks the browser menu");
+    } finally {
+      await sim.stop();
+    }
+  });
+}

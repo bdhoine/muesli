@@ -185,11 +185,19 @@ fn claude_desktop_through_its_settings_file_counts_as_connected() {
 
     let view = h.engine.settings_view().assistants;
     let row = view.claude_desktop.unwrap();
-    assert_eq!(row.status, "Connected through Claude Desktop's settings file");
+    assert_eq!(row.status, "Connected");
     assert_eq!(row.tone, "ok");
     assert_eq!(row.button, None, "nothing to connect");
-    assert_eq!(row.detail.as_deref(), Some("Quit and reopen Claude Desktop to load it."));
+    assert_eq!(row.detail.as_deref(), Some("Claude can read and search your transcripts. Quit and reopen Claude Desktop to load it."));
+    assert!(row.can_disconnect);
     assert!(!view.can_add_to_claude_config);
+
+    // Muesli wrote that entry, so Disconnect removes it.
+    h.engine.intent(Intent::DisconnectClaudeDesktop);
+    let dir = ClaudeDesktopConfig::default_directory(&*h.fakes.paths);
+    assert!(!ClaudeDesktopConfig::is_registered(std::path::Path::new("/Applications/Muesli.app/Contents/MacOS/muesli-mcp"), &dir));
+    let row = h.engine.settings_view().assistants.claude_desktop.unwrap();
+    assert_eq!((row.status.as_str(), row.button.as_deref(), row.can_disconnect), ("Not connected", Some("Connect"), false));
 }
 
 #[test]
@@ -206,7 +214,7 @@ fn ai_assistants_are_off_until_switched_on() {
     h.engine.intent(Intent::SetAssistantsEnabled { on: true });
     assert!(Preferences::load(&h.engine.paths()).mcp_enabled);
     let view = h.engine.settings_view().assistants;
-    assert_eq!(view.claude_desktop.unwrap().button.as_deref(), Some("Connect Claude Desktop"));
+    assert_eq!(view.claude_desktop.unwrap().button.as_deref(), Some("Connect"));
     assert!(view.can_add_to_claude_config);
     let names: Vec<_> = view.assistants.iter().map(|a| a.name.as_str()).collect();
     assert_eq!(names, ["Claude Code", "Codex CLI", "Gemini CLI", "VS Code (Copilot)", "Cursor"]);
@@ -315,9 +323,19 @@ fn an_outdated_claude_extension_is_announced() {
     // Once Claude has the new version, nothing is shown.
     manifest(env!("CARGO_PKG_VERSION"));
     Preferences { onboarding_done: true, mcp_enabled: true, ..Default::default() }.save(&paths).unwrap();
-    let (engine, _host) = start();
+    let (engine, host) = start();
     assert!(engine.main_view().extension_update.is_none());
     assert_eq!(fakes.notifier.notices().len(), notices);
+
+    // Disconnect: only Claude Desktop can uninstall its extension, so Muesli opens it and says where.
+    let row = engine.settings_view().assistants.claude_desktop.unwrap();
+    assert_eq!((row.status.as_str(), row.can_disconnect), ("Connected", true));
+    assert_eq!(row.detail.as_deref(), Some("Claude can read and search your transcripts."));
+    engine.intent(Intent::DisconnectClaudeDesktop);
+    assert!(host.calls().contains(&HostCall::OpenUrl("claude://".into())));
+    let row = engine.settings_view().assistants.claude_desktop.unwrap();
+    assert_eq!(row.detail.as_deref(), Some("In Claude Desktop, open Settings → Extensions, choose Muesli and Uninstall."));
+    assert!(installed.exists(), "Claude's own files are left alone");
 }
 
 #[test]

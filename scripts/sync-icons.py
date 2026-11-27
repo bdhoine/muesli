@@ -37,8 +37,11 @@ UI_COPIES = {
     "mark.svg": os.path.join(brand, "logo", "mark.svg"),
     "mark-on-dark.svg": os.path.join(brand, "logo", "mark-on-dark.svg"),
 }
-# Windows icon: PNG images of these pixel sizes in one .ico container.
-ICO_SOURCES = [(16, "icon_16x16.png"), (32, "icon_32x32.png"), (64, "icon_32x32@2x.png"), (128, "icon_128x128.png"), (256, "icon_256x256.png")]
+# Windows icon: PNG images of these pixel sizes in one .ico container. They are the tile without
+# the macOS icon grid's transparent margin (assets/brand/app-icon/windows), so the icon fills its
+# square in the taskbar like other Windows apps.
+windows_icons = os.path.join(brand, "app-icon", "windows")
+ICO_SOURCES = [(n, f"icon_{n}.png") for n in (16, 24, 32, 48, 64, 256)]
 
 
 def read(path):
@@ -47,7 +50,7 @@ def read(path):
 
 
 def ico():
-    images = [(size, read(os.path.join(iconset, name))) for size, name in ICO_SOURCES]
+    images = [(size, read(os.path.join(windows_icons, name))) for size, name in ICO_SOURCES]
     header = struct.pack("<HHH", 0, 1, len(images))
     offset = 6 + 16 * len(images)
     entries, body = b"", b""

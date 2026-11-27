@@ -89,6 +89,7 @@ pub fn run() {
                 std::thread::spawn(move || engine.intent(Intent::TranscribeFiles { paths }));
             }
             WindowEvent::Destroyed => windows::closed(window.app_handle(), window.label()),
+            WindowEvent::ThemeChanged(_) => windows::tint(window.clone()),
             _ => {}
         })
         .setup(move |app| {
@@ -98,11 +99,14 @@ pub fn run() {
             host.attach(app.handle(), &engine);
             updater.attach(app.handle());
             tray.attach(app.handle(), host.clone())?;
-            // macOS: a start by a person opens the main window; the start at login does not.
+            // A start by a person opens the main window (or setup, until it is done); the start at
+            // login does not.
             #[cfg(target_os = "macos")]
             engine.start_with(!muesli_platform_macos::launch::launched_at_login());
-            #[cfg(not(target_os = "macos"))]
-            engine.start();
+            #[cfg(windows)]
+            engine.start_with(!muesli_platform_windows::launch::launched_at_login());
+            #[cfg(not(any(target_os = "macos", windows)))]
+            engine.start_with(true);
             let ticking = engine.clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(1));

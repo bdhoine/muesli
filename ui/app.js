@@ -1,10 +1,11 @@
 // Muesli's windows: main, settings, setup and prompt. Each renders the view state the engine
 // gives it and sends intents back (see bridge.js). Nothing here decides what Muesli does; the
-// only local state is what the user is typing (a new title) and which <details> are open.
+// only local state is what the user is typing (a new title), and the
+// right-click menu on a meeting with its "Delete?" question.
 (function () {
   const { label, view, send, onChange, inApp } = window.muesli;
   const root = document.getElementById("app");
-  const local = { renaming: null, draft: "", term: "" };
+  const local = { renaming: null, draft: "", term: "", menu: null, confirmDelete: null };
   let current = null;
 
   // ------------------------------------------------------------------------------------------
@@ -22,7 +23,6 @@
     noBot: svg('<circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 6l4 4M21 6l-4 4"/>'),
     record: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>'),
     stop: '<svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor"/></svg>',
-    chevron: '<svg class="chevron" aria-hidden="true" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 2l3 3-3 3"/></svg>',
     x: '<svg aria-hidden="true" viewBox="0 0 8 8" stroke="currentColor" stroke-width="1.5"><path d="M1 1l6 6M7 1L1 7"/></svg>',
   };
 
@@ -106,7 +106,6 @@
   // Main window
 
   function main(v) {
-    const mac = isMac();
     const reader = v.reader;
     const rows = [];
     for (const i of v.imports) {
@@ -165,27 +164,14 @@
           ${reader.live ? `<div class="listening" role="status"><span class="bounce" aria-hidden="true"><span></span><span></span><span></span></span>Listening · text follows each pause</div>` : ""}</article>`;
     }
 
-    // macOS: no toolbar; the list header has a Settings gear (the menu bar menu has Start and
-    // Settings too). Windows: a command bar.
-    const revealIntent = { type: "showInFileManager", id: reader && !reader.live ? reader.id : null };
-    const toolbar = mac
-      ? ""
-      : `<div class="toolbar">
-          ${v.transcribing ? "" : button("Start Transcribing", { type: "startTranscribing" }, { kind: "primary", disabled: !v.canStart, testid: "start" })}
-          ${button("Transcribe Audio File…", { type: "chooseAudioFiles" }, { disabled: !v.canTranscribeFile, testid: "transcribe-file" })}
-          ${button(v.showInFileManager, revealIntent, { testid: "reveal" })}
-          <span class="grow"></span>
-          ${button("Settings…", { type: "openSettings" }, { kind: "quiet" })}
-        </div>`;
-    const listHead = mac
-      ? `<div class="list-head"><h1>Transcripts</h1>
-          <button class="btn quiet icon" data-testid="settings" title="Settings… (⌘,)" aria-label="Settings"
-            data-intent='${esc(JSON.stringify({ type: "openSettings" }))}'>${icons.gear}</button></div>`
-      : "";
+    // Both platforms, as in the design: no toolbar; the list header has a Settings gear (the tray
+    // menu has Start, Transcribe Audio File… and Settings too).
+    const listHead = `<div class="list-head"><h1>Transcripts</h1>
+          <button class="btn quiet icon" data-testid="settings" title="Settings… (${esc(v.words.settingsShortcut)})" aria-label="Settings"
+            data-intent='${esc(JSON.stringify({ type: "openSettings" }))}'>${icons.gear}</button></div>`;
 
     keepScroll(() => {
       root.innerHTML = `${titlebar()}<div class="main-window">
-        ${toolbar}
         ${v.update ? `<div class="banner info" role="status" data-testid="update-banner"><span class="grow">${esc(v.update.text)}</span>
             ${button("Not now", { type: "dismissUpdate" }, { kind: "small quiet" })}${button("What's new", { type: "openReleaseNotes", version: v.update.version }, { kind: "small" })}${button("Restart", { type: "restartToUpdate" }, { kind: "small primary" })}</div>` : ""}
         ${v.extensionUpdate ? `<div class="banner info" role="status" data-testid="extension-update"><span class="grow">${esc(v.extensionUpdate)}</span>
@@ -196,10 +182,11 @@
             <ul class="list" data-scroll="list" data-testid="list">${rows.join("")}</ul></section>
           <main class="reader">${right}</main>
         </div>
-        ${mac && !v.transcribing
+        ${!v.transcribing
           ? `<button class="btn primary fab" data-testid="start" ${v.canStart ? "" : "disabled"}
               data-intent='${esc(JSON.stringify({ type: "startTranscribing" }))}'>${icons.record}Start transcribing</button>`
           : ""}
+        ${contextMenu(v)}${deleteQuestion(v)}
         ${v.toast ? `<div class="toast" role="status" data-testid="toast">${esc(v.toast.text)}
             ${v.toast.undo ? button("Undo", { type: "undo" }, { kind: "small", testid: "undo" }) : ""}
             ${button("×", { type: "dismissToast" }, { kind: "small quiet" })}</div>` : ""}
@@ -210,6 +197,25 @@
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
     }
+  }
+
+  /** The right-click menu on a finished meeting in the list: Delete…, which asks first. */
+  function contextMenu(v) {
+    if (!local.menu || !v.meetings.some((m) => m.id === local.menu.id)) return "";
+    return `<div class="context-menu" role="menu" data-testid="context-menu" style="left:${local.menu.x}px;top:${local.menu.y}px">
+        <button class="item danger" role="menuitem" data-local="ask-delete" data-testid="context-delete">Delete…</button></div>`;
+  }
+
+  function deleteQuestion(v) {
+    const m = local.confirmDelete && v.meetings.find((x) => x.id === local.confirmDelete);
+    if (!m) return "";
+    return `<div class="scrim" data-local="cancel-delete">
+        <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-title" data-testid="confirm-delete">
+          <h2 class="dialog-title" id="delete-title">Delete “${esc(m.title)}”?</h2>
+          <p>Its transcript files move to the ${esc(v.words.trash)}.</p>
+          <div class="actions"><button class="btn" data-local="cancel-delete" data-testid="cancel-delete">Cancel</button>
+            <button class="btn danger" data-local="confirm-delete" data-testid="confirm-delete-button" autofocus>Delete</button></div>
+        </div></div>`;
   }
 
   // ------------------------------------------------------------------------------------------
@@ -225,8 +231,8 @@
     return rows
       .map(
         (p) => `<div class="setting" data-testid="permission-${p.permission}">
-          <div class="text"><span class="title">${esc(p.title)}${tags ? (p.required ? ' <span class="badge">Required</span>' : ' <span class="badge quiet">Optional</span>') : ""}</span>
-          <span class="sub">${tags || p.required ? "" : "Optional · "}${esc(p.detail)}</span></div>
+          <div class="text"><span class="title">${esc(p.title)}${tags && p.required ? ' <span class="badge">Required</span>' : ""}${p.required ? "" : ' <span class="badge quiet" data-testid="optional">Optional</span>'}</span>
+          <span class="sub">${esc(p.detail)}</span></div>
           <div class="controls">
             ${p.access !== "notAsked" || !p.button ? `<span class="pill ${pillClass(p)}"><span class="dot"></span>${esc(p.badge)}</span>` : ""}
             ${
@@ -268,22 +274,23 @@
       ${v.error ? `<span class="error-text" role="alert">${esc(v.error)}</span>` : ""}`;
   }
 
+  /** Settings > Transcription: what Muesli has loaded, one plain line per feature. */
   function model(m) {
-    const state = m.error ? "warn" : m.text === "Ready" ? "ok" : "";
-    return `<div class="setting" data-testid="model">
-      <div class="text"><span class="title">${esc(m.title)}</span>
-      <span class="sub">${esc(m.detail)}${m.progress != null ? ` · ${esc(m.text)}` : ""}</span>
-      ${m.acceleration ? `<span class="sub" data-testid="acceleration">${esc(m.acceleration)}</span>` : ""}
-      ${m.progress != null ? progress(m.progress) : ""}
-      ${m.error ? `<div class="error-text">${esc(m.error)}${m.url ? `<br><code>${esc(m.url)}</code>` : ""}</div>` : ""}</div>
-      <div class="controls">
-        ${m.progress == null ? `<span class="pill ${state}"><span class="dot"></span>${esc(m.text)}</span>` : ""}
-        ${m.canRetry ? button("Download again", { type: "downloadModelAgain" }) : ""}
-      </div>
-    </div>`;
+    const rows = m.features
+      .map(
+        (f) => `<div class="setting feature" data-testid="feature-${esc(f.id)}" ${f.id === "speech" ? `title="${esc(m.about)}"` : ""}>
+        <div class="text"><span class="title">${esc(f.title)}</span><span class="sub">${esc(f.detail)}</span>
+          ${f.progress != null ? progress(f.progress) : ""}
+          ${f.id === "speech" && m.error ? `<div class="error-text">${esc(m.error)}${m.url ? `<br><code>${esc(m.url)}</code>` : ""}</div>` : ""}</div>
+        <div class="controls"><span class="pill ${esc(f.tone)}"><span class="dot"></span>${esc(f.status)}</span></div>
+      </div>`,
+      )
+      .join("");
+    return `<div class="features" data-testid="model">${rows}
+      ${m.canRetry ? `<div class="setting footer">${button("Download again", { type: "downloadModelAgain" }, { kind: "small quiet" })}</div>` : ""}</div>`;
   }
 
-  /** Settings > General: updates and the automatic check (release builds). */
+  /** Settings > Updates: the check and the automatic check (release builds). */
   function updates(u) {
     if (!u.available) return "";
     const status = u.status
@@ -308,16 +315,16 @@
 
   function settings(v) {
     const a = v.assistants;
-    const open = [...root.querySelectorAll("details[open]")].map((d) => d.dataset.key);
     const assistants = a.enabled
       ? `${
           a.claudeDesktop
-            ? `<div class="setting"><div class="text"><span class="title">Claude Desktop</span><span class="sub status" data-testid="claude-status"><span class="dot ${esc(a.claudeDesktop.tone)}"></span>${esc(a.claudeDesktop.status)}</span>${a.claudeDesktop.detail ? `<span class="sub" data-testid="claude-detail">${esc(a.claudeDesktop.detail)}</span>` : ""}</div>
-               ${a.claudeDesktop.button ? button(a.claudeDesktop.button, { type: "connectClaudeDesktop" }, { kind: "primary" }) : ""}</div>`
+            ? `<div class="setting" data-testid="claude-desktop"><div class="text"><span class="title">Claude Desktop</span>${a.claudeDesktop.detail ? `<span class="sub" data-testid="claude-detail">${esc(a.claudeDesktop.detail)}</span>` : ""}</div>
+               <div class="controls"><span class="pill ${esc(a.claudeDesktop.tone)}" data-testid="claude-status"><span class="dot"></span>${esc(a.claudeDesktop.status)}</span>
+               ${a.claudeDesktop.button ? button(a.claudeDesktop.button, { type: "connectClaudeDesktop" }, { kind: "primary", testid: "claude-connect" }) : ""}
+               ${a.claudeDesktop.canDisconnect ? button("Disconnect", { type: "disconnectClaudeDesktop" }, { testid: "claude-disconnect" }) : ""}</div></div>`
             : ""
         }
-        <div class="setting stack">
-        <details class="other-apps" data-key="other" ${open.includes("other") ? "open" : ""}><summary><span class="disclosure">${icons.chevron}Other apps…</span></summary><div class="stack">
+        <div class="setting stack" data-testid="other-apps"><span class="title">Other apps</span>
           <div class="segmented" role="tablist" aria-label="Assistant">${a.assistants
             .map((c) => `<button role="tab" aria-selected="${c.selected}" class="seg ${c.selected ? "on" : ""}" data-intent='${esc(JSON.stringify({ type: "pickAssistant", name: c.name }))}'>${esc(c.name)}</button>`)
             .join("")}</div>
@@ -328,7 +335,7 @@
               : `<span class="sub">muesli-mcp is not next to the app in this build.</span>`
           }
           ${a.canAddToClaudeConfig ? `<div class="row-between"><span class="sub">Claude Desktop blocked by your organisation?</span>${button("Add to Claude's config file", { type: "addToClaudeConfig" })}</div>` : ""}
-        </div></details></div>`
+        </div>`
       : "";
     root.innerHTML = `${titlebar()}<div class="settings" data-scroll="settings">
       <h2>General</h2>
@@ -341,8 +348,9 @@
         <label class="setting"><div class="text"><span class="title">${esc(v.words.startAtLogin)}</span><span class="sub">So Muesli is there when a meeting starts</span></div>
           <input type="checkbox" role="switch" data-testid="login" ${v.startAtLogin ? "checked" : ""}
             data-toggle='${esc(JSON.stringify({ type: "setStartAtLogin" }))}'></label>
-        ${updates(v.updates)}
       </section>
+      <h2>Transcription</h2>
+      <section class="card" aria-label="Transcription">${model(v.model)}</section>
       <h2>Languages</h2>
       <section class="card"><div class="setting stack">
         <span class="sub">Spoken in your meetings. For each stretch of speech Muesli picks the most likely one; fewer languages, fewer mistakes.</span>
@@ -353,6 +361,8 @@
         <span class="sub">Names and terms Muesli should spell right. AI assistants can add to it when you correct them.</span>
         ${vocabulary(v.vocabulary)}
       </div></section>
+      <h2>Permissions</h2>
+      <section class="card">${permissionRows(v.permissions, { tags: false })}</section>
       <h2>AI assistants</h2>
       <section class="card">
         <label class="setting"><div class="text"><span class="title">Let AI assistants use Muesli</span><span class="sub">${esc(a.privacy)}</span></div>
@@ -360,12 +370,7 @@
             data-toggle='${esc(JSON.stringify({ type: "setAssistantsEnabled" }))}'></label>
         ${assistants}
       </section>
-      <details class="advanced" data-key="advanced" ${open.includes("advanced") ? "open" : ""}><summary><h2 class="disclosure">${icons.chevron}Advanced</h2></summary>
-        <div class="stack">
-          <section class="card">${model(v.model)}</section>
-          <section class="card">${permissionRows(v.permissions, { tags: false })}</section>
-        </div>
-      </details>
+      ${v.updates.available ? `<h2>Updates</h2><section class="card">${updates(v.updates)}</section>` : ""}
       ${versionFooter(v.updates)}
     </div>`;
   }
@@ -462,9 +467,26 @@
 
   root.addEventListener("click", (event) => {
     const localAction = event.target.closest("[data-local]");
+    // A click inside the question's box (not on its buttons) leaves it open.
+    if (localAction?.dataset.local === "cancel-delete" && localAction.classList.contains("scrim") && event.target.closest(".dialog")) return;
+    if (local.menu && !localAction) {
+      local.menu = null;
+      renderers[label]?.(current);
+      return;
+    }
     if (localAction) {
       const action = localAction.dataset.local;
-      if (action === "rename") {
+      const menuId = local.menu?.id;
+      local.menu = null;
+      if (action === "ask-delete") {
+        local.confirmDelete = menuId;
+      } else if (action === "cancel-delete") {
+        local.confirmDelete = null;
+      } else if (action === "confirm-delete") {
+        const id = local.confirmDelete;
+        local.confirmDelete = null;
+        if (id) send({ type: "delete", id });
+      } else if (action === "rename") {
         local.renaming = current.reader.id;
         local.draft = current.reader.title;
       } else if (action === "cancel-rename") {
@@ -506,9 +528,11 @@
     renderers[label]?.(current);
   });
 
-  // macOS: ⌘, opens Settings from the main window, as in every Mac app.
+  // ⌘, (Mac) or Ctrl+, (Windows) opens Settings from the main window.
   document.addEventListener("keydown", (event) => {
-    if (label === "main" && isMac() && event.metaKey && !event.ctrlKey && !event.altKey && event.key === ",") {
+    const mac = isMac();
+    const modifier = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    if (label === "main" && modifier && !event.altKey && event.key === ",") {
       event.preventDefault();
       send({ type: "openSettings" });
     }
@@ -519,6 +543,23 @@
       local.renaming = null;
       renderers[label]?.(current);
     }
+  });
+
+  // Right-click does nothing anywhere in Muesli (no browser menu), except on a finished meeting
+  // in the main window's list: a menu with Delete…, which asks before deleting.
+  document.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    const row = label === "main" ? event.target.closest('[data-testid="meeting-row"]') : null;
+    const id = row ? JSON.parse(row.dataset.intent).id : null;
+    local.menu = id ? { id, x: Math.min(event.clientX, innerWidth - 176), y: Math.min(event.clientY, innerHeight - 48) } : null;
+    if (current && (id || label === "main")) renderers[label]?.(current);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !(local.menu || local.confirmDelete)) return;
+    local.menu = null;
+    local.confirmDelete = null;
+    renderers[label]?.(current);
   });
 
   root.addEventListener("change", (event) => {

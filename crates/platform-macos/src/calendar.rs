@@ -1,6 +1,8 @@
 //! Calendar meetings through EventKit: every account added in System Settings, one permission.
 //! Only read; asked for only from the setup screen or Settings.
 
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -15,8 +17,27 @@ use objc2_foundation::{NSDate, NSError};
 
 thread_local! {
     // An event store is expensive to create and not thread-safe; detection always samples from
-    // the same thread, so each thread keeps its own.
-    static STORE: Retained<EKEventStore> = unsafe { EKEventStore::new() };
+    // the same thread, so each thread keeps its own, with the grant it was made under.
+    static STORE: RefCell<(u32, Retained<EKEventStore>)> = RefCell::new((0, unsafe { EKEventStore::new() }));
+}
+
+/// Set when the system's question was answered with Allow in this run. EventKit's
+/// `authorizationStatusForEntityType` keeps answering "not determined" in the running process
+/// after that, so Settings would go on offering Allow….
+static GRANTED: AtomicBool = AtomicBool::new(false);
+/// Bumped by a grant: a store made before it cannot read events, so each thread makes a new one.
+static GRANT: AtomicU32 = AtomicU32::new(0);
+
+/// This thread's event store, made again after a grant.
+fn with_store<T>(f: impl FnOnce(&EKEventStore) -> T) -> T {
+    STORE.with(|cell| {
+        let mut cell = cell.borrow_mut();
+        let grant = GRANT.load(Ordering::SeqCst);
+        if cell.0 != grant {
+            *cell = (grant, unsafe { EKEventStore::new() });
+        }
+        f(&cell.1)
+    })
 }
 
 fn date(d: DateTime<Utc>) -> Retained<NSDate> {
@@ -26,6 +47,7 @@ fn date(d: DateTime<Utc>) -> Retained<NSDate> {
 pub fn access() -> Access {
     match unsafe { EKEventStore::authorizationStatusForEntityType(EKEntityType::Event) } {
         EKAuthorizationStatus::FullAccess => Access::Allowed,
+        EKAuthorizationStatus::NotDetermined if GRANTED.load(Ordering::SeqCst) => Access::Allowed,
         EKAuthorizationStatus::NotDetermined => Access::NotAsked,
         EKAuthorizationStatus::Denied | EKAuthorizationStatus::Restricted | EKAuthorizationStatus::WriteOnly => Access::Denied,
         _ => Access::Unknown,
@@ -38,9 +60,13 @@ pub fn request() -> Result<(), String> {
     let block = RcBlock::new(move |granted: Bool, _error: *mut NSError| {
         let _ = tx.send(granted.as_bool());
     });
-    STORE.with(|store| unsafe { store.requestFullAccessToEventsWithCompletion(RcBlock::as_ptr(&block)) });
+    with_store(|store| unsafe { store.requestFullAccessToEventsWithCompletion(RcBlock::as_ptr(&block)) });
     match rx.recv_timeout(Duration::from_secs(60)) {
-        Ok(true) => Ok(()),
+        Ok(true) => {
+            GRANTED.store(true, Ordering::SeqCst);
+            GRANT.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
         Ok(false) => Err("Calendar access was not allowed.".into()),
         Err(_) => Err("No answer to the calendar question.".into()),
     }
@@ -51,7 +77,7 @@ pub fn meeting_now(now: DateTime<Utc>) -> Option<(DetectedMeeting, String)> {
     if access() != Access::Allowed {
         return None;
     }
-    STORE.with(|store| unsafe {
+    with_store(|store| unsafe {
         let start = date(now - chrono::Duration::hours(12));
         let end = date(now + chrono::Duration::minutes(1));
         let predicate = store.predicateForEventsWithStartDate_endDate_calendars(&start, &end, None);

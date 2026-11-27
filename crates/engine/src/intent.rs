@@ -92,10 +92,12 @@ pub enum Intent {
         on: bool,
     },
     ConnectClaudeDesktop,
+    /// Settings' Disconnect on the Claude Desktop row.
+    DisconnectClaudeDesktop,
     /// "Not now" on the main window's extension update banner.
     DismissExtensionUpdate,
     AddToClaudeConfig,
-    /// Picks the assistant whose setup command "Other apps…" shows.
+    /// Picks the assistant whose setup command "Other apps" shows.
     PickAssistant {
         name: String,
     },

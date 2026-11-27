@@ -25,7 +25,7 @@ use crate::final_pass::{self, Kept};
 use crate::host::{Host, Window};
 use crate::intent::Intent;
 use crate::live::Live;
-use crate::speech::{ModelStatus, SpeechModel, Transcriber};
+use crate::speech::{ModelStatus, SpeechModel, SpeedUp, SpeedUpStage, Transcriber};
 use crate::views::*;
 
 /// How long the microphone must be free before a call counts as ended. Fixed; no setting.
@@ -166,6 +166,8 @@ struct Inner {
     setup_step: usize,
     last_ready: Option<LastReady>,
     claude_status: Option<String>,
+    /// Disconnect was pressed while the extension is installed: Settings says where to uninstall it.
+    claude_disconnecting: bool,
     assistant: String,
     capture_error: Option<String>,
     /// Why the last term could not be added to the vocabulary (Settings).
@@ -209,19 +211,45 @@ fn clock_text(seconds: f64) -> String {
 /// How a meeting came about, in words.
 /// The Claude Desktop row: connected through the extension or Claude Desktop's settings file, or
 /// not connected. `file_status` is what the last change of that file reported.
-fn claude_desktop_row(extension: &ExtensionState, through_file: bool, can_connect: bool, file_status: Option<&str>) -> ClaudeDesktopRow {
-    let (status, tone, button, detail) = match extension {
-        ExtensionState::Installed { .. } => ("Connected", "ok", None, None),
-        ExtensionState::Outdated { .. } => ("An older version is connected", "warn", Some("Update Claude Desktop extension"), None),
-        _ if through_file => (
-            "Connected through Claude Desktop's settings file",
-            "ok",
-            None,
-            file_status.and_then(|s| s.strip_prefix("Registered with Claude Desktop.")).map(str::trim).filter(|s| !s.is_empty()),
+/// `disconnecting`: Disconnect was pressed while the extension is installed, so the row says where
+/// Claude Desktop uninstalls it (another app cannot).
+fn claude_desktop_row(
+    extension: &ExtensionState,
+    through_file: bool,
+    can_connect: bool,
+    file_status: Option<&str>,
+    disconnecting: bool,
+) -> ClaudeDesktopRow {
+    const WHAT: &str = "Claude can read and search your transcripts.";
+    const HOW: &str = "In Claude Desktop, open Settings → Extensions, choose Muesli and Uninstall.";
+    let (status, tone, button, detail, disconnect) = match extension {
+        ExtensionState::Installed { .. } => ("Connected", "ok", None, if disconnecting { HOW } else { WHAT }.to_string(), true),
+        ExtensionState::Outdated { .. } => (
+            "An older version is connected",
+            "warn",
+            Some("Update"),
+            if disconnecting { HOW.to_string() } else { format!("{WHAT} Update to get everything this Muesli can do.") },
+            true,
         ),
-        _ => ("Not connected", "", can_connect.then_some("Connect Claude Desktop"), file_status.filter(|s| !s.starts_with("Removed"))),
+        _ if through_file => {
+            let note = file_status.and_then(|s| s.strip_prefix("Registered with Claude Desktop.")).map(str::trim).filter(|s| !s.is_empty());
+            ("Connected", "ok", None, note.map_or_else(|| WHAT.to_string(), |n| format!("{WHAT} {n}")), true)
+        }
+        _ => (
+            "Not connected",
+            "",
+            can_connect.then_some("Connect"),
+            file_status.filter(|s| !s.starts_with("Removed")).unwrap_or("Lets Claude read and search your transcripts.").to_string(),
+            false,
+        ),
     };
-    ClaudeDesktopRow { status: status.into(), tone: tone.into(), button: button.map(Into::into), detail: detail.map(Into::into) }
+    ClaudeDesktopRow {
+        status: status.into(),
+        tone: tone.into(),
+        button: button.map(Into::into),
+        detail: Some(detail),
+        can_disconnect: disconnect,
+    }
 }
 
 pub fn source_label(source: &str) -> String {
@@ -277,6 +305,7 @@ impl Engine {
                 setup_step: 0,
                 last_ready: None,
                 claude_status: None,
+                claude_disconnecting: false,
                 assistant: AssistantClient::ClaudeCode.name().to_string(),
                 capture_error: None,
                 vocabulary_error: None,
@@ -1063,7 +1092,11 @@ impl Engine {
             Intent::StopAndSave => self.stop(StopReason::Asked),
             Intent::AnswerPrompt { prompt, accept } => self.answer(prompt, accept),
 
-            Intent::OpenMuesli => self.host.show(Window::Main),
+            // Until setup is done, opening Muesli (again) shows setup, not an empty main window.
+            Intent::OpenMuesli => {
+                let window = if self.lock().prefs.onboarding_done { Window::Main } else { Window::Setup };
+                self.host.show(window);
+            }
             Intent::OpenSettings => self.host.show(Window::Settings),
             Intent::Tray { id } => self.tray(&id),
             Intent::OpenMeeting { id } => {
@@ -1191,7 +1224,20 @@ impl Engine {
                 self.sync_assistants();
                 self.changed();
             }
+            Intent::DisconnectClaudeDesktop => {
+                if self.extension_state().is_installed() {
+                    // Claude Desktop alone can uninstall its extension: open it and say where.
+                    self.lock().claude_disconnecting = true;
+                    self.host.open_url("claude://");
+                } else {
+                    // Connected through its settings file: Muesli wrote that entry, so it removes it.
+                    self.save_prefs(|p| p.claude_desktop_config_entry = false);
+                    self.sync_assistants();
+                }
+                self.changed();
+            }
             Intent::ConnectClaudeDesktop => {
+                self.lock().claude_disconnecting = false;
                 if let Some(path) = self.host.extension_path() {
                     self.host.open(&path);
                 }
@@ -1604,21 +1650,54 @@ impl Engine {
             ModelStatus::Failed { message, url } => ("Download failed".to_string(), Some(message.clone()), url.clone()),
             ModelStatus::Missing => ("Not downloaded".to_string(), None, None),
         };
+        let computer = self.platform.words.computer;
+        let detail = format!("Understands your languages, on this {computer}");
+        let tone = match status {
+            ModelStatus::Ready => "ok",
+            ModelStatus::Failed { .. } => "warn",
+            _ => "",
+        };
+        let mut features = vec![FeatureRow {
+            id: "speech",
+            title: "Speech recognition".into(),
+            detail: detail.clone(),
+            status: text.clone(),
+            tone,
+            progress: status.fraction(),
+        }];
+        if let Some(speed) = self.speech.speed_up() {
+            features.push(speed_row(&speed));
+        }
+        features.push(if self.speech.echo_removal() {
+            FeatureRow {
+                id: "echo",
+                title: "Works without headphones".into(),
+                detail: "Removes the call's echo from your microphone".into(),
+                status: "On".into(),
+                tone: "ok",
+                progress: None,
+            }
+        } else {
+            FeatureRow {
+                id: "echo",
+                title: "Works without headphones".into(),
+                detail: "Not available, so use headphones in calls".into(),
+                status: "Off".into(),
+                tone: "",
+                progress: None,
+            }
+        });
         ModelView {
             title: "Speech model".into(),
-            detail: format!(
-                "Whisper {} · {} MB, on this {}",
-                DEFAULT_MODEL.title,
-                DEFAULT_MODEL.approximate_bytes / 1_000_000,
-                self.platform.words.computer
-            ),
+            detail,
+            about: format!("Whisper {} · {} MB", DEFAULT_MODEL.title, DEFAULT_MODEL.approximate_bytes / 1_000_000),
             progress: status.fraction(),
             can_retry: matches!(status, ModelStatus::Failed { .. } | ModelStatus::Missing | ModelStatus::Ready),
             status,
             text,
             error,
             url,
-            acceleration: self.speech.acceleration(),
+            features,
         }
     }
 
@@ -1775,9 +1854,9 @@ impl Engine {
         let claude_installed = self.host.claude_installed();
         let extension = self.extension_state();
         let helper = self.host.helper_path();
-        let (prefs, assistant, claude_status, vocabulary_error) = {
+        let (prefs, assistant, claude_status, vocabulary_error, disconnecting) = {
             let s = self.lock();
-            (s.prefs.clone(), s.assistant.clone(), s.claude_status.clone(), s.vocabulary_error.clone())
+            (s.prefs.clone(), s.assistant.clone(), s.claude_status.clone(), s.vocabulary_error.clone(), s.claude_disconnecting)
         };
         let through_file = !extension.is_installed()
             && prefs.claude_desktop_config_entry
@@ -1791,7 +1870,7 @@ impl Engine {
         let assistants = AssistantsView {
             enabled: prefs.mcp_enabled,
             privacy: "Assistants read transcripts on this computer. The text an assistant reads is sent to its provider (Anthropic, for Claude) like anything else you share with it.".into(),
-            claude_desktop: (prefs.mcp_enabled && claude_installed).then(|| claude_desktop_row(&extension, through_file, extension_path, claude_status.as_deref())),
+            claude_desktop: (prefs.mcp_enabled && claude_installed).then(|| claude_desktop_row(&extension, through_file, extension_path, claude_status.as_deref(), disconnecting)),
             assistants: AssistantClient::ALL
                 .into_iter()
                 .filter(|c| *c != AssistantClient::Other)
@@ -1823,4 +1902,23 @@ impl Engine {
             updates: self.updates_view(),
         }
     }
+}
+
+/// Settings' "Extra speed" line.
+fn speed_row(speed: &SpeedUp) -> FeatureRow {
+    let uses = format!("Uses {}", speed.by);
+    let (detail, status, tone, progress) = match speed.stage {
+        SpeedUpStage::Waiting => (format!("{uses}, once speech recognition is downloaded"), "Waiting".to_string(), "", None),
+        SpeedUpStage::Downloading(fraction) => {
+            let status = match fraction {
+                Some(f) => format!("Downloading · {}%", (f * 100.0).round() as u32),
+                None => "Downloading".to_string(),
+            };
+            (uses, status, "", Some(fraction.unwrap_or(0.0)))
+        }
+        SpeedUpStage::Preparing => (format!("{uses}. Setting up, once, about a minute"), "Setting up".to_string(), "", None),
+        SpeedUpStage::Ready => (uses, "Ready".to_string(), "ok", None),
+        SpeedUpStage::Failed => (format!("{uses}. Download again to try once more"), "Download failed".to_string(), "warn", None),
+    };
+    FeatureRow { id: "speed", title: "Extra speed".into(), detail, status, tone, progress }
 }

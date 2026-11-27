@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use muesli_core::whisper_model::coreml_installed;
 use muesli_core::Paths;
 use muesli_core::{EchoCanceller, EnergyDetector, SpeechDetector};
-use muesli_engine::{ModelStatus, SpeechModel, Transcriber};
+use muesli_engine::{ModelStatus, SpeechModel, SpeedUp, SpeedUpStage, Transcriber};
 use muesli_whisper::{Extra, ModelManager, Phase};
 
 pub struct WhisperSpeech {
@@ -87,17 +87,22 @@ impl SpeechModel for WhisperSpeech {
         });
     }
 
-    fn acceleration(&self) -> Option<String> {
-        let what = "Neural Engine (Core ML)";
-        Some(match self.manager.coreml()? {
-            Extra::Ready if self.warm.lock().unwrap().running => format!("{what}: preparing for this Mac, once"),
-            Extra::Ready => format!("{what}: ready"),
+    fn speed_up(&self) -> Option<SpeedUp> {
+        let stage = match self.manager.coreml()? {
+            Extra::Ready if self.warm.lock().unwrap().running => SpeedUpStage::Preparing,
+            Extra::Ready => SpeedUpStage::Ready,
             Extra::Downloading { received, total } => {
-                format!("{what}: downloading · {}%", (received * 100).checked_div(total).unwrap_or(0))
+                SpeedUpStage::Downloading((total > 0).then(|| (received as f64 / total as f64).min(1.0)))
             }
-            Extra::Waiting => format!("{what}: downloads after the speech model"),
-            Extra::Failed => format!("{what}: download failed; Download again retries"),
-        })
+            Extra::Waiting => SpeedUpStage::Waiting,
+            Extra::Failed => SpeedUpStage::Failed,
+        };
+        Some(SpeedUp { by: "your Mac's Neural Engine", stage })
+    }
+
+    fn echo_removal(&self) -> bool {
+        let find = |name: &str| echo_dirs().into_iter().any(|dir| dir.join(name).exists());
+        find(muesli_aec::LIBRARY) && find(muesli_aec::MODEL)
     }
 
     /// LocalVQE from the app's resources; in development the library this build made and the

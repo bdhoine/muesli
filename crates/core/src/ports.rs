@@ -314,11 +314,20 @@ pub struct PlatformWords {
     pub tray: &'static str,
     /// "Start at login" / "Start when I sign in"
     pub start_at_login: &'static str,
+    /// The keys that open Settings: "⌘," / "Ctrl+,"
+    pub settings_shortcut: &'static str,
 }
 
 impl PlatformWords {
-    pub const MAC: Self =
-        Self { skin: "mac", computer: "Mac", trash: "Trash", file_manager: "Finder", tray: "menu bar", start_at_login: "Start at login" };
+    pub const MAC: Self = Self {
+        skin: "mac",
+        computer: "Mac",
+        trash: "Trash",
+        file_manager: "Finder",
+        tray: "menu bar",
+        start_at_login: "Start at login",
+        settings_shortcut: "⌘,",
+    };
     pub const WINDOWS: Self = Self {
         skin: "windows",
         computer: "PC",
@@ -326,6 +335,7 @@ impl PlatformWords {
         file_manager: "Explorer",
         tray: "system tray",
         start_at_login: "Start when I sign in",
+        settings_shortcut: "Ctrl+,",
     };
 }
 

@@ -40,8 +40,26 @@ pub fn show(handle: &AppHandle, window: Window) {
         builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay);
     }
     if let Ok(w) = builder.build() {
+        if window != Window::Prompt {
+            let webview: &tauri::Webview = w.as_ref();
+            tint(webview.window());
+        }
         let _ = w.set_focus();
     }
+}
+
+/// Windows: the title bar takes the window's colour (milk, or dark roast in dark mode), as on
+/// macOS. Called when a window opens and when the theme changes. Elsewhere nothing to do.
+pub fn tint(window: tauri::Window) {
+    #[cfg(windows)]
+    if window.label() != Window::Prompt.label() {
+        if let Ok(hwnd) = window.hwnd() {
+            let dark = window.theme().is_ok_and(|t| t == tauri::Theme::Dark);
+            muesli_platform_windows::chrome::tint_title_bar(hwnd.0, dark);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = window;
 }
 
 pub fn close(handle: &AppHandle, window: Window) {

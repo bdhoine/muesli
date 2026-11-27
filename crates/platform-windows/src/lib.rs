@@ -10,7 +10,9 @@ use muesli_core::ports::{Platform, PlatformWords, Tray};
 use muesli_platform_common::cpal_capture::{CpalMic, CpalSystemAudio};
 use muesli_platform_common::{SystemClock, SystemPaths, SystemTrash};
 
+pub mod chrome;
 pub mod detector;
+pub mod launch;
 pub mod login_item;
 pub mod notifier;
 pub mod permissions;
@@ -32,7 +34,7 @@ pub fn platform(tray: Arc<dyn Tray>) -> Platform {
         tray,
         trash: Arc::new(SystemTrash { name: "Recycle Bin" }),
         paths: Arc::new(SystemPaths),
-        login_item: Arc::new(login_item::RunKey::new("Muesli")),
+        login_item: Arc::new(login_item::RunKey::new("Muesli").upgrade()),
         words: PlatformWords::WINDOWS,
     }
 }

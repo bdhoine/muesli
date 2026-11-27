@@ -1,6 +1,6 @@
 /* Muesli's windows. Colours and type from assets/brand/BRAND.md; the layout follows the macOS
-   design canvas. The two skins (skins/*.css) only change shapes and density. Dark mode follows the
-   system. Cards use tints, dots and badges, never coloured stripes on an edge. */
+   design canvas, the same on macOS and Windows (only the title bar and the ⌘, / Ctrl+, shortcut differ,
+   in app.js and the shell). Dark mode follows the system. Cards use tints, dots and badges, never coloured stripes on an edge. */
 
 @font-face { font-family: "Outfit"; font-weight: 400; font-display: swap; src: url("fonts/outfit-latin-400-normal.woff2") format("woff2"); }
 @font-face { font-family: "Outfit"; font-weight: 500; font-display: swap; src: url("fonts/outfit-latin-500-normal.woff2") format("woff2"); }
@@ -108,7 +108,7 @@ code, pre { font: 12px/1.5 ui-monospace, "SF Mono", Consolas, monospace; }
 .btn.small { height: 24px; padding: 0 8px; font-size: 12px; }
 .btn.big { height: 36px; padding: 0 18px; font-size: 14px; }
 .btn.link { background: none; border: 0; height: auto; padding: 0 4px; color: var(--accent-text); text-decoration: underline; }
-.btn:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 input[type="text"], .rename input {
   font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--control-line); border-radius: var(--control-radius); padding: 6px 10px;
 }
@@ -139,7 +139,6 @@ input[role="switch"]:checked::after { left: 21px; }
 
 /* Main window */
 .main-window { display: flex; flex-direction: column; height: 100%; position: relative; }
-.toolbar { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .banner { margin: 10px 14px; padding: 8px 12px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-text); display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .banner.info { background: var(--ok-bg); color: var(--text); }
 .split { flex: 1; display: grid; grid-template-columns: minmax(260px, 360px) 1fr; min-height: 0; }
@@ -191,13 +190,36 @@ input[role="switch"]:checked::after { left: 21px; }
   padding: 10px 10px 10px 16px; border-radius: 10px; display: flex; gap: 12px; align-items: center; box-shadow: 0 8px 24px rgba(59, 42, 30, 0.3); font-size: 14px;
 }
 .toast .btn { background: transparent; color: var(--bg); border-color: rgba(246, 241, 231, 0.4); font-weight: 600; }
+/* Right-click on a meeting: a small menu with Delete…, then a question before deleting. */
+.context-menu {
+  position: fixed; z-index: 20; min-width: 160px; padding: 4px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(59, 42, 30, 0.22);
+}
+.context-menu .item {
+  display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent;
+  font: inherit; color: var(--text); cursor: default;
+}
+.context-menu .item:hover, .context-menu .item:focus-visible { background: var(--tint); outline: none; }
+.context-menu .item.danger { color: var(--danger-text); }
+.scrim { position: fixed; inset: 0; z-index: 30; background: rgba(30, 22, 16, 0.32); display: grid; place-items: center; }
+.dialog {
+  width: min(380px, calc(100% - 32px)); background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 20px 20px 16px; box-shadow: 0 16px 40px rgba(59, 42, 30, 0.3); display: flex; flex-direction: column; gap: 8px;
+}
+.dialog .dialog-title { font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--text); overflow-wrap: anywhere; }
+.dialog p { margin: 0; color: var(--muted); }
+.dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 
 /* Settings */
 .settings { height: 100%; overflow: auto; padding: 16px 32px 28px; display: flex; flex-direction: column; gap: 12px; }
+.settings > * { max-width: 760px; width: 100%; margin-left: auto; margin-right: auto; }
 .settings > h2 { margin-top: 8px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; }
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 13px 18px; }
 .card > * + * { border-top: 1px solid var(--divider); }
+.features > * + * { border-top: 1px solid var(--divider); }
+.setting.footer { justify-content: flex-end; padding: 6px 10px; }
+.setting.feature .progress { margin-top: 6px; }
 .setting .text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .setting .title { font-size: 15px; display: flex; align-items: center; gap: 8px; }
 .setting .controls { display: flex; align-items: center; gap: 8px; flex: none; }
@@ -220,17 +242,7 @@ select.add-language {
 .chips .reset { margin-left: auto; }
 .add-term { display: flex; gap: 8px; align-items: center; }
 .add-term input { flex: 1; min-width: 0; }
-details summary { cursor: pointer; list-style: none; }
-details summary::-webkit-details-marker { display: none; }
-.disclosure { display: inline-flex; align-items: center; gap: 8px; }
-.disclosure .chevron { width: 10px; height: 10px; flex: none; transition: transform 0.15s; }
-details[open] > summary .chevron { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { .disclosure .chevron { transition: none; } }
 .stack { display: flex; flex-direction: column; gap: 12px; }
-.advanced > .stack { margin-top: 12px; }
-.other-apps > .stack { margin-top: 8px; }
-.advanced > summary { margin-top: 8px; height: 28px; display: flex; align-items: center; color: var(--muted); }
-.other-apps > summary { height: 30px; display: flex; align-items: center; font-size: 14px; font-weight: 500; }
 .segmented { display: inline-flex; flex-wrap: wrap; padding: 2px; border-radius: 8px; background: var(--tint); align-self: flex-start; }
 .seg { font: inherit; font-size: 13px; height: 26px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; }
 .seg.on { background: var(--card); box-shadow: 0 1px 2px rgba(59, 42, 30, 0.2); font-weight: 600; }

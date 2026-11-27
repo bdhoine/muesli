@@ -25,6 +25,27 @@ pub enum ModelStatus {
     },
 }
 
+/// Something that makes the speech model faster on this computer, and how far it is (on a Mac:
+/// the Core ML encoder for the Neural Engine).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpeedUp {
+    /// What does it, in the person's words: "your Mac's Neural Engine".
+    pub by: &'static str,
+    pub stage: SpeedUpStage,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SpeedUpStage {
+    /// Downloads once the speech model is there.
+    Waiting,
+    /// 0..1, or unknown.
+    Downloading(Option<f64>),
+    /// One-time work on this computer (Core ML compiling the encoder).
+    Preparing,
+    Ready,
+    Failed,
+}
+
 impl ModelStatus {
     pub fn is_ready(&self) -> bool {
         matches!(self, Self::Ready)
@@ -60,9 +81,14 @@ pub trait SpeechModel: Send + Sync {
     /// one-time work (on a Mac, Core ML compiling the encoder). Called at start and when a
     /// download moves on; does nothing when there is nothing (new) to prepare.
     fn prepare(&self) {}
-    /// What speeds the model up on this computer and how far it is, for Settings ("Neural Engine
-    /// (Core ML): ready"); `None` when there is nothing to say.
-    fn acceleration(&self) -> Option<String> {
+    /// What speeds the model up on this computer and how far it is, for Settings; `None` when
+    /// there is nothing extra here.
+    fn speed_up(&self) -> Option<SpeedUp> {
         None
+    }
+    /// Whether the echo canceller is there to load, for Settings ("Works without headphones").
+    /// Cheap: it does not load it.
+    fn echo_removal(&self) -> bool {
+        false
     }
 }
