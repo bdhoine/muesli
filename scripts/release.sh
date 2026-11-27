@@ -20,6 +20,11 @@ Muesli's release process, from your Mac.
 
   scripts/release.sh test-build
       Starts the Release workflow with test_build: installers as downloadable artifacts only.
+
+  scripts/release.sh rebuild VERSION
+      Builds the existing tag vVERSION again and attaches the installers, updater bundles and
+      latest.json to its release (draft or published), for a release whose files are missing.
+      No tag, no version bump.
 EOF
 }
 
@@ -189,10 +194,25 @@ test_build() {
   echo "Download the installers from the run's artifacts (gh run download)."
 }
 
+rebuild() {
+  need_gh
+  local version="${1:-}"
+  [ -n "$version" ] || { usage; exit 1; }
+  git fetch -q origin --tags
+  git rev-parse -q --verify "refs/tags/v$version" >/dev/null || fail "there is no tag v$version"
+  gh release view "v$version" >/dev/null 2>&1 || fail "there is no release v$version"
+  read -r -p "Build v$version again and attach its files to the release v$version? [y/N] " answer
+  [ "$answer" = "y" ] || [ "$answer" = "Y" ] || { echo "Nothing done."; exit 0; }
+  step "Rebuild v$version"
+  start_and_watch -f rebuild="$version"
+  gh release view "v$version" --json url,assets --jq '.url, (.assets[].name | "  " + .)'
+}
+
 case "${1:-}" in
   setup) shift; setup "$@" ;;
   run) run ;;
   test-build) test_build ;;
+  rebuild) shift; rebuild "$@" ;;
   -h|--help|"") usage ;;
   *) usage; exit 1 ;;
 esac

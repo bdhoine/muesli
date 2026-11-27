@@ -1,5 +1,5 @@
 name: Release
-run-name: ${{ inputs.test_build && format('Test installers for {0} ({1})', github.ref_name, github.sha) || format('Release from {0}', github.ref_name) }}
+run-name: ${{ inputs.test_build && format('Test installers for {0} ({1})', github.ref_name, github.sha) || inputs.rebuild != '' && format('Rebuild v{0}', inputs.rebuild) || format('Release from {0}', github.ref_name) }}
 
 # Started by hand from main (Actions tab, or `gh workflow run Release`):
 #   1. prepare: dates this version's CHANGELOG section, commits it, tags main v<version> (the
@@ -13,6 +13,11 @@ run-name: ${{ inputs.test_build && format('Test installers for {0} ({1})', githu
 # With test_build it only builds installers as downloadable artifacts: no tag, no release, no
 # updater bundles.
 #
+# With rebuild=<version> it builds an existing tag v<version> again and attaches the files to that
+# release (draft or published), for a release whose files are missing; no tag, no bump.
+#
+# Releases are titled like their tag: v<version>.
+#
 # macOS is signed with the certificate in the APPLE_CERTIFICATE secrets when they are set, ad hoc
 # otherwise; Windows is not signed.
 on:
@@ -22,6 +27,10 @@ on:
         description: Only build test installers (no tag, no release)
         type: boolean
         default: false
+      rebuild:
+        description: Build an existing release again, e.g. 0.0.2 (no tag, no bump)
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -58,7 +67,15 @@ jobs:
         id: tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REBUILD: ${{ inputs.rebuild }}
         run: |
+          if [ -n "$REBUILD" ]; then
+            git rev-parse -q --verify "refs/tags/v$REBUILD" >/dev/null || { echo "::error::There is no tag v$REBUILD"; exit 1; }
+            echo "Building v$REBUILD again for its existing release"
+            echo "version=$REBUILD" >> "$GITHUB_OUTPUT"
+            echo "resume=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           version=$(python3 scripts/release.py version)
           if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
             if [ "$(gh release view "v$version" --json isDraft --jq .isDraft 2>/dev/null)" = "true" ]; then
@@ -84,12 +101,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.tag.outputs.version }}
+        # The id comes from the create call itself: a draft can take a while to show up in the
+        # release list, and without an id tauri-action silently uploads nothing (0.0.2).
         run: |
           if [ "${{ steps.tag.outputs.resume }}" != "true" ]; then
             python3 scripts/release.py notes > notes.md
-            gh release create "v$VERSION" --draft --verify-tag --title "Muesli $VERSION" --notes-file notes.md
+            id=$(jq -n --arg tag "v$VERSION" --rawfile body notes.md '{tag_name: $tag, name: $tag, body: $body, draft: true}' \
+              | gh api -X POST "repos/$GITHUB_REPOSITORY/releases" --input - --jq .id)
+          else
+            id=""
+            for _ in 1 2 3 4 5 6 7 8 9 10; do
+              id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"v$VERSION\") | .id" | head -n 1)
+              [ -n "$id" ] && break
+              sleep 3
+            done
           fi
-          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"v$VERSION\") | .id" | head -n 1)
+          if [ -z "$id" ]; then
+            echo "::error::No release found for v$VERSION"
+            exit 1
+          fi
+          echo "Release v$VERSION: id $id"
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   bundle:
@@ -204,11 +235,28 @@ jobs:
     if: ${{ !inputs.test_build }}
     runs-on: ubuntu-latest
     steps:
+      # Without latest.json on the release the updater finds nothing: never move on without it.
+      - name: The release has its files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ID: ${{ needs.prepare.outputs.release_id }}
+        run: |
+          assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/$ID/assets" --jq '.[].name')
+          echo "$assets"
+          for want in latest.json '.dmg$' '.app.tar.gz.sig$' '-setup.exe.sig$'; do
+            grep -q -- "$want" <<<"$assets" || { echo "::error::The release is missing $want"; exit 1; }
+          done
+      - name: Nothing to bump for a rebuild
+        if: ${{ inputs.rebuild != '' }}
+        run: echo "Rebuilt v${{ needs.prepare.outputs.version }}; main stays where it is."
       - uses: actions/checkout@v4
+        if: ${{ inputs.rebuild == '' }}
         with:
           ref: main
       - uses: dtolnay/rust-toolchain@stable
+        if: ${{ inputs.rebuild == '' }}
       - name: Next patch version, Cargo.lock and the plugin
+        if: ${{ inputs.rebuild == '' }}
         run: |
           next=$(python3 scripts/release.py bump)
           cargo update --workspace
