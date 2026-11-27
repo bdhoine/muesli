@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release helpers for .github/workflows/app.yml (Release).
+"""Release helpers for .github/workflows/release.yml (Release).
 
   release.py version            the workspace version in Cargo.toml
   release.py changelog DATE     date this version's CHANGELOG section (or turn [Unreleased] into it)

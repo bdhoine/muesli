@@ -1,16 +1,17 @@
 name: Tests
 run-name: Tests on ${{ github.ref_name }} (${{ github.sha }})
 
-# On every push and pull request, and by hand (Actions tab, or `gh workflow run Tests`). Rust runs on
-# macOS, Windows and Linux.
+# On every push and pull request, by hand (Actions tab, or `gh workflow run Tests`), and from the
+# Release workflow before it tags a release. Rust runs on macOS, Windows and Linux.
 on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.workflow == 'Tests' }}
 
 jobs:
   rust:
