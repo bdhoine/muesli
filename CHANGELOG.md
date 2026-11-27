@@ -4,6 +4,8 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-11-27
+
 ### Added
 - Setup has a step for your AI assistant: connect Claude Desktop with one button, or see how to add Muesli to Claude Code, Codex, Gemini CLI, VS Code or Cursor.
 
@@ -71,6 +73,7 @@ The first release of Muesli, an on-device meeting transcriber for macOS (14.4 or
 **Updates**
 - Muesli keeps itself up to date from its GitHub releases: once a day it checks, downloads in the background and offers **Restart to Update**; nothing interrupts a meeting you are transcribing. Only updates signed by Muesli are installed. Settings has **Check for Updates** and a switch to turn automatic checks off; the version and **What's new** sit at the bottom of Settings.
 
-[Unreleased]: https://github.com/bdhoine/muesli/compare/v0.0.2...HEAD
+[Unreleased]: https://github.com/bdhoine/muesli/compare/v0.0.3...HEAD
+[0.0.3]: https://github.com/bdhoine/muesli/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/bdhoine/muesli/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/bdhoine/muesli/releases/tag/v0.0.1
