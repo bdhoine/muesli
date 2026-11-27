@@ -4,6 +4,8 @@ All notable changes to Muesli that you can see or use are listed here, newest fi
 
 ## [Unreleased]
 
+## [0.0.2] - 2026-11-27
+
 ### Added
 - Settings: **Disconnect** for Claude Desktop. If Muesli connected through Claude Desktop's settings file it removes that; for the extension it opens Claude Desktop and shows where to uninstall it.
 - Right-click a transcript in the list and choose **Delete…** to delete it; Muesli asks first, and **Undo** still brings it back. Right-click does nothing anywhere else in Muesli's windows.
@@ -60,5 +62,6 @@ The first release of Muesli, an on-device meeting transcriber for macOS (14.4 or
 **Updates**
 - Muesli keeps itself up to date from its GitHub releases: once a day it checks, downloads in the background and offers **Restart to Update**; nothing interrupts a meeting you are transcribing. Only updates signed by Muesli are installed. Settings has **Check for Updates** and a switch to turn automatic checks off; the version and **What's new** sit at the bottom of Settings.
 
-[Unreleased]: https://github.com/bdhoine/muesli/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/bdhoine/muesli/compare/v0.0.2...HEAD
+[0.0.2]: https://github.com/bdhoine/muesli/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/bdhoine/muesli/releases/tag/v0.0.1
